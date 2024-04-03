@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2024 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test that descriptor wallets rescan mempool transactions properly when importing."""
@@ -16,9 +17,6 @@ from test_framework.wallet_util import test_address
 
 
 class WalletRescanUnconfirmed(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser, legacy=False)
-
     def set_test_params(self):
         self.num_nodes = 1
 

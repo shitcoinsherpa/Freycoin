@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test mempool persistence.
@@ -50,9 +51,6 @@ from test_framework.wallet import MiniWallet, COIN
 
 
 class MempoolPersistTest(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser, legacy=False)
-
     def set_test_params(self):
         self.num_nodes = 3
         self.extra_args = [[], ["-persistmempool=0"], []]
@@ -62,7 +60,6 @@ class MempoolPersistTest(BitcoinTestFramework):
         if self.is_sqlite_compiled():
             self.nodes[2].createwallet(
                 wallet_name="watch",
-                descriptors=True,
                 disable_private_keys=True,
                 load_on_startup=False,
             )
@@ -229,9 +226,9 @@ class MempoolPersistTest(BitcoinTestFramework):
         tx_node1 = self.mini_wallet.send_self_transfer(from_node=self.nodes[1])
         tx_node01 = self.mini_wallet.create_self_transfer()
         tx_node01_secret = self.mini_wallet.create_self_transfer()
-        self.nodes[0].prioritisetransaction(tx_node01["txid"], 0, COIN)
-        self.nodes[0].prioritisetransaction(tx_node01_secret["txid"], 0, 2 * COIN)
-        self.nodes[1].prioritisetransaction(tx_node01_secret["txid"], 0, 3 * COIN)
+        self.nodes[0].prioritisetransaction(tx_node01["txid"], COIN)
+        self.nodes[0].prioritisetransaction(tx_node01_secret["txid"], 2 * COIN)
+        self.nodes[1].prioritisetransaction(tx_node01_secret["txid"], 3 * COIN)
         self.nodes[0].sendrawtransaction(tx_node01["hex"])
         self.nodes[1].sendrawtransaction(tx_node01["hex"])
         assert tx_node0["txid"] in self.nodes[0].getrawmempool()

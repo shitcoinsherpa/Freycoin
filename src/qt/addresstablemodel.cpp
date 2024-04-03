@@ -1,4 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -55,11 +56,9 @@ struct AddressTableEntryLessThan
 /* Determine address type from address purpose */
 constexpr AddressTableEntry::Type translateTransactionType(wallet::AddressPurpose purpose, bool isMine)
 {
-    // "refund" addresses aren't shown, and change addresses aren't returned by getAddresses at all.
     switch (purpose) {
     case wallet::AddressPurpose::SEND: return AddressTableEntry::Sending;
     case wallet::AddressPurpose::RECEIVE: return AddressTableEntry::Receiving;
-    case wallet::AddressPurpose::REFUND: return AddressTableEntry::Hidden;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }

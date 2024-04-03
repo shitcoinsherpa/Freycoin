@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2023-present The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test for assumeutxo wallet related behavior.
@@ -26,9 +27,6 @@ FINAL_HEIGHT = 399
 class AssumeutxoTest(BitcoinTestFramework):
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
-
-    def add_options(self, parser):
-        self.add_wallet_options(parser, legacy=False)
 
     def set_test_params(self):
         """Use the pregenerated, deterministic chain up to height 199."""

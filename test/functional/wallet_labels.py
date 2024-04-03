@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2016-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test label RPCs.
@@ -18,9 +19,6 @@ from test_framework.wallet_util import test_address
 
 
 class WalletLabelsTest(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -36,28 +34,14 @@ class WalletLabelsTest(BitcoinTestFramework):
             [node.getnewaddress],
             [node.setlabel, address],
             [node.getaddressesbylabel],
-            [node.importpubkey, pubkey],
-            [node.addmultisigaddress, 1, [pubkey]],
             [node.getreceivedbylabel],
-            [node.listsinceblock, node.getblockhash(0), 1, False, True, False],
+            [node.listsinceblock, node.getblockhash(0), 1, True, False],
         ]
-        if self.options.descriptors:
-            response = node.importdescriptors([{
-                'desc': f'pkh({pubkey})',
-                'label': '*',
-                'timestamp': 'now',
-            }])
-        else:
-            rpc_calls.extend([
-                [node.importprivkey, node.dumpprivkey(address)],
-                [node.importaddress, address],
-            ])
-
-            response = node.importmulti([{
-                'scriptPubKey': {'address': address},
-                'label': '*',
-                'timestamp': 'now',
-            }])
+        response = node.importdescriptors([{
+            'desc': f'pkh({pubkey})',
+            'label': '*',
+            'timestamp': 'now',
+        }])
 
         assert_equal(response[0]['success'], False)
         assert_equal(response[0]['error']['code'], -11)

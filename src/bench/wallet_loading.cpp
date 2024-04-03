@@ -1,4 +1,5 @@
 // Copyright (c) 2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -40,10 +41,7 @@ static void WalletLoading(benchmark::Bench& bench, bool legacy_wallet)
 
     // Setup the wallet
     // Loading the wallet will also create it
-    uint64_t create_flags = 0;
-    if (!legacy_wallet) {
-        create_flags = WALLET_FLAG_DESCRIPTORS;
-    }
+    uint64_t create_flags = WALLET_FLAG_DESCRIPTORS;
     auto database = CreateMockableWalletDatabase();
     auto wallet = TestLoadWallet(std::move(database), context, create_flags);
 
@@ -65,11 +63,6 @@ static void WalletLoading(benchmark::Bench& bench, bool legacy_wallet)
         TestUnloadWallet(std::move(wallet));
     });
 }
-
-#ifdef USE_BDB
-static void WalletLoadingLegacy(benchmark::Bench& bench) { WalletLoading(bench, /*legacy_wallet=*/true); }
-BENCHMARK(WalletLoadingLegacy, benchmark::PriorityLevel::HIGH);
-#endif
 
 #ifdef USE_SQLITE
 static void WalletLoadingDescriptors(benchmark::Bench& bench) { WalletLoading(bench, /*legacy_wallet=*/false); }

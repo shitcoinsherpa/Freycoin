@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -773,7 +774,6 @@ public:
     {
         return std::make_unique<RpcHandlerImpl>(command);
     }
-    bool rpcEnableDeprecated(const std::string& method) override { return IsDeprecatedRPCEnabled(method); }
     void rpcRunLater(const std::string& name, std::function<void()> fn, int64_t seconds) override
     {
         RPCRunLater(name, std::move(fn), seconds);

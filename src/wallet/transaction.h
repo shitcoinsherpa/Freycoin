@@ -1,4 +1,5 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -131,7 +132,7 @@ std::string TxStateString(const T& state)
  */
 struct CachableAmount
 {
-    // NO and ALL are never (supposed to be) cached
+    // NO is never (supposed to be) cached
     std::bitset<ISMINE_ENUM_ELEMENTS> m_cached;
     CAmount m_value[ISMINE_ENUM_ELEMENTS];
     inline void Reset()

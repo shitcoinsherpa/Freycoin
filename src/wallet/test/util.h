@@ -1,4 +1,5 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -26,15 +27,6 @@ namespace wallet {
 class CWallet;
 class WalletDatabase;
 struct WalletContext;
-
-static const DatabaseFormat DATABASE_FORMATS[] = {
-#ifdef USE_SQLITE
-       DatabaseFormat::SQLITE,
-#endif
-#ifdef USE_BDB
-       DatabaseFormat::BERKELEY,
-#endif
-};
 
 const std::string ADDRESS_BCRT1_UNSPENDABLE = "bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj";
 
@@ -118,7 +110,6 @@ public:
     bool Backup(const std::string& strDest) const override { return m_pass; }
     void Flush() override {}
     void Close() override {}
-    bool PeriodicFlush() override { return m_pass; }
     void IncrementUpdateCounter() override {}
     void ReloadDbEnv() override {}
 

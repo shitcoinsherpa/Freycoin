@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test mempool limiting together/eviction with the wallet."""
@@ -317,7 +318,7 @@ class MempoolLimitTest(BitcoinTestFramework):
         # another is below the mempool minimum feerate but bumped by the child.
         tx_poor = miniwallet.create_self_transfer(fee_rate=relayfee)
         tx_rich = miniwallet.create_self_transfer(fee=0, fee_rate=0)
-        node.prioritisetransaction(tx_rich["txid"], 0, int(DEFAULT_FEE * COIN))
+        node.prioritisetransaction(tx_rich["txid"], int(DEFAULT_FEE * COIN))
         package_txns = [tx_rich, tx_poor]
         coins = [tx["new_utxo"] for tx in package_txns]
         tx_child = miniwallet.create_self_transfer_multi(utxos_to_spend=coins, fee_per_output=10000) #DEFAULT_FEE

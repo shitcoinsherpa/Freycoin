@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2023-present The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php.
 
@@ -15,9 +16,6 @@ from test_framework.util import (
 BLOCK_TIME = 60 * 10
 
 class WalletReindexTest(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -68,7 +66,7 @@ class WalletReindexTest(BitcoinTestFramework):
         # Rescan the wallet to detect the missing transaction
         wallet_watch_only.rescanblockchain()
         assert_equal(wallet_watch_only.gettransaction(tx_id)['confirmations'], 50)
-        assert_equal(wallet_watch_only.getbalances()['mine' if self.options.descriptors else 'watchonly']['trusted'], 2)
+        assert_equal(wallet_watch_only.getbalances()['mine']['trusted'], 2)
 
         # Reindex and wait for it to finish
         with node.assert_debug_log(expected_msgs=["initload thread exit"]):

@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -51,7 +52,6 @@ struct WalletBalances;
 struct WalletTx;
 struct WalletTxOut;
 struct WalletTxStatus;
-struct WalletMigrationResult;
 
 using WalletOrderForm = std::vector<std::pair<std::string, std::string>>;
 using WalletValueMap = std::map<std::string, std::string>;
@@ -101,9 +101,6 @@ public:
 
     //! Return whether wallet has private key.
     virtual bool isSpendable(const CTxDestination& dest) = 0;
-
-    //! Return whether wallet has watch only keys.
-    virtual bool haveWatchOnly() = 0;
 
     //! Add or update address.
     virtual bool setAddressBook(const CTxDestination& dest, const std::string& name, const std::optional<wallet::AddressPurpose>& purpose) = 0;
@@ -277,9 +274,6 @@ public:
     // Remove wallet.
     virtual void remove() = 0;
 
-    //! Return whether is a legacy wallet
-    virtual bool isLegacy() = 0;
-
     //! Register handler for unload message.
     using UnloadFn = std::function<void()>;
     virtual std::unique_ptr<Handler> handleUnload(UnloadFn fn) = 0;
@@ -303,10 +297,6 @@ public:
     //! Register handler for transaction changed messages.
     using TransactionChangedFn = std::function<void(const uint256& txid, ChangeType status)>;
     virtual std::unique_ptr<Handler> handleTransactionChanged(TransactionChangedFn fn) = 0;
-
-    //! Register handler for watchonly changed messages.
-    using WatchOnlyChangedFn = std::function<void(bool have_watch_only)>;
-    virtual std::unique_ptr<Handler> handleWatchOnlyChanged(WatchOnlyChangedFn fn) = 0;
 
     //! Register handler for keypool changed messages.
     using CanGetAddressesChangedFn = std::function<void()>;
@@ -333,9 +323,6 @@ public:
 
     //! Restore backup wallet
     virtual util::Result<std::unique_ptr<Wallet>> restoreWallet(const fs::path& backup_file, const std::string& wallet_name, std::vector<bilingual_str>& warnings) = 0;
-
-    //! Migrate a wallet
-    virtual util::Result<WalletMigrationResult> migrateWallet(const std::string& name, const SecureString& passphrase) = 0;
 
     //! Return available wallets in wallet directory.
     virtual std::vector<std::string> listWalletDir() = 0;
@@ -373,17 +360,10 @@ struct WalletBalances
     CAmount balance = 0;
     CAmount unconfirmed_balance = 0;
     CAmount immature_balance = 0;
-    bool have_watch_only = false;
-    CAmount watch_only_balance = 0;
-    CAmount unconfirmed_watch_only_balance = 0;
-    CAmount immature_watch_only_balance = 0;
 
     bool balanceChanged(const WalletBalances& prev) const
     {
-        return balance != prev.balance || unconfirmed_balance != prev.unconfirmed_balance ||
-               immature_balance != prev.immature_balance || watch_only_balance != prev.watch_only_balance ||
-               unconfirmed_watch_only_balance != prev.unconfirmed_watch_only_balance ||
-               immature_watch_only_balance != prev.immature_watch_only_balance;
+        return balance != prev.balance || unconfirmed_balance != prev.unconfirmed_balance || immature_balance != prev.immature_balance;
     }
 };
 
@@ -427,15 +407,6 @@ struct WalletTxOut
     int64_t time;
     int depth_in_main_chain = -1;
     bool is_spent = false;
-};
-
-//! Migrated wallet info
-struct WalletMigrationResult
-{
-    std::unique_ptr<Wallet> wallet;
-    std::optional<std::string> watchonly_wallet_name;
-    std::optional<std::string> solvables_wallet_name;
-    fs::path backup_path;
 };
 
 //! Return implementation of Wallet interface. This function is defined in

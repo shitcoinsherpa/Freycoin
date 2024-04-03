@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Tests that a mempool transaction expires after a given timeout and that its
@@ -42,7 +43,7 @@ class MempoolExpiryTest(BitcoinTestFramework):
         independent_utxo = self.wallet.get_utxo()
 
         # Add prioritisation to this transaction to check that it persists after the expiry
-        node.prioritisetransaction(parent_txid, 0, COIN)
+        node.prioritisetransaction(parent_txid, COIN)
         assert_equal(node.getprioritisedtransactions()[parent_txid], { "fee_delta" : COIN, "in_mempool" : True, "modified_fee": COIN + COIN * parent["fee"] })
 
         # Ensure the transactions we send to trigger the mempool check spend utxos that are independent of

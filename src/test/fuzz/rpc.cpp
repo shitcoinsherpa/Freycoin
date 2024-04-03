@@ -1,4 +1,5 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -72,14 +73,12 @@ const std::vector<std::string> RPC_COMMANDS_NOT_SAFE_FOR_FUZZING{
     "addnode",        // avoid DNS lookups
     "addpeeraddress", // avoid DNS lookups
     "dumptxoutset",   // avoid writing to disk
-    "dumpwallet", // avoid writing to disk
     "enumeratesigners",
     "echoipc",              // avoid assertion failure (Assertion `"EnsureAnyNodeContext(request.context).init" && check' failed.)
     "generatetoaddress",    // avoid prohibitively slow execution (when `num_blocks` is large)
     "generatetodescriptor", // avoid prohibitively slow execution (when `nblocks` is large)
     "gettxoutproof",        // avoid prohibitively slow execution
     "importmempool", // avoid reading from disk
-    "importwallet", // avoid reading from disk
     "loadtxoutset",   // avoid reading from disk
     "loadwallet",   // avoid reading from disk
     "savemempool",           // disabled as a precautionary measure: may take a file path argument in the future

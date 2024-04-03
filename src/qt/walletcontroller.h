@@ -1,4 +1,5 @@
 // Copyright (c) 2019-2021 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -40,7 +41,6 @@ class path;
 class AskPassphraseDialog;
 class CreateWalletActivity;
 class CreateWalletDialog;
-class MigrateWalletActivity;
 class OpenWalletActivity;
 class WalletControllerActivity;
 
@@ -66,8 +66,6 @@ public:
     void closeWallet(WalletModel* wallet_model, QWidget* parent = nullptr);
     void closeAllWallets(QWidget* parent = nullptr);
 
-    void migrateWallet(WalletModel* wallet_model, QWidget* parent = nullptr);
-
 Q_SIGNALS:
     void walletAdded(WalletModel* wallet_model);
     void walletRemoved(WalletModel* wallet_model);
@@ -86,7 +84,6 @@ private:
     std::unique_ptr<interfaces::Handler> m_handler_load_wallet;
 
     friend class WalletControllerActivity;
-    friend class MigrateWalletActivity;
 };
 
 class WalletControllerActivity : public QObject
@@ -176,24 +173,6 @@ Q_SIGNALS:
     void restored(WalletModel* wallet_model);
 
 private:
-    void finish();
-};
-
-class MigrateWalletActivity : public WalletControllerActivity
-{
-    Q_OBJECT
-
-public:
-    MigrateWalletActivity(WalletController* wallet_controller, QWidget* parent) : WalletControllerActivity(wallet_controller, parent) {}
-
-    void migrate(WalletModel* wallet_model);
-
-Q_SIGNALS:
-    void migrated(WalletModel* wallet_model);
-
-private:
-    QString m_success_message;
-
     void finish();
 };
 

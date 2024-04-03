@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the send RPC command."""
@@ -25,9 +26,6 @@ from test_framework.wallet_util import generate_keypair
 
 
 class WalletSendTest(BitcoinTestFramework):
-    def add_options(self, parser):
-        self.add_wallet_options(parser)
-
     def set_test_params(self):
         self.num_nodes = 2
         # whitelist peers to speed up tx relay / mempool sync
@@ -238,43 +236,9 @@ class WalletSendTest(BitcoinTestFramework):
 
         for _ in range(3):
             a2_receive = w2.getnewaddress()
-            if not self.options.descriptors:
-                # Because legacy wallets use exclusively hardened derivation, we can't do a ranged import like we do for descriptors
-                a2_change = w2.getrawchangeaddress() # doesn't actually use change derivation
-                res = w3.importmulti([{
-                    "desc": w2.getaddressinfo(a2_receive)["desc"],
-                    "timestamp": "now",
-                    "keypool": True,
-                    "watchonly": True
-                },{
-                    "desc": w2.getaddressinfo(a2_change)["desc"],
-                    "timestamp": "now",
-                    "keypool": True,
-                    "internal": True,
-                    "watchonly": True
-                }])
-                assert_equal(res, [{"success": True}, {"success": True}])
 
         w0.sendtoaddress(a2_receive, 10) # fund w3
         self.generate(self.nodes[0], 1)
-
-        if not self.options.descriptors:
-            # w4 has private keys enabled, but only contains watch-only keys (from w2)
-            # This is legacy wallet behavior only as descriptor wallets don't allow watchonly and non-watchonly things in the same wallet.
-            self.nodes[1].createwallet(wallet_name="w4", disable_private_keys=False)
-            w4 = self.nodes[1].get_wallet_rpc("w4")
-            for _ in range(3):
-                a2_receive = w2.getnewaddress()
-                res = w4.importmulti([{
-                    "desc": w2.getaddressinfo(a2_receive)["desc"],
-                    "timestamp": "now",
-                    "keypool": False,
-                    "watchonly": True
-                }])
-                assert_equal(res, [{"success": True}])
-
-            w0.sendtoaddress(a2_receive, 10) # fund w4
-            self.generate(self.nodes[0], 1)
 
         self.log.info("Send to address...")
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1)
@@ -349,8 +313,6 @@ class WalletSendTest(BitcoinTestFramework):
         # Test that passing fee_rate as both an argument and an option raises.
         self.test_send(from_wallet=w0, to_wallet=w1, amount=1, arg_fee_rate=1, fee_rate=1, add_to_wallet=False,
                        expect_error=(-8, "Pass the fee_rate either as an argument, or in the options object, but not both"))
-
-        assert_raises_rpc_error(-8, "Use fee_rate (sat/vB) instead of feeRate", w0.send, {w1.getnewaddress(): 1}, 6, "conservative", 1, {"feeRate": 0.01})
 
         assert_raises_rpc_error(-3, "Unexpected key totalFee", w0.send, {w1.getnewaddress(): 1}, 6, "conservative", 1, {"totalFee": 0.01})
 

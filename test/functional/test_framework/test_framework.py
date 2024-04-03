@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Base class for RPC testing."""
@@ -104,7 +105,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         self.supports_cli = True
         self.bind_to_localhost_only = True
         self.parse_args()
-        self.default_wallet_name = "default_wallet" if self.options.descriptors else ""
+        self.default_wallet_name = "default_wallet"
         self.wallet_data_filename = "wallet.dat"
         # Optional list of wallet names that can be set in set_test_params to
         # create and import keys to. If unset, default is len(nodes) *
@@ -207,23 +208,13 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         if self.options.v1transport:
             self.options.v2transport=False
 
-        if "descriptors" not in self.options:
-            # Wallet is not required by the test at all and the value of self.options.descriptors won't matter.
+        if self.is_sqlite_compiled():
+            self.options.descriptors = True
+        else:
+            # Tests requiring a wallet will be skipped and the value of self.options.descriptors won't matter
             # It still needs to exist and be None in order for tests to work however.
-            # So set it to None to force -disablewallet, because the wallet is not needed.
+            # So set it to None, which will also set -disablewallet.
             self.options.descriptors = None
-        elif self.options.descriptors is None:
-            # Some wallet is either required or optionally used by the test.
-            # Prefer SQLite unless it isn't available
-            if self.is_sqlite_compiled():
-                self.options.descriptors = True
-            elif self.is_bdb_compiled():
-                self.options.descriptors = False
-            else:
-                # If neither are compiled, tests requiring a wallet will be skipped and the value of self.options.descriptors won't matter
-                # It still needs to exist and be None in order for tests to work however.
-                # So set it to None, which will also set -disablewallet.
-                self.options.descriptors = None
 
         PortSeed.n = self.options.port_seed
 
@@ -435,7 +426,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         if wallet_name is not False:
             n = self.nodes[node]
             if wallet_name is not None:
-                n.createwallet(wallet_name=wallet_name, descriptors=self.options.descriptors, load_on_startup=True)
+                n.createwallet(wallet_name=wallet_name, load_on_startup=True)
             n.importprivkey(privkey=n.get_deterministic_priv_key().key, label='coinbase', rescan=True)
 
     def run_test(self):
@@ -443,21 +434,6 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         raise NotImplementedError
 
     # Public helper methods. These can be accessed by the subclass test scripts.
-
-    def add_wallet_options(self, parser, *, descriptors=True, legacy=True):
-        kwargs = {}
-        if descriptors + legacy == 1:
-            # If only one type can be chosen, set it as default
-            kwargs["default"] = descriptors
-        group = parser.add_mutually_exclusive_group(
-            # If only one type is allowed, require it to be set in test_runner.py
-            required=os.getenv("REQUIRE_WALLET_TYPE_SET") == "1" and "default" in kwargs)
-        if descriptors:
-            group.add_argument("--descriptors", action='store_const', const=True, **kwargs,
-                               help="Run test using a descriptor wallet", dest='descriptors')
-        if legacy:
-            group.add_argument("--legacy-wallet", action='store_const', const=False, **kwargs,
-                               help="Run test using legacy wallets", dest='descriptors')
 
     def add_nodes(self, num_nodes: int, extra_args=None, *, rpchost=None, binary=None, binary_cli=None, versions=None):
         """Instantiate TestNode objects.
@@ -933,18 +909,11 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             raise SkipTest("wallet has not been compiled.")
         if self.options.descriptors:
             self.skip_if_no_sqlite()
-        else:
-            self.skip_if_no_bdb()
 
     def skip_if_no_sqlite(self):
         """Skip the running test if sqlite has not been compiled."""
         if not self.is_sqlite_compiled():
             raise SkipTest("sqlite has not been compiled.")
-
-    def skip_if_no_bdb(self):
-        """Skip the running test if BDB has not been compiled."""
-        if not self.is_bdb_compiled():
-            raise SkipTest("BDB has not been compiled.")
 
     def skip_if_no_wallet_tool(self):
         """Skip the running test if bitcoin-wallet has not been compiled."""
@@ -974,12 +943,9 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         return self.config["components"].getboolean("ENABLE_WALLET")
 
     def is_specified_wallet_compiled(self):
-        """Checks whether wallet support for the specified type
-           (legacy or descriptor wallet) was compiled."""
+        """Checks whether wallet support for descriptors was compiled."""
         if self.options.descriptors:
             return self.is_sqlite_compiled()
-        else:
-            return self.is_bdb_compiled()
 
     def is_wallet_tool_compiled(self):
         """Checks whether bitcoin-wallet was compiled."""
@@ -996,10 +962,6 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
     def is_sqlite_compiled(self):
         """Checks whether the wallet module was compiled with Sqlite support."""
         return self.config["components"].getboolean("USE_SQLITE")
-
-    def is_bdb_compiled(self):
-        """Checks whether the wallet module was compiled with BDB support."""
-        return self.config["components"].getboolean("USE_BDB")
 
     def has_blockfile(self, node, filenum: str):
         return (node.blocks_path/ f"blk{filenum}.dat").is_file()

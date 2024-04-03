@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -147,10 +148,7 @@ void StartWallets(WalletContext& context)
         pwallet->postInitProcess();
     }
 
-    // Schedule periodic wallet flushes and tx rebroadcasts
-    if (context.args->GetBoolArg("-flushwallet", DEFAULT_FLUSHWALLET)) {
-        context.scheduler->scheduleEvery([&context] { MaybeCompactWalletDB(context); }, 500ms);
-    }
+    // Schedule periodic tx rebroadcasts
     context.scheduler->scheduleEvery([&context] { MaybeResendWalletTxs(context); }, 1min);
 }
 
