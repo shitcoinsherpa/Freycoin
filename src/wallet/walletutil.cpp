@@ -1,4 +1,5 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -16,18 +17,11 @@ fs::path GetWalletDir()
 
     if (gArgs.IsArgSet("-walletdir")) {
         path = gArgs.GetPathArg("-walletdir");
-        if (!fs::is_directory(path)) {
-            // If the path specified doesn't exist, we return the deliberately
-            // invalid empty string.
+        if (!fs::is_directory(path)) // If the path specified doesn't exist, we return the deliberately invalid empty string.
             path = "";
-        }
-    } else {
-        path = gArgs.GetDataDirNet();
-        // If a wallets directory exists, use that, otherwise default to GetDataDir
-        if (fs::is_directory(path / "wallets")) {
-            path /= "wallets";
-        }
     }
+    else
+        path = gArgs.GetDataDirNet() / "wallets";
 
     return path;
 }
