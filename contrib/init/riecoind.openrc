@@ -1,0 +1,93 @@
+#!/sbin/openrc-run
+
+# backward compatibility for existing gentoo layout 
+#
+if [ -d "/var/lib/riecoin/.riecoin" ]; then
+	RIECOIND_DEFAULT_DATADIR="/var/lib/riecoin/.riecoin"
+else
+	RIECOIND_DEFAULT_DATADIR="/var/lib/riecoind"
+fi
+
+RIECOIND_CONFIGFILE=${RIECOIND_CONFIGFILE:-/etc/riecoin/riecoin.conf}
+RIECOIND_PIDDIR=${RIECOIND_PIDDIR:-/var/run/riecoind}
+RIECOIND_PIDFILE=${RIECOIND_PIDFILE:-${RIECOIND_PIDDIR}/riecoind.pid}
+RIECOIND_DATADIR=${RIECOIND_DATADIR:-${RIECOIND_DEFAULT_DATADIR}}
+RIECOIND_USER=${RIECOIND_USER:-${BITCOIN_USER:-riecoin}}
+RIECOIND_GROUP=${RIECOIND_GROUP:-riecoin}
+RIECOIND_BIN=${RIECOIND_BIN:-/usr/bin/riecoind}
+RIECOIND_NICE=${RIECOIND_NICE:-${NICELEVEL:-0}}
+RIECOIND_OPTS="${RIECOIND_OPTS:-${BITCOIN_OPTS}}"
+
+name="Riecoin Core Daemon"
+description="Riecoin cryptocurrency P2P network daemon"
+
+command="/usr/bin/riecoind"
+command_args="-pid=\"${RIECOIND_PIDFILE}\" \
+		-conf=\"${RIECOIND_CONFIGFILE}\" \
+		-datadir=\"${RIECOIND_DATADIR}\" \
+		-daemon \
+		${RIECOIND_OPTS}"
+
+required_files="${RIECOIND_CONFIGFILE}"
+start_stop_daemon_args="-u ${RIECOIND_USER} \
+			-N ${RIECOIND_NICE} -w 2000"
+pidfile="${RIECOIND_PIDFILE}"
+
+# The retry schedule to use when stopping the daemon. Could be either
+# a timeout in seconds or multiple signal/timeout pairs (like
+# "SIGKILL/180 SIGTERM/300")
+retry="${RIECOIND_SIGTERM_TIMEOUT}"
+
+depend() {
+	need localmount net
+}
+
+# verify
+# 1) that the datadir exists and is writable (or create it)
+# 2) that a directory for the pid exists and is writable
+# 3) ownership and permissions on the config file
+start_pre() {
+	checkpath \
+	-d \
+	--mode 0750 \
+	--owner "${RIECOIND_USER}:${RIECOIND_GROUP}" \
+	"${RIECOIND_DATADIR}"
+
+	checkpath \
+	-d \
+	--mode 0755 \
+	--owner "${RIECOIND_USER}:${RIECOIND_GROUP}" \
+	"${RIECOIND_PIDDIR}"
+
+	checkpath -f \
+	-o "${RIECOIND_USER}:${RIECOIND_GROUP}" \
+	-m 0660 \
+	"${RIECOIND_CONFIGFILE}"
+
+	checkconfig || return 1
+}
+
+checkconfig()
+{
+	if grep -qs '^rpcuser=' "${RIECOIND_CONFIGFILE}" && \
+		! grep -qs '^rpcpassword=' "${RIECOIND_CONFIGFILE}" ; then
+		eerror ""
+		eerror "ERROR: You must set a secure rpcpassword to run riecoind."
+		eerror "The setting must appear in ${RIECOIND_CONFIGFILE}"
+		eerror ""
+		eerror "This password is security critical to securing wallets "
+		eerror "and must not be the same as the rpcuser setting."
+		eerror "You can generate a suitable random password using the following "
+		eerror "command from the shell:"
+		eerror ""
+		eerror "bash -c 'tr -dc a-zA-Z0-9 < /dev/urandom | head -c32 && echo'"
+		eerror ""
+		eerror "It is recommended that you also set alertnotify so you are "
+		eerror "notified of problems:"
+		eerror ""
+		eerror "ie: alertnotify=echo %%s | mail -s \"Riecoin Alert\"" \
+			"admin@foo.com"
+		eerror ""
+		return 1
+	fi
+}

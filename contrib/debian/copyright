@@ -1,14 +1,12 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: Bitcoin
-Upstream-Contact: Satoshi Nakamoto <satoshin@gmx.com>
- irc://#bitcoin-core-dev@libera.chat
-Source: https://github.com/bitcoin/bitcoin
+Upstream-Name: Riecoin
+Source: https://github.com/RiecoinTeam/Riecoin
 
 Files: *
-Copyright: 2009-2024, Bitcoin Core Developers
+Copyright: 2009-2024, Bitcoin Core and Riecoin Developers
 License: Expat
-Comment: The Bitcoin Core Developers encompasses all contributors to the
-         project, listed in the release notes or the git log.
+Comment: The Bitcoin Core Developers encompasses the current developers listed on bitcoin.org,
+         as well as the numerous contributors to the project. The Riecoin Developers are anyone who contributed to improve Riecoin.
 
 Files: debian/*
 Copyright: 2010-2011, Jonas Smedegaard <dr@jones.dk>
@@ -67,12 +65,12 @@ Copyright: Stephen Hutchings, Jonas Schnelli
 License: Expat
 Comment: Modifications of Stephen Hutchings' Typicons
 
-Files: src/qt/res/icons/bitcoin.*
-       share/pixmaps/bitcoin*
-       src/qt/res/src/bitcoin.svg
-Copyright: Bitboy, Jonas Schnelli
+Files: src/qt/res/icons/Riecoin.*
+       share/pixmaps/Riecoin*
+       src/qt/res/src/Riecoin.svg
+Copyright: Mick Bruce, Pttn
 License: public-domain
-Comment: Site: https://bitcointalk.org/?topic=1756.0
+Comment: Contest: https://bitcointalk.org/index.php?topic=288065
 
 Files: src/qt/res/icons/proxy.png
        src/qt/res/src/proxy.svg

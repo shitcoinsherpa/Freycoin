@@ -1,4 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -150,7 +151,7 @@ BOOST_AUTO_TEST_CASE(parse_hex)
     result = TryParseHex<uint8_t>("12 34 56 78").value();
     BOOST_CHECK(result.size() == 4 && result[0] == 0x12 && result[1] == 0x34 && result[2] == 0x56 && result[3] == 0x78);
 
-    // Leading space must be supported (used in BerkeleyEnvironment::Salvage)
+    // Leading space must be supported
     result = ParseHex(" 89 34 56 78");
     BOOST_CHECK(result.size() == 4 && result[0] == 0x89 && result[1] == 0x34 && result[2] == 0x56 && result[3] == 0x78);
     result = TryParseHex<uint8_t>(" 89 34 56 78").value();
@@ -1593,7 +1594,7 @@ BOOST_AUTO_TEST_CASE(message_sign)
     const std::string message = "Trust no one";
 
     const std::string expected_signature =
-        "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=";
+        "IAwqGTXmrePX+b7bRxwc/Lw6yJcPQeUx1FDS5k3grfpeY3psNdkigJ3SOSFchZKjg5EjwXS7tofhYPpH4GF2aeU=";
 
     CKey privkey;
     std::string generated_signature;
@@ -1648,14 +1649,14 @@ BOOST_AUTO_TEST_CASE(message_verify)
     BOOST_CHECK_EQUAL(
         MessageVerify(
             "15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs",
-            "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=",
+            "IAwqGTXmrePX+b7bRxwc/Lw6yJcPQeUx1FDS5k3grfpeY3psNdkigJ3SOSFchZKjg5EjwXS7tofhYPpH4GF2aeU=",
             "I never signed this"),
         MessageVerificationResult::ERR_NOT_SIGNED);
 
     BOOST_CHECK_EQUAL(
         MessageVerify(
             "15CRxFdyRpGZLW9w8HnHvVduizdL5jKNbs",
-            "IPojfrX2dfPnH26UegfbGQQLrdK844DlHq5157/P6h57WyuS/Qsl+h/WSVGDF4MUi4rWSswW38oimDYfNNUBUOk=",
+            "IAwqGTXmrePX+b7bRxwc/Lw6yJcPQeUx1FDS5k3grfpeY3psNdkigJ3SOSFchZKjg5EjwXS7tofhYPpH4GF2aeU=",
             "Trust no one"),
         MessageVerificationResult::OK);
 
@@ -1664,7 +1665,7 @@ BOOST_AUTO_TEST_CASE(message_verify)
             "11canuhp9X2NocwCq7xNrQYTmUgZAnLK3",
             "IIcaIENoYW5jZWxsb3Igb24gYnJpbmsgb2Ygc2Vjb25kIGJhaWxvdXQgZm9yIGJhbmtzIAaHRtbCeDZINyavx14=",
             "Trust me"),
-        MessageVerificationResult::OK);
+        MessageVerificationResult::ERR_NOT_SIGNED);
 }
 
 BOOST_AUTO_TEST_CASE(message_hash)
