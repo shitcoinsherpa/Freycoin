@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -146,7 +147,7 @@ static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
 class CCoinControl;
 
 //! Default for -addresstype
-constexpr OutputType DEFAULT_ADDRESS_TYPE{OutputType::BECH32};
+constexpr OutputType DEFAULT_ADDRESS_TYPE{OutputType::BECH32M};
 
 static constexpr uint64_t KNOWN_WALLET_FLAGS =
         WALLET_FLAG_AVOID_REUSE

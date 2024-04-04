@@ -29,7 +29,7 @@ class WalletLabelsTest(BitcoinTestFramework):
     def invalid_label_name_test(self):
         node = self.nodes[0]
         address = node.getnewaddress()
-        pubkey = node.getaddressinfo(address)['pubkey']
+        spk = node.getaddressinfo(address)['scriptPubKey']
         rpc_calls = [
             [node.getnewaddress],
             [node.setlabel, address],
@@ -38,7 +38,7 @@ class WalletLabelsTest(BitcoinTestFramework):
             [node.listsinceblock, node.getblockhash(0), 1, True, False],
         ]
         response = node.importdescriptors([{
-            'desc': f'pkh({pubkey})',
+            'desc': f'tr({spk})',
             'label': '*',
             'timestamp': 'now',
         }])

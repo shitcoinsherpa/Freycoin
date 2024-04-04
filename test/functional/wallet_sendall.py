@@ -33,6 +33,7 @@ class SendallTest(BitcoinTestFramework):
     def set_test_params(self):
         getcontext().prec=10
         self.num_nodes = 1
+        self.extra_args = [["-addresstype=bech32"]]
         self.setup_clean_chain = True
 
     def assert_balance_swept_completely(self, tx, balance):

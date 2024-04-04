@@ -31,8 +31,8 @@ class WalletSendTest(BitcoinTestFramework):
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
         self.extra_args = [
-            ["-walletrbf=1"],
-            ["-walletrbf=1"]
+            ["-walletrbf=1", "-addresstype=bech32"],
+            ["-walletrbf=1", "-addresstype=bech32"],
         ]
         getcontext().prec = 8 # Satoshi precision for Decimal
 
@@ -395,7 +395,7 @@ class WalletSendTest(BitcoinTestFramework):
         res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, add_to_wallet=False, change_address=change_address, change_position=0)
         assert res["complete"]
         assert_equal(self.nodes[0].decodepsbt(res["psbt"])["tx"]["vout"][0]["scriptPubKey"]["address"], change_address)
-        res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, add_to_wallet=False, change_type="legacy", change_position=0)
+        res = self.test_send(from_wallet=w0, to_wallet=w1, amount=1, add_to_wallet=False, change_position=0)
         assert res["complete"]
         change_address = self.nodes[0].decodepsbt(res["psbt"])["tx"]["vout"][0]["scriptPubKey"]["address"]
         assert change_address[0] == "r"

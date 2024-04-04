@@ -23,11 +23,11 @@ class WalletGroupTest(BitcoinTestFramework):
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
         self.extra_args = [
-            [],
+            ["-addresstype=bech32"],
             [],
             ["-avoidpartialspends"],
-            ["-maxapsfee=0.00002719"],
-            ["-maxapsfee=0.00002720"],
+            ["-addresstype=bech32", "-maxapsfee=0.00002719"],
+            ["-addresstype=bech32", "-maxapsfee=0.00002720"],
         ]
 
         for args in self.extra_args:

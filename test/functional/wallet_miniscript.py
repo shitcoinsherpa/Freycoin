@@ -206,6 +206,7 @@ DESCS_PRIV = [
 class WalletMiniscriptTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
+        self.extra_args = [["-addresstype=bech32"]]
         self.rpc_timeout = 180
 
     def skip_test_if_missing_module(self):

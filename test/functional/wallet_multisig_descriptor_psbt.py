@@ -21,7 +21,7 @@ class WalletMultisigDescriptorPSBTTest(BitcoinTestFramework):
         self.num_nodes = 3
         self.setup_clean_chain = True
         self.wallet_names = []
-        self.extra_args = [["-keypool=100"]] * self.num_nodes
+        self.extra_args = [["-keypool=100", "-addresstype=bech32"]] * self.num_nodes
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -29,8 +29,8 @@ class WalletMultisigDescriptorPSBTTest(BitcoinTestFramework):
 
     @staticmethod
     def _get_xpub(wallet):
-        """Extract the wallet's xpubs using `listdescriptors` and pick the one from the `pkh` descriptor since it's least likely to be accidentally reused (legacy addresses)."""
-        descriptor = next(filter(lambda d: d["desc"].startswith("pkh"), wallet.listdescriptors()["descriptors"]))
+        """Extract the wallet's xpubs using `listdescriptors` and pick the one from the `wpkh` descriptor."""
+        descriptor = next(filter(lambda d: d["desc"].startswith("wpkh"), wallet.listdescriptors()["descriptors"]))
         return descriptor["desc"].split("]")[-1].split("/")[0]
 
     @staticmethod

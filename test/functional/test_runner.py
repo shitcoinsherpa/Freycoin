@@ -198,6 +198,7 @@ BASE_SCRIPTS = [
     'feature_proxy.py',
     'wallet_signrawtransactionwithwallet.py',
     'rpc_signrawtransactionwithkey.py',
+    'rpc_rawtransaction.py',
     'wallet_transactiontime_rescan.py',
     'p2p_addrv2_relay.py',
     'p2p_compactblocks_hb.py --v1transport',
