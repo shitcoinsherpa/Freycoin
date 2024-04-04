@@ -240,7 +240,7 @@ class ConfArgsTest(BitcoinTestFramework):
         ):
             self.start_node(0, extra_args=['-dnsseed=1', '-fixedseeds=1', f'-mocktime={start}'])
         with self.nodes[0].assert_debug_log(expected_msgs=[
-                "Adding fixed seeds as 60 seconds have passed and addrman is empty",
+                "Adding fixed seeds as addrman is still empty",
         ]):
             self.nodes[0].setmocktime(start + 65)
         self.stop_node(0)
@@ -282,7 +282,7 @@ class ConfArgsTest(BitcoinTestFramework):
         ):
             self.start_node(0, extra_args=['-dnsseed=0', '-fixedseeds=1', '-addnode=fakenodeaddr', f'-mocktime={start}'])
         with self.nodes[0].assert_debug_log(expected_msgs=[
-                "Adding fixed seeds as 60 seconds have passed and addrman is empty",
+                "Adding fixed seeds as addrman is still empty",
         ]):
             self.nodes[0].setmocktime(start + 65)
 
@@ -369,7 +369,7 @@ class ConfArgsTest(BitcoinTestFramework):
     def test_acceptstalefeeestimates_arg_support(self):
         self.log.info("Test -acceptstalefeeestimates option support")
         conf_file = self.nodes[0].datadir_path / "riecoin.conf"
-        for chain, chain_name in {("main", ""), ("test", "testnet3")}:
+        for chain, chain_name in {("main", ""), ("test", "testnet2404")}:
             util.write_config(conf_file, n=0, chain=chain_name, extra_config='acceptstalefeeestimates=1\n')
             self.nodes[0].assert_start_raises_init_error(expected_msg=f'Error: acceptstalefeeestimates is not supported on {chain} chain.')
         util.write_config(conf_file, n=0, chain="regtest")  # Reset to regtest
