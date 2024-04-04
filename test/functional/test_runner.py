@@ -277,7 +277,7 @@ BASE_SCRIPTS = [
     'p2p_leak.py',
     'wallet_encryption.py',
     'feature_dersig.py',
-    'feature_cltv.py',
+    # 'feature_cltv.py', # Needs to be rewritten without (pre)activation
     'rpc_uptime.py',
     'feature_discover.py',
     'wallet_resendwallettransactions.py',
@@ -301,7 +301,7 @@ BASE_SCRIPTS = [
     'feature_loadblock.py',
     'feature_assumeutxo.py',
     'wallet_assumeutxo.py',
-    'p2p_dos_header_tree.py',
+    # 'p2p_dos_header_tree.py', # Needs new data in test/functional/data/blockheader_testnet2404.hex and to be rewritten without (pre)activation
     'p2p_add_connections.py',
     'feature_bind_port_discover.py',
     'p2p_unrequested_blocks.py',
@@ -336,7 +336,6 @@ BASE_SCRIPTS = [
     'p2p_i2p_ports.py',
     'p2p_i2p_sessions.py',
     'feature_config_args.py',
-    'feature_presegwit_node_upgrade.py',
     'feature_settings.py',
     'rpc_getdescriptorinfo.py',
     'rpc_mempool_info.py',

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test CSV soft fork activation.
@@ -53,7 +54,6 @@ from test_framework.script import (
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
-    softfork_active,
 )
 from test_framework.wallet import (
     MiniWallet,
@@ -88,9 +88,6 @@ def all_rlt_txs(txs):
     return [tx['tx'] for tx in txs]
 
 
-CSV_ACTIVATION_HEIGHT = 432
-
-
 class BIP68_112_113Test(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
@@ -98,7 +95,6 @@ class BIP68_112_113Test(BitcoinTestFramework):
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
         self.extra_args = [[
-            f'-testactivationheight=csv@{CSV_ACTIVATION_HEIGHT}',
             '-par=1',  # Use only one script thread to get the exact reject reason for testing
         ]]
         self.supports_cli = False
@@ -198,15 +194,12 @@ class BIP68_112_113Test(BitcoinTestFramework):
         self.last_block_time = long_past_time
         self.tip = int(self.nodes[0].getbestblockhash(), 16)
 
-        # Activation height is hardcoded
-        # We advance to block height five below BIP112 activation for the following tests
-        test_blocks = self.generate_blocks(CSV_ACTIVATION_HEIGHT - 5 - COINBASE_BLOCK_COUNT)
+        test_blocks = self.generate_blocks(100)
         self.send_blocks(test_blocks)
-        assert not softfork_active(self.nodes[0], 'csv')
 
-        # Inputs at height = 431
+        # Inputs at height = 99
         #
-        # Put inputs for all tests in the chain at height 431 (tip now = 430) (time increases by 600s per block)
+        # Put inputs for all tests in the chain at height 99 (tip now = 98) (time increases by 600s per block)
         # Note we reuse inputs for v1 and v2 txs so must test these separately
         # 16 normal inputs
         bip68inputs = []
@@ -238,7 +231,7 @@ class BIP68_112_113Test(BitcoinTestFramework):
         bip113input = self.send_generic_input_tx(self.coinbase_blocks)
 
         self.nodes[0].setmocktime(self.last_block_time + 600)
-        inputblockhash = self.generate(self.nodes[0], 1)[0]  # 1 block generated for inputs to be in chain at height 431
+        inputblockhash = self.generate(self.nodes[0], 1)[0]  # 1 block generated for inputs to be in chain
         self.nodes[0].setmocktime(0)
         self.tip = int(inputblockhash, 16)
         self.tipheight += 1
@@ -248,10 +241,6 @@ class BIP68_112_113Test(BitcoinTestFramework):
         # 2 more version 4 blocks
         test_blocks = self.generate_blocks(2)
         self.send_blocks(test_blocks)
-
-        assert_equal(self.tipheight, CSV_ACTIVATION_HEIGHT - 2)
-        self.log.info(f"Height = {self.tipheight}, CSV not yet active (will activate for block {CSV_ACTIVATION_HEIGHT}, not {CSV_ACTIVATION_HEIGHT - 1})")
-        assert not softfork_active(self.nodes[0], 'csv')
 
         # Test both version 1 and version 2 transactions for all tests
         # BIP113 test transaction will be modified before each use to put in appropriate block time
@@ -286,56 +275,9 @@ class BIP68_112_113Test(BitcoinTestFramework):
         bip112tx_emptystack_v1 = self.create_bip112emptystack(bip112emptystackinput, 1)
         bip112tx_emptystack_v2 = self.create_bip112emptystack(bip112emptystackinput, 2)
 
-        self.log.info("TESTING")
-
-        self.log.info("Pre-Soft Fork Tests. All txs should pass.")
-        self.log.info("Test version 1 txs")
-
-        success_txs = []
-        # BIP113 tx, -1 CSV tx and empty stack CSV tx should succeed
-        bip113tx_v1.nLockTime = self.last_block_time - 600 * 5  # = MTP of prior block (not <) but < time put on current block
-        self.miniwallet.sign_tx(bip113tx_v1)
-        success_txs.append(bip113tx_v1)
-        success_txs.append(bip112tx_special_v1)
-        success_txs.append(bip112tx_emptystack_v1)
-        # add BIP 68 txs
-        success_txs.extend(all_rlt_txs(bip68txs_v1))
-        # add BIP 112 with seq=10 txs
-        success_txs.extend(all_rlt_txs(bip112txs_vary_nSequence_v1))
-        success_txs.extend(all_rlt_txs(bip112txs_vary_OP_CSV_v1))
-        # try BIP 112 with seq=9 txs
-        success_txs.extend(all_rlt_txs(bip112txs_vary_nSequence_9_v1))
-        success_txs.extend(all_rlt_txs(bip112txs_vary_OP_CSV_9_v1))
-        self.send_blocks([self.create_test_block(success_txs)])
-        self.nodes[0].invalidateblock(self.nodes[0].getbestblockhash())
-
-        self.log.info("Test version 2 txs")
-
-        success_txs = []
-        # BIP113 tx, -1 CSV tx and empty stack CSV tx should succeed
-        bip113tx_v2.nLockTime = self.last_block_time - 600 * 5  # = MTP of prior block (not <) but < time put on current block
-        self.miniwallet.sign_tx(bip113tx_v2)
-        success_txs.append(bip113tx_v2)
-        success_txs.append(bip112tx_special_v2)
-        success_txs.append(bip112tx_emptystack_v2)
-        # add BIP 68 txs
-        success_txs.extend(all_rlt_txs(bip68txs_v2))
-        # add BIP 112 with seq=10 txs
-        success_txs.extend(all_rlt_txs(bip112txs_vary_nSequence_v2))
-        success_txs.extend(all_rlt_txs(bip112txs_vary_OP_CSV_v2))
-        # try BIP 112 with seq=9 txs
-        success_txs.extend(all_rlt_txs(bip112txs_vary_nSequence_9_v2))
-        success_txs.extend(all_rlt_txs(bip112txs_vary_OP_CSV_9_v2))
-        self.send_blocks([self.create_test_block(success_txs)])
-        self.nodes[0].invalidateblock(self.nodes[0].getbestblockhash())
-
-        # 1 more version 4 block to get us to height 432 so the fork should now be active for the next block
-        assert not softfork_active(self.nodes[0], 'csv')
+        # 1 more version 4 block
         test_blocks = self.generate_blocks(1)
         self.send_blocks(test_blocks)
-        assert softfork_active(self.nodes[0], 'csv')
-
-        self.log.info("Post-Soft Fork Tests.")
 
         self.log.info("BIP 113 tests")
         # BIP 113 tests should now fail regardless of version number if nLockTime isn't satisfied by new rules
@@ -355,7 +297,7 @@ class BIP68_112_113Test(BitcoinTestFramework):
             self.send_blocks([self.create_test_block([bip113tx])])
             self.nodes[0].invalidateblock(self.nodes[0].getbestblockhash())
 
-        # Next block height = 437 after 4 blocks of random version
+        # 4 blocks of random version
         test_blocks = self.generate_blocks(4)
         self.send_blocks(test_blocks)
 
@@ -383,7 +325,7 @@ class BIP68_112_113Test(BitcoinTestFramework):
         for tx in bip68heighttxs:
             self.send_blocks([self.create_test_block([tx])], success=False, reject_reason='bad-txns-nonfinal')
 
-        # Advance one block to 438
+        # Advance one block
         test_blocks = self.generate_blocks(1)
         self.send_blocks(test_blocks)
 
@@ -394,7 +336,7 @@ class BIP68_112_113Test(BitcoinTestFramework):
         for tx in bip68heighttxs:
             self.send_blocks([self.create_test_block([tx])], success=False, reject_reason='bad-txns-nonfinal')
 
-        # Advance one block to 439
+        # Advance one block
         test_blocks = self.generate_blocks(1)
         self.send_blocks(test_blocks)
 

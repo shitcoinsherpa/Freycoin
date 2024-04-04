@@ -1,4 +1,5 @@
 // Copyright (c) 2016-2021 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,14 +20,10 @@ struct VBDeploymentInfo {
 
 extern const VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_BITS_DEPLOYMENTS];
 
-std::string DeploymentName(Consensus::BuriedDeployment dep);
-
 inline std::string DeploymentName(Consensus::DeploymentPos pos)
 {
     assert(Consensus::ValidDeployment(pos));
     return VersionBitsDeploymentInfo[pos].name;
 }
-
-std::optional<Consensus::BuriedDeployment> GetBuriedDeployment(const std::string_view deployment_name);
 
 #endif // BITCOIN_DEPLOYMENTINFO_H

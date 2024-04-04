@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test block processing."""
@@ -88,7 +89,6 @@ class FullBlockTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         self.extra_args = [[
             '-acceptnonstdtxn=1',  # This is a consensus block test, we don't care about tx policy
-            '-testactivationheight=bip34@2',
         ]]
 
     def run_test(self):
@@ -105,9 +105,10 @@ class FullBlockTest(BitcoinTestFramework):
         self.spendable_outputs = []
 
         # Create a new block
+        # Commented out invalid Coinbase (cannot test anymore with unconditional Bip34 enforcement in Riecoin.)
         b_dup_cb = self.next_block('dup_cb')
-        b_dup_cb.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
-        b_dup_cb.vtx[0].rehash()
+        # b_dup_cb.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
+        # b_dup_cb.vtx[0].rehash()
         duplicate_tx = b_dup_cb.vtx[0]
         b_dup_cb = self.update_block('dup_cb', [])
         self.send_blocks([b_dup_cb])
@@ -819,6 +820,9 @@ class FullBlockTest(BitcoinTestFramework):
         self.send_blocks([b60], True)
         self.save_spendable_output()
 
+        # Duplicate transaction prevented with Bip34 (bad-cb-height)
+        # Adjusted since running the Original commented out Test below is no longer possible with an unconditional Bip34 enforcement.
+        # Todo: properly rewrite the Test (or delete it after careful research)
         # Test BIP30 (reject duplicate)
         #
         # -> b39 (11) -> b42 (12) -> b43 (13) -> b53 (14) -> b55 (15) -> b57 (16) -> b60 ()
@@ -831,13 +835,16 @@ class FullBlockTest(BitcoinTestFramework):
         self.log.info("Reject a block with a transaction with a duplicate hash of a previous transaction (BIP30)")
         self.move_tip(60)
         b61 = self.next_block(61)
-        b61.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
+        # b61.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
+        b61.vtx[0].vin[0].scriptSig = b_dup_cb.vtx[0].vin[0].scriptSig
         b61.vtx[0].rehash()
         b61 = self.update_block(61, [])
         assert_equal(duplicate_tx.serialize(), b61.vtx[0].serialize())
         # BIP30 is always checked on regtest, regardless of the BIP34 activation height
-        self.send_blocks([b61], success=False, reject_reason='bad-txns-BIP30', reconnect=True)
+        # self.send_blocks([b61], success=False, reject_reason='bad-txns-BIP30', reconnect=True)
+        self.send_blocks([b61], success=False, reject_reason='bad-cb-height', reconnect=True)
 
+        """Test does not make sense anymore, create valid Blocks instead. Adjust or delete after carefully investigating the whole thing.
         # Test BIP30 (allow duplicate if spent)
         #
         # -> b57 (16) -> b60 ()
@@ -860,7 +867,11 @@ class FullBlockTest(BitcoinTestFramework):
         assert_equal(self.nodes[0].gettxout(txid=duplicate_tx.hash, n=0)['confirmations'], 119)
         self.send_blocks([b_spend_dup_cb, b_dup_2], success=True)
         # The duplicate has less confirmations
-        assert_equal(self.nodes[0].gettxout(txid=duplicate_tx.hash, n=0)['confirmations'], 1)
+        assert_equal(self.nodes[0].gettxout(txid=duplicate_tx.hash, n=0)['confirmations'], 1)"""
+        self.move_tip(57)
+        b_spend_dup_cb = self.next_block('spend_dup_cb')
+        b_dup_2 = self.next_block('dup_2')
+        self.send_blocks([b_spend_dup_cb, b_dup_2], success=True)
 
         # Test tx.isFinal is properly rejected (not an exhaustive tx.isFinal test, that should be in data-driven transaction tests)
         #

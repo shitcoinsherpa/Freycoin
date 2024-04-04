@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test BIP66 (DER SIG).
@@ -50,7 +51,6 @@ class BIP66Test(BitcoinTestFramework):
         # whitelist peers to speed up tx relay / mempool sync
         self.noban_tx_relay = True
         self.extra_args = [[
-            f'-testactivationheight=dersig@{DERSIG_HEIGHT}',
             '-par=1',  # Use only one script thread to get the exact log msg for testing
         ]]
         self.setup_clean_chain = True
@@ -60,28 +60,14 @@ class BIP66Test(BitcoinTestFramework):
         utxo_to_spend = self.miniwallet.get_utxo(txid=input_txid, mark_as_spent=False)
         return self.miniwallet.create_self_transfer(utxo_to_spend=utxo_to_spend)['tx']
 
-    def test_dersig_info(self, *, is_active):
-        assert_equal(self.nodes[0].getdeploymentinfo()['deployments']['bip66'],
-            {
-                "active": is_active,
-                "height": DERSIG_HEIGHT,
-                "type": "buried",
-            },
-        )
-
     def run_test(self):
         peer = self.nodes[0].add_p2p_connection(P2PInterface())
         self.miniwallet = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_P2PK)
 
-        self.test_dersig_info(is_active=False)
-
         self.log.info("Mining %d blocks", DERSIG_HEIGHT - 2)
         self.coinbase_txids = [self.nodes[0].getblock(b)['tx'][0] for b in self.generate(self.miniwallet, DERSIG_HEIGHT - 2)]
 
-        self.log.info("Test that a transaction with non-DER signature can still appear in a block")
-
         spendtx = self.create_tx(self.coinbase_txids[0])
-        unDERify(spendtx)
         spendtx.rehash()
 
         tip = self.nodes[0].getbestblockhash()
@@ -89,11 +75,8 @@ class BIP66Test(BitcoinTestFramework):
         block = create_block(int(tip, 16), create_coinbase(DERSIG_HEIGHT - 1), block_time, txlist=[spendtx])
         block.solve()
 
-        assert_equal(self.nodes[0].getblockcount(), DERSIG_HEIGHT - 2)
-        self.test_dersig_info(is_active=False)  # Not active as of current tip and next block does not need to obey rules
         peer.send_and_ping(msg_block(block))
         assert_equal(self.nodes[0].getblockcount(), DERSIG_HEIGHT - 1)
-        self.test_dersig_info(is_active=True)  # Not active as of current tip, but next block must obey rules
         assert_equal(self.nodes[0].getbestblockhash(), block.hash)
 
         self.log.info("Test that blocks must now be at least version 3")
@@ -141,9 +124,7 @@ class BIP66Test(BitcoinTestFramework):
         block.hashMerkleRoot = block.calc_merkle_root()
         block.solve()
 
-        self.test_dersig_info(is_active=True)  # Not active as of current tip, but next block must obey rules
         peer.send_and_ping(msg_block(block))
-        self.test_dersig_info(is_active=True)  # Active as of current tip
         assert_equal(int(self.nodes[0].getbestblockhash(), 16), block.sha256)
 
 

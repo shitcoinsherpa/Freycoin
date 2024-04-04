@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test RPCs related to blockchainstate.
@@ -163,18 +164,6 @@ class BlockchainTest(BitcoinTestFramework):
         assert_equal(sorted(res.keys()), keys)
 
         self.stop_node(0)
-        self.nodes[0].assert_start_raises_init_error(
-            extra_args=['-testactivationheight=name@2'],
-            expected_msg='Error: Invalid name (name@2) for -testactivationheight=name@height.',
-        )
-        self.nodes[0].assert_start_raises_init_error(
-            extra_args=['-testactivationheight=bip34@-2'],
-            expected_msg='Error: Invalid height value (bip34@-2) for -testactivationheight=name@height.',
-        )
-        self.nodes[0].assert_start_raises_init_error(
-            extra_args=['-testactivationheight='],
-            expected_msg='Error: Invalid format () for -testactivationheight=name@height.',
-        )
         self.start_node(0, extra_args=[
             '-stopatheight=207',
             '-prune=550',
@@ -198,11 +187,6 @@ class BlockchainTest(BitcoinTestFramework):
           "hash": blockhash,
           "height": height,
           "deployments": {
-            'bip34': {'type': 'buried', 'active': True, 'height': 2},
-            'bip66': {'type': 'buried', 'active': True, 'height': 3},
-            'bip65': {'type': 'buried', 'active': True, 'height': 4},
-            'csv': {'type': 'buried', 'active': True, 'height': 5},
-            'segwit': {'type': 'buried', 'active': True, 'height': 6},
             'testdummy': {
                 'type': 'bip9',
                 'bip9': {
@@ -223,19 +207,6 @@ class BlockchainTest(BitcoinTestFramework):
                     'signalling': '#'*(height-143),
                 },
                 'active': False
-            },
-            'taproot': {
-                'type': 'bip9',
-                'bip9': {
-                    'start_time': -1,
-                    'timeout': 9223372036854775807,
-                    'min_activation_height': 0,
-                    'status': 'active',
-                    'status_next': 'active',
-                    'since': 0,
-                },
-                'height': 0,
-                'active': True
             }
           }
         })
@@ -246,13 +217,7 @@ class BlockchainTest(BitcoinTestFramework):
 
         self.log.info("Test getdeploymentinfo")
         self.stop_node(0)
-        self.start_node(0, extra_args=[
-            '-testactivationheight=bip34@2',
-            '-testactivationheight=dersig@3',
-            '-testactivationheight=cltv@4',
-            '-testactivationheight=csv@5',
-            '-testactivationheight=segwit@6',
-        ])
+        self.start_node(0)
 
         gbci207 = self.nodes[0].getblockchaininfo()
         self.check_signalling_deploymentinfo_result(self.nodes[0].getdeploymentinfo(), gbci207["blocks"], gbci207["bestblockhash"], "started")
