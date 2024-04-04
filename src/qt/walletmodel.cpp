@@ -582,9 +582,9 @@ bool WalletModel::isMultiwallet() const
     return m_node.walletLoader().getWallets().size() > 1;
 }
 
-void WalletModel::refresh(bool pk_hash_only)
+void WalletModel::refresh()
 {
-    addressTableModel = new AddressTableModel(this, pk_hash_only);
+    addressTableModel = new AddressTableModel(this);
 }
 
 uint256 WalletModel::getLastBlockProcessed() const

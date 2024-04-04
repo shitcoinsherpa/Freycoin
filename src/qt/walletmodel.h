@@ -145,7 +145,7 @@ public:
 
     bool isMultiwallet() const;
 
-    void refresh(bool pk_hash_only = false);
+    void refresh();
 
     uint256 getLastBlockProcessed() const;
 

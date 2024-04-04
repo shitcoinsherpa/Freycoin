@@ -136,7 +136,7 @@ FUZZ_TARGET(scriptpubkeyman, .init = initialize_spkm)
                                            *std::get_if<PKHash>(&dest) :
                                            PKHash{ConsumeUInt160(fuzzed_data_provider)}};
                         std::string str_sig;
-                        (void)spk_manager->SignMessage(msg, pk_hash, str_sig);
+                        (void)spk_manager->SignMessage(MessageSignatureFormat::SIMPLE, msg, pk_hash, str_sig);
                     }
                 }
             },
