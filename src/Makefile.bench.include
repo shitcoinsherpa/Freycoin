@@ -76,6 +76,7 @@ bench_bench_riecoin_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1) \
   $(LIBUNIVALUE) \
+  $(GMP_LIBS) \
   $(EVENT_PTHREADS_LIBS) \
   $(EVENT_LIBS) \
   $(MINIUPNPC_LIBS) \

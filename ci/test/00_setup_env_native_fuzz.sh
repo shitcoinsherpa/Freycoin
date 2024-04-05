@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # Copyright (c) 2019-present The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,7 +9,7 @@ export LC_ALL=C.UTF-8
 
 export CI_IMAGE_NAME_TAG="docker.io/ubuntu:24.04"
 export CONTAINER_NAME=ci_native_fuzz
-export PACKAGES="clang-18 llvm-18 libclang-rt-18-dev libevent-dev libboost-dev libsqlite3-dev"
+export PACKAGES="clang-18 llvm-18 libclang-rt-18-dev libevent-dev libboost-dev libgmp-dev libsqlite3-dev"
 export NO_DEPENDS=1
 export RUN_UNIT_TESTS=false
 export RUN_FUNCTIONAL_TESTS=false
