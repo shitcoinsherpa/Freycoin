@@ -42,13 +42,16 @@ static void TestBlockSubsidyHalvings(int nSubsidyHalvingInterval)
 {
     Consensus::Params consensusParams;
     consensusParams.nSubsidyHalvingInterval = nSubsidyHalvingInterval;
+    consensusParams.fork1Height = 2147483647; // Disable SuperBlocks
     TestBlockSubsidyHalvings(consensusParams);
 }
 
 BOOST_AUTO_TEST_CASE(block_subsidy_test)
 {
-    const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
-    TestBlockSubsidyHalvings(chainParams->GetConsensus()); // As in main
+    Consensus::Params consensusParams;
+    consensusParams.nSubsidyHalvingInterval = 840000;
+    consensusParams.fork1Height = 2147483647; // Disable SuperBlocks
+    TestBlockSubsidyHalvings(consensusParams); // As in main
     TestBlockSubsidyHalvings(150); // As in regtest
     TestBlockSubsidyHalvings(1000); // Just another interval
 }
@@ -57,13 +60,46 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
     const auto chainParams = CreateChainParams(*m_node.args, ChainType::MAIN);
     CAmount nSum = 0;
-    for (int nHeight = 0; nHeight < 14000000; nHeight += 1000) {
-        CAmount nSubsidy = GetBlockSubsidy(nHeight, chainParams->GetConsensus());
-        BOOST_CHECK(nSubsidy <= 50 * COIN);
-        nSum += nSubsidy * 1000;
+    // 39 cycles of 4032 Blocks before SuperBlocks
+    for (int nHeight(0) ; nHeight < 157248 ; nHeight += 4032) {
+        CAmount nSubsidy(GetBlockSubsidy(nHeight, chainParams->GetConsensus()));
+        nSum += nSubsidy*4032;
         BOOST_CHECK(MoneyRange(nSum));
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{2099999997690000});
+    BOOST_CHECK_EQUAL(nSum, CAmount{7862400*COIN}); // 39*4032*50 at Block 157247
+    // 169 cycles of 4032 Blocks with SuperBlocks until first Halving
+    for (int nHeight(157248) ; nHeight < 838656 ; nHeight += 4032) {
+        CAmount nSubsidy(GetBlockSubsidy(nHeight, chainParams->GetConsensus()));
+        CAmount nSubsidySuperBlock(GetBlockSubsidy(nHeight + 3600, chainParams->GetConsensus()));
+        nSum += nSubsidy*4031 + nSubsidySuperBlock;
+        BOOST_CHECK(MoneyRange(nSum));
+    }
+    BOOST_CHECK_EQUAL(nSum, CAmount{42160950*COIN}); // 169*(4031*50 + 1400) + 7862400 at Block 838655
+    // Add Subsidies of remaining Blocks before Halving
+    for (int nHeight(838656) ; nHeight < 840000 ; nHeight++) {
+        CAmount nSubsidy(GetBlockSubsidy(nHeight, chainParams->GetConsensus()));
+        nSum += nSubsidy;
+        BOOST_CHECK(MoneyRange(nSum));
+    }
+    BOOST_CHECK_EQUAL(nSum, CAmount{42228150*COIN}); // 1344*50 + 42160950 at Block 839999
+    // 159 cycles of 4032 Blocks with SuperBlocks until Second Fork at 1482768
+    for (int nHeight(840000) ; nHeight < 1481088 ; nHeight += 4032) {
+        CAmount nSubsidy(GetBlockSubsidy(nHeight, chainParams->GetConsensus()));
+        CAmount nSubsidySuperBlock(GetBlockSubsidy(nHeight + 2256, chainParams->GetConsensus()));
+        nSum += nSubsidy*4031 + nSubsidySuperBlock;
+        BOOST_CHECK(MoneyRange(nSum));
+    }
+    BOOST_CHECK_EQUAL(nSum, CAmount{58362675*COIN}); // 159*(4031*25 + 700) + 42228150 at Block 1481087
+    nSum += 198911*GetBlockSubsidy(1679999, chainParams->GetConsensus());
+    BOOST_CHECK_EQUAL(nSum, CAmount{63335450*COIN}); // 198911*25 + 58362675 at Block 1679999
+    // Test several Halvings
+    for (int nHeight(1680000) ; nHeight < 6*840000 ; nHeight += 1000) {
+        CAmount nSubsidy = GetBlockSubsidy(nHeight, chainParams->GetConsensus());
+        BOOST_CHECK(nSubsidy <= 50*COIN);
+        nSum += nSubsidy*1000;
+        BOOST_CHECK(MoneyRange(nSum));
+    }
+    BOOST_CHECK_EQUAL(nSum, CAmount{8302295000000000}); // 840000*(12.5 + 6.25 + 3.125 + 1.5625) + 63335450 at Block 5039999 (around 2038)
 }
 
 //! Test retrieval of valid assumeutxo values.

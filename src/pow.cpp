@@ -10,6 +10,14 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+bool isInSuperblockInterval(int nHeight, const Consensus::Params& params) {
+    return ((nHeight/params.DifficultyAdjustmentInterval()) % 14) == 12; // once per week
+}
+
+bool isSuperblock(int nHeight, const Consensus::Params& params) {
+    return ((nHeight % params.DifficultyAdjustmentInterval()) == 144) && isInSuperblockInterval(nHeight, params);
+}
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);

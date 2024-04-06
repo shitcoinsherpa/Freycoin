@@ -1755,8 +1755,19 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
         return 0;
 
     CAmount nSubsidy = 50 * COIN;
-    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
+    // Subsidy is cut in half every 840,000 blocks which will occur approximately every 4 years.
     nSubsidy >>= halvings;
+
+    // Validate old Blocks under obsolete Subsidy rules
+    // Since Blocks with Coinbase Values less than the normal Subsidy are valid and unclaimed rewards cannot be retrieved, the following do not longer need special code:
+    // - The Fair Launch (no reward for the first 576 Blocks and linear increasing for next 576)
+    // - The Blocks surrounding a SuperBlock (136/150 the normal Subsidy to compensate)
+    // We still need to handle SuperBlocks.
+    if (nHeight > consensusParams.fork1Height && nHeight < consensusParams.fork2Height) {
+        if (isSuperblock(nHeight, consensusParams))
+            nSubsidy *= 28; // It was actually 2084/75x = ~27.8x, but we can consider an small upper bound and save a division...
+    }
+
     return nSubsidy;
 }
 

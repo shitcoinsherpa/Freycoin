@@ -73,7 +73,9 @@ class CMainParams : public CChainParams {
 public:
     CMainParams() {
         m_chain_type = ChainType::MAIN;
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 840000;
+        consensus.fork1Height = 157248;
+        consensus.fork2Height = 1482768;
         consensus.MinBIP9WarningHeight = 709632 + 2016; // taproot activation height + miner confirmation window
         consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 12*3600; // 12 h
@@ -166,7 +168,9 @@ class CTestNetParams : public CChainParams {
 public:
     CTestNetParams() {
         m_chain_type = ChainType::TESTNET;
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 840000;
+        consensus.fork1Height = 2147483647; // No SuperBlocks
+        consensus.fork2Height = 0; // Start Chain already with Fork 2 Rules
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 12*3600; // 12 h
@@ -249,6 +253,8 @@ public:
     {
         m_chain_type = ChainType::REGTEST;
         consensus.nSubsidyHalvingInterval = 150;
+        consensus.fork1Height = 2147483647; // No SuperBlocks
+        consensus.fork2Height = 0; // Start Chain already with Fork 2 Rules
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 12*3600; // 12 h
