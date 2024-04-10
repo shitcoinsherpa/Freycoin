@@ -13,6 +13,7 @@ Test the following RPCs:
     - getblockheader
     - getdifficulty
     - getnetworkhashps
+    - getresult
     - waitforblockheight
     - getblock
     - getblockhash
@@ -88,6 +89,7 @@ class BlockchainTest(BitcoinTestFramework):
         self._test_getblockheader()
         self._test_getdifficulty()
         self._test_getnetworkminingpower()
+        self._test_getresult()
         self._test_stopatheight()
         self._test_waitforblockheight()
         self._test_getblock()
@@ -443,6 +445,12 @@ class BlockchainTest(BitcoinTestFramework):
         # Ensure long lookups get truncated to chain length
         mining_power = self.nodes[0].getnetworkminingpower(self.nodes[0].getblockcount() + 1000)
         assert mining_power == self.nodes[0].getnetworkminingpower(self.nodes[0].getblockcount())
+
+    def _test_getresult(self):
+        result = self.nodes[0].getresult(self.nodes[0].getblockhash(100))
+        # Just test that the result is in the allowed range for Difficulty 288 (2^288 to ~(2^288 + 2^24)) and is prime
+        assert int(result) > 2**288 and int(result) < 2**288.00390625 + 2**24
+        assert is_fermat_prime(int(result))
 
     def _test_stopatheight(self):
         self.log.info("Test stopping at height")
