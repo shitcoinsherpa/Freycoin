@@ -102,10 +102,10 @@ class AssumeutxoTest(BitcoinTestFramework):
 
         self.log.info("  - snapshot file with alternated UTXO data")
         cases = [
-            [b"\xff" * 32, 0, "7d52155c9a9fdc4525b637ef6170568e5dad6fabd0b1fdbb9432010b8453095b"],  # wrong outpoint hash
-            [(1).to_bytes(4, "little"), 32, "9f4d897031ab8547665b4153317ae2fdbf0130c7840b66427ebc48b881cb80ad"],  # wrong outpoint index
-            [b"\x81", 36, "3da966ba9826fb6d2604260e01607b55ba44e1a5de298606b08704bc62570ea8"],  # wrong coin code VARINT((coinbase ? 1 : 0) | (height << 1))
-            [b"\x80", 36, "091e893b3ccb4334378709578025356c8bcb0a623f37c7c4e493133c988648e5"],  # another wrong coin code
+            [b"\xff" * 32, 0, "bbdef9f6420e9f4a2766535559e7ffffa44d844811786ac41c1c13f65420bbfc"],  # wrong outpoint hash
+            [(1).to_bytes(4, "little"), 32, "7c935bdd776daf7425bfb9df387101ac2328a530fef469e653bf032803cb5c1d"],  # wrong outpoint index
+            [b"\x81", 36, "bb26b06d0b856c27ac6e6290f3e83d4e83dbe06df8151c04258642cb0462088a"],  # wrong coin code VARINT((coinbase ? 1 : 0) | (height << 1))
+            [b"\x80", 36, "a82c7cf3d3febd38a56bdec9f7653bc2487b70499ed14d2a3ec24067bb14b18e"],  # another wrong coin code
         ]
 
         for content, offset, wrong_hash in cases:
@@ -113,11 +113,11 @@ class AssumeutxoTest(BitcoinTestFramework):
                 f.write(valid_snapshot_contents[:(32 + 8 + offset)])
                 f.write(content)
                 f.write(valid_snapshot_contents[(32 + 8 + offset + len(content)):])
-            expected_error(log_msg=f"[snapshot] bad snapshot content hash: expected a4bf3407ccb2cc0145c49ebba8fa91199f8a3903daf0883875941497d2493c27, got {wrong_hash}")
+            expected_error(log_msg=f"[snapshot] bad snapshot content hash: expected 030663cfbd01e69df8bd572086b45c7e242212a6c36b3386bd39f3d40a8dfb3b, got {wrong_hash}")
 
     def test_headers_not_synced(self, valid_snapshot_path):
         for node in self.nodes[1:]:
-            assert_raises_rpc_error(-32603, "The base block header (2009a01115534453d45027644401c24ba00dc87f6e043232700911418b142b4c) must appear in the headers chain. Make sure all headers are syncing, and call this RPC again.",
+            assert_raises_rpc_error(-32603, "The base block header (3e7998064a7c6cc4d980f5d1405d63566872ea2b23d1b1c9f068a4d3a98854bc) must appear in the headers chain. Make sure all headers are syncing, and call this RPC again.",
                                     node.loadtxoutset,
                                     valid_snapshot_path)
 
@@ -224,7 +224,7 @@ class AssumeutxoTest(BitcoinTestFramework):
 
         assert_equal(
             dump_output['txoutset_hash'],
-            "a4bf3407ccb2cc0145c49ebba8fa91199f8a3903daf0883875941497d2493c27")
+            "030663cfbd01e69df8bd572086b45c7e242212a6c36b3386bd39f3d40a8dfb3b")
         assert_equal(dump_output["nchaintx"], blocks[SNAPSHOT_BASE_HEIGHT].chain_tx)
         assert_equal(n0.getblockchaininfo()["blocks"], SNAPSHOT_BASE_HEIGHT)
 

@@ -1009,14 +1009,14 @@ class FullBlockTest(BitcoinTestFramework):
         #
         self.log.info("Reject a block trying to claim too much subsidy in the coinbase transaction")
         self.move_tip(65)
-        self.next_block(68, additional_coinbase_value=10)
+        self.next_block(68, additional_coinbase_value=5)
         tx = self.create_and_sign_transaction(out[20], out[20].vout[0].nValue - 9)
         b68 = self.update_block(68, [tx])
         self.send_blocks([b68], success=False, reject_reason='bad-cb-amount', reconnect=True)
 
         self.log.info("Accept a block claiming the correct subsidy in the coinbase transaction")
         self.move_tip(65)
-        b69 = self.next_block(69, additional_coinbase_value=10)
+        b69 = self.next_block(69, additional_coinbase_value=5)
         tx = self.create_and_sign_transaction(out[20], out[20].vout[0].nValue - 10)
         self.update_block(69, [tx])
         self.send_blocks([b69], True)
@@ -1371,9 +1371,9 @@ class FullBlockTest(BitcoinTestFramework):
         if spend is None:
             block = create_block(base_block_hash, coinbase, block_time, version=version)
         else:
-            coinbase.vout[0].nValue += spend.vout[0].nValue - 1  # all but one satoshi to fees
+            coinbase.vout[0].nValue += spend.vout[0].nValue//2 - 1  # burn half as per Riecoin Burn Policy, rest but one riemann to fees
             coinbase.rehash()
-            tx = self.create_tx(spend, 0, 1, script)  # spend 1 satoshi
+            tx = self.create_tx(spend, 0, 1, script)  # spend 1 riemann
             self.sign_tx(tx, spend)
             tx.rehash()
             block = create_block(base_block_hash, coinbase, block_time, version=version, txlist=[tx])

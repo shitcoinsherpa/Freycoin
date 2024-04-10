@@ -138,7 +138,7 @@ def create_coinbase(height, pubkey=None, *, script_pubkey=None, extra_output_scr
     if nValue == 50:
         halvings = int(height / 150)  # regtest
         coinbaseoutput.nValue >>= halvings
-        coinbaseoutput.nValue += fees
+        coinbaseoutput.nValue += fees//2
     if pubkey is not None:
         coinbaseoutput.scriptPubKey = key_to_p2pk_script(pubkey)
     elif script_pubkey is not None:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-2022 The Bitcoin Core developers
+# Copyright (c) 2013-present The Riecoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test coinstatsindex across nodes.
@@ -133,17 +134,17 @@ class CoinStatsIndexTest(BitcoinTestFramework):
 
             # Test an older block height that included a normal tx
             res5 = index_node.gettxoutsetinfo(hash_option, 102)
-            assert_equal(res5['total_unspendable_amount'], 50)
+            assert_equal(res5['total_unspendable_amount'], Decimal('50.00015600'))
             assert_equal(res5['block_info'], {
-                'unspendable': 0,
+                'unspendable': Decimal('0.00015600'),
                 'prevout_spent': 50,
                 'new_outputs_ex_coinbase': Decimal('49.99968800'),
-                'coinbase': Decimal('50.00031200'),
+                'coinbase': Decimal('50.00015600'),
                 'unspendables': {
                     'genesis_block': 0,
                     'bip30': 0,
                     'scripts': 0,
-                    'unclaimed_rewards': 0,
+                    'unclaimed_rewards': Decimal('0.00015600'),
                 }
             })
             self.block_sanity_check(res5['block_info'])
@@ -155,7 +156,7 @@ class CoinStatsIndexTest(BitcoinTestFramework):
             amount=21 * COIN,
         )
 
-        # Find the right position of the 21 BTC output
+        # Find the right position of the 21 RIC output
         tx1_out_21 = self.wallet.get_utxo(txid=tx1["txid"], vout=tx1["sent_vout"])
 
         # Generate and send another tx with an OP_RETURN output (which is unspendable)
@@ -171,17 +172,17 @@ class CoinStatsIndexTest(BitcoinTestFramework):
         for hash_option in index_hash_options:
             # Check all amounts were registered correctly
             res6 = index_node.gettxoutsetinfo(hash_option, 108)
-            assert_equal(res6['total_unspendable_amount'], Decimal('70.99000000'))
+            assert_equal(res6['total_unspendable_amount'], Decimal('70.99516100'))
             assert_equal(res6['block_info'], {
-                'unspendable': Decimal('20.99000000'),
+                'unspendable': Decimal('20.99500500'),
                 'prevout_spent': 71,
                 'new_outputs_ex_coinbase': Decimal('49.99999000'),
-                'coinbase': Decimal('50.01001000'),
+                'coinbase': Decimal('50.00500500'),
                 'unspendables': {
                     'genesis_block': 0,
                     'bip30': 0,
                     'scripts': Decimal('20.99000000'),
-                    'unclaimed_rewards': 0,
+                    'unclaimed_rewards': Decimal('0.00500500'),
                 }
             })
             self.block_sanity_check(res6['block_info'])
@@ -202,7 +203,7 @@ class CoinStatsIndexTest(BitcoinTestFramework):
 
         for hash_option in index_hash_options:
             res7 = index_node.gettxoutsetinfo(hash_option, 109)
-            assert_equal(res7['total_unspendable_amount'], Decimal('80.99000000'))
+            assert_equal(res7['total_unspendable_amount'], Decimal('80.99516100'))
             assert_equal(res7['block_info'], {
                 'unspendable': 10,
                 'prevout_spent': 0,
