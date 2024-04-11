@@ -846,7 +846,8 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     }
 
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
-    if (!Consensus::CheckTxInputs(tx, state, m_view, m_active_chainstate.m_chain.Height() + 1, ws.m_base_fees)) {
+    const bool enforceMinFee((args.m_chainparams.GetChainType() == ChainType::MAIN && m_active_chainstate.m_chain.Height() + 1 > 2135642) || args.m_chainparams.GetChainType() == ChainType::TESTNET);
+    if (!Consensus::CheckTxInputs(tx, state, m_view, m_active_chainstate.m_chain.Height() + 1, ws.m_base_fees, enforceMinFee)) {
         return false; // state filled in by CheckTxInputs
     }
 
@@ -2354,7 +2355,8 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         {
             CAmount txfee = 0;
             TxValidationState tx_state;
-            if (!Consensus::CheckTxInputs(tx, tx_state, view, pindex->nHeight, txfee)) {
+            const bool enforceMinFee((m_chainman.GetParams().GetChainType() == ChainType::MAIN && pindex->nHeight > 2135642) || m_chainman.GetParams().GetChainType() == ChainType::TESTNET);
+            if (!Consensus::CheckTxInputs(tx, tx_state, view, pindex->nHeight, txfee, enforceMinFee)) {
                 // Any transaction validation failure in ConnectBlock is a block consensus failure
                 state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                             tx_state.GetRejectReason(), tx_state.GetDebugMessage());
@@ -3138,7 +3140,10 @@ bool Chainstate::ActivateBestChainStep(BlockValidationState& state, CBlockIndex*
         // any disconnected transactions back to the mempool.
         MaybeUpdateMempoolForReorg(disconnectpool, true);
     }
-    if (m_mempool) m_mempool->check(this->CoinsTip(), this->m_chain.Height() + 1);
+    if (m_mempool) {
+        const bool enforceMinFee(m_chainman.GetParams().GetChainType() != ChainType::REGTEST); // A few Functional Tests need to be adjusted
+        m_mempool->check(this->CoinsTip(), this->m_chain.Height() + 1, enforceMinFee);
+    }
 
     CheckForkWarningConditions();
 
@@ -4329,7 +4334,8 @@ MempoolAcceptResult ChainstateManager::ProcessTransaction(const CTransactionRef&
         return MempoolAcceptResult::Failure(state);
     }
     auto result = AcceptToMemoryPool(active_chainstate, tx, GetTime(), /*bypass_limits=*/ false, test_accept);
-    active_chainstate.GetMempool()->check(active_chainstate.CoinsTip(), active_chainstate.m_chain.Height() + 1);
+    const bool enforceMinFee(GetParams().GetChainType() != ChainType::REGTEST); // A few Functional Tests need to be adjusted
+    active_chainstate.GetMempool()->check(active_chainstate.CoinsTip(), active_chainstate.m_chain.Height() + 1, enforceMinFee);
     return result;
 }
 

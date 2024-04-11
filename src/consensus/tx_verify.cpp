@@ -1,4 +1,5 @@
 // Copyright (c) 2017-2021 The Bitcoin Core developers
+// Copyright (c) 2013-present The Riecoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,6 +10,7 @@
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
+#include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <util/check.h>
@@ -165,7 +167,7 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
     return nSigOps;
 }
 
-bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmount& txfee)
+bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmount& txfee, bool enforceMinFee)
 {
     // are the actual inputs available?
     if (!inputs.HaveInputs(tx)) {
@@ -202,6 +204,14 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     const CAmount txfee_aux = nValueIn - value_out;
     if (!MoneyRange(txfee_aux)) {
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");
+    }
+
+    if (enforceMinFee) {
+        const CAmount min_fee(GetVirtualTransactionSize(tx)*MIN_FEERATE/1000);
+        if (txfee_aux < min_fee) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-belowmin",
+                strprintf("fee (%s) below allowed minimum (%s), %d vB", FormatMoney(txfee_aux), FormatMoney(min_fee), GetVirtualTransactionSize(tx)));
+        }
     }
 
     txfee = txfee_aux;

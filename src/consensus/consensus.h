@@ -7,6 +7,8 @@
 #ifndef BITCOIN_CONSENSUS_CONSENSUS_H
 #define BITCOIN_CONSENSUS_CONSENSUS_H
 
+#include <consensus/amount.h>
+
 #include <cstdlib>
 #include <stdint.h>
 
@@ -27,5 +29,8 @@ static const size_t MIN_SERIALIZABLE_TRANSACTION_WEIGHT = WITNESS_SCALE_FACTOR *
 /** Flags for nSequence and nLockTime locks */
 /** Interpret sequence numbers as relative lock-time constraints. */
 static constexpr unsigned int LOCKTIME_VERIFY_SEQUENCE = (1 << 0);
+
+/** Absolute Minimum Fee Rate (Blocks cannot have Transactions with Fees lower than this). */
+static constexpr CAmount MIN_FEERATE = 1000; // rie per kvB
 
 #endif // BITCOIN_CONSENSUS_CONSENSUS_H
