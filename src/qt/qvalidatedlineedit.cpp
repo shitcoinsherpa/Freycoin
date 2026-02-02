@@ -1,11 +1,11 @@
 // Copyright (c) The Bitcoin Core developers
-// Copyright (c) The Riecoin developers
+// Copyright (c) The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <qt/qvalidatedlineedit.h>
 
-#include <qt/riecoinaddressvalidator.h>
+#include <qt/freycoinaddressvalidator.h>
 #include <qt/guiconstants.h>
 
 QValidatedLineEdit::QValidatedLineEdit(QWidget* parent) : QLineEdit(parent)

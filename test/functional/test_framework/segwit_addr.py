@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017 Pieter Wuille
-# Copyright (c) 2017-present The Riecoin developers
+# Copyright (c) 2017-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Reference implementation for Bech32m and segwit addresses."""
@@ -130,9 +130,9 @@ class TestFrameworkScript(unittest.TestCase):
             self.assertEqual(encode_segwit_address(hrp, witver, witprog), addr)
 
         # P2WPKH
-        test_python_bech32('rric1qthmht0k2qnh3wy7336z05lu2km7emzfp7js2zh')
+        test_python_bech32('rfrey1qthmht0k2qnh3wy7336z05lu2km7emzfpq8m4fd')
         # P2WSH
-        test_python_bech32('rric1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxmufz')
-        test_python_bech32('rric1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqpe6a2y')
+        test_python_bech32('rfrey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxk3gnu')
+        test_python_bech32('rfrey1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsq8fsfs6')
         # P2TR
-        test_python_bech32('rric1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqumlj4g')
+        test_python_bech32('rfrey1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq6t4x0k')

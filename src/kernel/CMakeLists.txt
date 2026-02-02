@@ -1,17 +1,17 @@
 # Copyright (c) 2024-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
 include(GNUInstallDirs)
 
-# TODO: libriecoinkernel is a work in progress consensus engine
+# TODO: libfreycoinkernel is a work in progress consensus engine
 #       library, as more and more modules are decoupled from the
 #       consensus engine, this list will shrink to only those
 #       which are absolutely necessary.
 #       The Library has not been tested beyond being compilable.
-add_library(riecoinkernel
-  riecoinkernel.cpp
+add_library(freycoinkernel
+  freycoinkernel.cpp
   chain.cpp
   checks.cpp
   chainparams.cpp
@@ -84,12 +84,12 @@ add_library(riecoinkernel
   ../validation.cpp
   ../validationinterface.cpp
   ../versionbits.cpp
-  $<TARGET_OBJECTS:riecoin_clientversion>
+  $<TARGET_OBJECTS:freycoin_clientversion>
   $<TARGET_OBJECTS:bitcoin_crypto>
   $<TARGET_OBJECTS:leveldb>
   $<TARGET_OBJECTS:crc32c>
 )
-target_link_libraries(riecoinkernel
+target_link_libraries(freycoinkernel
   PRIVATE
     core_interface
     secp256k1_objs
@@ -101,30 +101,30 @@ target_link_libraries(riecoinkernel
     Boost::headers
 )
 
-target_include_directories(riecoinkernel PRIVATE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/leveldb/include>)
+target_include_directories(freycoinkernel PRIVATE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/leveldb/include>)
 
-# Add a convenience libriecoinkernel target as a synonym for riecoinkernel.
-add_custom_target(libriecoinkernel)
-add_dependencies(libriecoinkernel riecoinkernel)
+# Add a convenience libfreycoinkernel target as a synonym for freycoinkernel.
+add_custom_target(libfreycoinkernel)
+add_dependencies(libfreycoinkernel freycoinkernel)
 
-get_target_property(riecoinkernel_type riecoinkernel TYPE)
-if(riecoinkernel_type STREQUAL "STATIC_LIBRARY")
-  target_compile_definitions(riecoinkernel PUBLIC RIECOINKERNEL_STATIC)
+get_target_property(freycoinkernel_type freycoinkernel TYPE)
+if(freycoinkernel_type STREQUAL "STATIC_LIBRARY")
+  target_compile_definitions(freycoinkernel PUBLIC FREYCOINKERNEL_STATIC)
 endif()
 
-configure_file(${PROJECT_SOURCE_DIR}/libriecoinkernel.pc.in ${PROJECT_BINARY_DIR}/libriecoinkernel.pc @ONLY)
-install(FILES ${PROJECT_BINARY_DIR}/libriecoinkernel.pc DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig" COMPONENT libriecoinkernel)
+configure_file(${PROJECT_SOURCE_DIR}/libfreycoinkernel.pc.in ${PROJECT_BINARY_DIR}/libfreycoinkernel.pc @ONLY)
+install(FILES ${PROJECT_BINARY_DIR}/libfreycoinkernel.pc DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig" COMPONENT libfreycoinkernel)
 
-install(TARGETS riecoinkernel
+install(TARGETS freycoinkernel
   RUNTIME
     DESTINATION ${CMAKE_INSTALL_BINDIR}
-    COMPONENT libriecoinkernel
+    COMPONENT libfreycoinkernel
   LIBRARY
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT libriecoinkernel
+    COMPONENT libfreycoinkernel
   ARCHIVE
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT libriecoinkernel
+    COMPONENT libfreycoinkernel
 )
 
-install(FILES riecoinkernel.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT libriecoinkernel)
+install(FILES freycoinkernel.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT libfreycoinkernel)

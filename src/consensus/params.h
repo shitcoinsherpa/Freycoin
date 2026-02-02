@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -64,21 +64,29 @@ struct BIP9Deployment {
 /** Parameters that influence chain consensus. */
 struct Params {
     uint256 hashGenesisBlock;
-    uint256 hashGenesisBlockForPoW;
+
     int nSubsidyHalvingInterval;
     /** Don't warn about unknown BIP 9 activations below this height. This prevents us from warning about the CSV and segwit activations. */
     int MinBIP9WarningHeight;
-    int fork1Height;
-    int fork2Height;
+
     std::array<BIP9Deployment,MAX_VERSION_BITS_DEPLOYMENTS> vDeployments;
-    /** Proof of work parameters */
-    int32_t GetPoWVersionAtHeight(int32_t height) const {return height < fork2Height ? -1 : 1;}
-    std::vector<std::vector<int32_t>> powAcceptedPatterns;
-    std::vector<std::vector<int32_t>> GetPowAcceptedPatternsAtHeight(int height) const {return height >= fork2Height ? powAcceptedPatterns : std::vector<std::vector<int32_t>>{{0, 4, 2, 4, 2, 4}};} // MainNet Only: Prime Sextuplets prior Fork 2
-    uint32_t nBitsMin;
+
+    /** Proof of work parameters (Prime Gap PoW) */
+
+    /** Minimum difficulty (2^48 fixed-point). Default is merit ~16. */
+    uint64_t nDifficultyMin;
+
+    /** Disable difficulty retargeting (for regtest) */
     bool fPowNoRetargeting;
+
+    /** Target block spacing in seconds */
     int64_t nPowTargetSpacing;
-    std::chrono::seconds PowTargetSpacing() const {return std::chrono::seconds{nPowTargetSpacing};}
+
+    std::chrono::seconds PowTargetSpacing() const
+    {
+        return std::chrono::seconds{nPowTargetSpacing};
+    }
+
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
 };

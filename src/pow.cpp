@@ -1,307 +1,421 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
+// Copyright (c) 2014-2017 Jonnie Frey (Gapcoin)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <pow.h>
 
-#include <arith_uint256.h>
 #include <chain.h>
-#include <logging.h>
+#include <crypto/sha256.h>
 #include <primitives/block.h>
 #include <uint256.h>
 #include <util/check.h>
 
-unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
+#include <gmp.h>
+#include <cstring>
+
+/**
+ * 2^48 - fixed-point precision for difficulty/merit calculations.
+ * 1.0 merit = 0x0001_0000_0000_0000
+ */
+static constexpr uint64_t TWO_POW48 = 1ULL << 48;
+
+/**
+ * log2(e) * 2^112 - precomputed constant for integer log calculations.
+ * Used for: merit = gap_len * log2(e) / log2(start)
+ */
+static const char* LOG2E_112_HEX = "171547652b82fe1777d0ffda0d23a";
+
+/**
+ * log2(e) * 2^64 - precomputed constant for difficulty adjustment.
+ */
+static const char* LOG2E_64_HEX = "171547652b82fe177";
+
+/**
+ * log(150) * 2^48 - precomputed for 150-second target spacing.
+ */
+static constexpr uint64_t LOG_150_48 = 0x502b8fea053a6ULL;
+
+/**
+ * Convert uint256 to mpz_t (little-endian).
+ */
+static void uint256_to_mpz(mpz_t result, const uint256& value)
+{
+    mpz_import(result, 32, -1, 1, -1, 0, value.begin());
+}
+
+/**
+ * Calculate integer log2 with specified accuracy bits.
+ * Returns log2(src) * 2^accuracy.
+ *
+ * Algorithm: Iteratively square the normalized value and track
+ * when it exceeds 2, accumulating fractional bits.
+ */
+static void mpz_log2_fixed(mpz_t result, const mpz_t src, uint32_t accuracy)
+{
+    mpz_t tmp, n;
+    mpz_init(tmp);
+    mpz_init_set(n, src);
+
+    // Integer part: floor(log2(src)) = bit_length - 1
+    size_t int_log2 = mpz_sizeinbase(n, 2) - 1;
+    mpz_set_ui(result, int_log2);
+
+    uint32_t bits = 0;
+    uint32_t shift = accuracy + int_log2;
+
+    // Scale up for fractional precision
+    mpz_mul_2exp(result, result, accuracy);
+    mpz_mul_2exp(n, n, accuracy);
+
+    for (;;) {
+        mpz_fdiv_q_2exp(tmp, n, shift);
+
+        // While n / 2^shift < 2, square n
+        while (mpz_cmp_ui(tmp, 2) < 0 && bits <= accuracy) {
+            mpz_mul(n, n, n);
+            mpz_fdiv_q_2exp(n, n, shift);
+            mpz_fdiv_q_2exp(tmp, n, shift);
+            bits++;
+        }
+
+        if (bits > accuracy) break;
+
+        // Add 2^(accuracy - bits) to result
+        mpz_set_ui(tmp, 1);
+        mpz_mul_2exp(tmp, tmp, accuracy - bits);
+        mpz_add(result, result, tmp);
+
+        // n = n / 2
+        mpz_fdiv_q_2exp(n, n, 1);
+    }
+
+    mpz_clear(tmp);
+    mpz_clear(n);
+}
+
+/**
+ * Calculate merit of a prime gap.
+ * merit = gap_size / ln(start) = gap_size * log2(e) / log2(start)
+ *
+ * Returns merit * 2^48 (fixed-point with 48-bit fractional precision).
+ */
+static uint64_t CalculateMerit(const mpz_t start, const mpz_t end)
+{
+    mpz_t merit, log_start, log2e112;
+    mpz_init(merit);
+    mpz_init(log_start);
+    mpz_init_set_str(log2e112, LOG2E_112_HEX, 16);
+
+    // merit = gap_len * log2(e) * 2^(64+48)
+    mpz_sub(merit, end, start);
+    mpz_mul(merit, merit, log2e112);
+
+    // merit = merit / (log2(start) * 2^64)
+    mpz_log2_fixed(log_start, start, 64);
+    mpz_fdiv_q(merit, merit, log_start);
+
+    uint64_t result = 0;
+    if (mpz_fits_ulong_p(merit)) {
+        result = mpz_get_ui(merit);
+    } else if (mpz_sizeinbase(merit, 2) <= 64) {
+        // Handle 64-bit values on 32-bit systems
+        mpz_t high;
+        mpz_init(high);
+        mpz_fdiv_q_2exp(high, merit, 32);
+        result = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(merit);
+        mpz_clear(high);
+    }
+
+    mpz_clear(merit);
+    mpz_clear(log_start);
+    mpz_clear(log2e112);
+
+    return result;
+}
+
+/**
+ * Generate deterministic random value from gap endpoints.
+ * Uses SHA256d(start || end), XOR-folded to 64 bits.
+ */
+static uint64_t GapRandom(const mpz_t start, const mpz_t end)
+{
+    // Export start and end to byte arrays
+    size_t start_len = (mpz_sizeinbase(start, 2) + 7) / 8;
+    size_t end_len = (mpz_sizeinbase(end, 2) + 7) / 8;
+
+    std::vector<uint8_t> start_bytes(start_len);
+    std::vector<uint8_t> end_bytes(end_len);
+
+    size_t actual_start_len, actual_end_len;
+    mpz_export(start_bytes.data(), &actual_start_len, -1, 1, -1, 0, start);
+    mpz_export(end_bytes.data(), &actual_end_len, -1, 1, -1, 0, end);
+
+    // SHA256(start || end)
+    uint8_t tmp[CSHA256::OUTPUT_SIZE];
+    CSHA256().Write(start_bytes.data(), actual_start_len)
+             .Write(end_bytes.data(), actual_end_len)
+             .Finalize(tmp);
+
+    // SHA256(tmp) - double hash
+    uint8_t hash[CSHA256::OUTPUT_SIZE];
+    CSHA256().Write(tmp, CSHA256::OUTPUT_SIZE).Finalize(hash);
+
+    // XOR-fold 256 bits to 64 bits
+    const uint64_t* ptr = reinterpret_cast<const uint64_t*>(hash);
+    uint64_t result = ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];
+
+    return result;
+}
+
+/**
+ * Calculate achieved difficulty for a prime gap.
+ * difficulty = merit + random(start, end) % min_gap_distance_merit
+ *
+ * The random component provides sub-integer-merit precision,
+ * making it harder to game the system with specific gap sizes.
+ */
+static uint64_t CalculateDifficulty(const mpz_t start, const mpz_t end)
+{
+    mpz_t log_start, min_gap_merit, log2e112;
+    mpz_init(log_start);
+    mpz_init(min_gap_merit);
+    mpz_init_set_str(log2e112, LOG2E_112_HEX, 16);
+
+    // Calculate 2/ln(start) * 2^48 - the merit of minimal gap distance
+    // min_gap_merit = 2 * log2(e) * 2^(64+48) / (log2(start) * 2^64)
+    mpz_set_ui(min_gap_merit, 2);
+    mpz_mul(min_gap_merit, min_gap_merit, log2e112);
+    mpz_log2_fixed(log_start, start, 64);
+    mpz_fdiv_q(min_gap_merit, min_gap_merit, log_start);
+
+    uint64_t min_gap_distance_merit = 1;
+    if (mpz_fits_ulong_p(min_gap_merit)) {
+        min_gap_distance_merit = mpz_get_ui(min_gap_merit);
+    } else if (mpz_sizeinbase(min_gap_merit, 2) <= 64) {
+        mpz_t high;
+        mpz_init(high);
+        mpz_fdiv_q_2exp(high, min_gap_merit, 32);
+        min_gap_distance_merit = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(min_gap_merit);
+        mpz_clear(high);
+    }
+
+    mpz_clear(log_start);
+    mpz_clear(min_gap_merit);
+    mpz_clear(log2e112);
+
+    // difficulty = merit + (rand % min_gap_distance_merit)
+    uint64_t merit = CalculateMerit(start, end);
+    uint64_t rand = GapRandom(start, end);
+    uint64_t difficulty = merit + (rand % min_gap_distance_merit);
+
+    return difficulty;
+}
+
+/**
+ * Check whether a block satisfies the prime gap proof-of-work requirement.
+ *
+ * Algorithm:
+ * 1. Validate nShift is in [MIN_SHIFT, MAX_SHIFT]
+ * 2. Validate nDifficulty >= minimum
+ * 3. Construct start = GetHash() * 2^nShift + nAdd
+ * 4. Verify start is prime (BPSW via GMP, 25 Miller-Rabin rounds)
+ * 5. Find next prime after start
+ * 6. Calculate achieved difficulty = f(merit, random)
+ * 7. Accept if achieved >= required
+ */
+bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params)
+{
+    // Validate shift range
+    if (block.nShift < MIN_SHIFT) {
+        return false;
+    }
+    if (block.nShift > MAX_SHIFT) {
+        return false;
+    }
+
+    // Validate difficulty meets minimum
+    if (block.nDifficulty < params.nDifficultyMin) {
+        return false;
+    }
+
+    // Get consensus hash (84 bytes)
+    uint256 hash = block.GetHash();
+
+    // Convert hash to mpz
+    mpz_t mpz_hash;
+    mpz_init(mpz_hash);
+    uint256_to_mpz(mpz_hash, hash);
+
+    // Verify hash is in range (2^255, 2^256) - i.e., 256 bits
+    size_t hash_bits = mpz_sizeinbase(mpz_hash, 2);
+    if (hash_bits != 256) {
+        mpz_clear(mpz_hash);
+        return false;
+    }
+
+    // Convert adder to mpz
+    mpz_t mpz_adder;
+    mpz_init(mpz_adder);
+    uint256_to_mpz(mpz_adder, block.nAdd);
+
+    // Verify adder < 2^shift
+    size_t adder_bits = mpz_sizeinbase(mpz_adder, 2);
+    if (adder_bits > block.nShift) {
+        mpz_clear(mpz_hash);
+        mpz_clear(mpz_adder);
+        return false;
+    }
+
+    // Construct start = hash * 2^shift + adder
+    mpz_t mpz_start;
+    mpz_init_set(mpz_start, mpz_hash);
+    mpz_mul_2exp(mpz_start, mpz_start, block.nShift);
+    mpz_add(mpz_start, mpz_start, mpz_adder);
+
+    mpz_clear(mpz_hash);
+    mpz_clear(mpz_adder);
+
+    // Verify start is prime (BPSW + 25 Miller-Rabin rounds)
+    // mpz_probab_prime_p returns: 0 = composite, 1 = probably prime, 2 = definitely prime
+    int prime_result = mpz_probab_prime_p(mpz_start, 25);
+    if (prime_result == 0) {
+        mpz_clear(mpz_start);
+        return false;
+    }
+
+    // Find next prime after start
+    mpz_t mpz_end;
+    mpz_init(mpz_end);
+    mpz_nextprime(mpz_end, mpz_start);
+
+    // Calculate achieved difficulty
+    uint64_t achieved = CalculateDifficulty(mpz_start, mpz_end);
+
+    mpz_clear(mpz_start);
+    mpz_clear(mpz_end);
+
+    // Accept if achieved difficulty meets or exceeds target
+    return achieved >= block.nDifficulty;
+}
+
+/**
+ * Calculate the next required difficulty.
+ *
+ * Uses logarithmic adjustment (Gapcoin algorithm):
+ *   next = current + log(target_spacing / actual_spacing)
+ *
+ * Damping:
+ *   - Increases: 1/256 of adjustment (slow up, prevents runaway)
+ *   - Decreases: 1/64 of adjustment (faster down, network recovery)
+ *
+ * Bounds:
+ *   - Maximum change: ±1.0 merit per block
+ *   - Minimum: params.nDifficultyMin
+ */
+uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
-    if (pindexLast->nHeight + 1 >= params.fork2Height) {
-        uint32_t nBits;
-        if (pindexLast->nHeight + 1 == params.fork2Height) { // Take previous Difficulty/1.5, which is arbitrary, but approximates well enough the corresponding Difficulty for the transition from k to k + 1 tuples.
-            uint32_t oldDifficulty((pindexLast->nBits & 0x007FFFFFU) >> 8U);
-            nBits = oldDifficulty*171; // In the new format, the nBits is Difficulty/256, and 2*256/3 = ~171
-            if (nBits < params.nBitsMin) nBits = params.nBitsMin;
-        }
-        else {
-            if (pindexLast->nHeight == 0)
-                return pindexLast->nBits;
-            const CBlockIndex* pindexPrev(pindexLast->pprev);
-            assert(pindexPrev);
-            return CalculateNextWorkRequired(pindexLast, pindexPrev->GetBlockTime(), params);
-        }
-        return nBits;
-    }
-    else { // Before second Fork
-        // Only change once per difficulty adjustment interval
-        if ((pindexLast->nHeight + 1) % 288 != 0)
-        {
-            if (pindexLast->nHeight + 1 >= params.fork1Height && pindexLast->nHeight + 1 < params.fork2Height) // Superblocks
-            {
-                if (isSuperblock(pindexLast->nHeight + 1, params))
-                {
-                    arith_uint256 newDifficulty;
-                    newDifficulty.SetCompact(pindexLast->nBits);
-                    newDifficulty *= 95859; // superblock is 4168/136 times more difficult
-                    newDifficulty >>= 16;   // 95859/65536 ~= (4168/136)^1/9
-                    return newDifficulty.GetCompact();
-                }
-                else if (isSuperblock(pindexLast->nHeight, params)) // Right after superblock, go back to previous diff
-                    return pindexLast->pprev->nBits;
-            }
-            return pindexLast->nBits;
-        }
 
-        // Go back by what we want to be nTargetTimespan worth of blocks
-        int nHeightFirst = pindexLast->nHeight - 287;
-        assert(nHeightFirst >= 0);
-        if (nHeightFirst == 0)
-            nHeightFirst++;
-        const CBlockIndex* pindexFirst = pindexLast->GetAncestor(nHeightFirst);
-        assert(pindexFirst);
-
-        return CalculateNextWorkRequired(pindexLast, pindexFirst->GetBlockTime(), params);
+    // Genesis or first block: use current difficulty
+    if (pindexLast->nHeight == 0) {
+        return pindexLast->nDifficulty;
     }
+
+    // No retargeting in regtest
+    if (params.fPowNoRetargeting) {
+        return pindexLast->nDifficulty;
+    }
+
+    // Need previous block for timing
+    const CBlockIndex* pindexPrev = pindexLast->pprev;
+    if (!pindexPrev) {
+        return pindexLast->nDifficulty;
+    }
+
+    // Actual timespan between last two blocks
+    int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexPrev->GetBlockTime();
+
+    return CalculateNextWorkRequired(pindexLast->nDifficulty, nActualTimespan, params);
 }
 
-unsigned int asert(const uint64_t nBits, int64_t previousSolveTime, int64_t nextHeight, const Consensus::Params& params) {
-    const int64_t N(64), // Smoothing Value
-                  cp(10*params.GetPowAcceptedPatternsAtHeight(nextHeight)[0].size() + 23), // Constellation Power * 10
-                  previousDifficulty(nBits); // With the fixed point format, calculations can directly be done on nBits (int64 is used to avoid overflows)
-    if (previousSolveTime < -TIMESTAMP_WINDOW)
-        previousSolveTime = -TIMESTAMP_WINDOW;
-    if (previousSolveTime > 12*params.nPowTargetSpacing)
-        previousSolveTime = 12*params.nPowTargetSpacing;
-    // Approximation of the ASERT Difficulty Adjustment Algorithm, see https://riecoin.dev/en/Protocol/Difficulty_Adjustment_Algorithm
-    int64_t difficulty((previousDifficulty*(65536LL + 10LL*(65536LL - 65536LL*previousSolveTime/params.nPowTargetSpacing)/(N*cp)))/65536LL);
-    if (difficulty < params.nBitsMin) difficulty = params.nBitsMin;
-    else if (difficulty > 4294967295LL) difficulty = 4294967295LL;
-    return static_cast<uint32_t>(difficulty);
-}
-
-unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
+/**
+ * Calculate next difficulty from previous difficulty and solve time.
+ *
+ * Formula: next = current + log(target/actual) / damping
+ *
+ * This is consensus-critical code. The integer math must match exactly
+ * across all implementations.
+ */
+uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, const Consensus::Params& params)
 {
-    if (params.fPowNoRetargeting) // RegTest Only
-        return pindexLast->nBits;
-
-    if (pindexLast->nHeight + 1 >= params.fork2Height)
-        return asert(pindexLast->nBits, pindexLast->GetBlockTime() - nFirstBlockTime, pindexLast->nHeight + 1, params);
-    else { // MainNet Only, before Fork 2
-        // Limit adjustment step
-        int64_t nActualTimespan = pindexLast->GetBlockTime() - nFirstBlockTime;
-        if (pindexLast->nHeight != 287) { // But not for the first adjustement.
-            if (nActualTimespan < 10800)
-                nActualTimespan = 10800;
-            if (nActualTimespan > 172800)
-                nActualTimespan = 172800;
-        }
-
-        // Retarget
-        mpz_class difficulty, newLinDifficulty, newDifficulty;
-        arith_uint256 difficultyU256;
-        difficultyU256.SetCompact(pindexLast->nBits);
-        mpz_import(difficulty.get_mpz_t(), 8, -1, sizeof(uint32_t), 0, 0, ArithToUint256(difficultyU256).begin());
-
-        // Approximately linearize difficulty by raising to the power 3 + Constellation Size
-        mpz_pow_ui(newLinDifficulty.get_mpz_t(), difficulty.get_mpz_t(), 9);
-        newLinDifficulty *= 43200U;
-        newLinDifficulty /= (uint32_t) nActualTimespan; // Gmp does not support 64 bits in some operating systems :| (compiler "use of overloaded operator is ambiguous" errors)
-
-        if (pindexLast->nHeight + 1 >= params.fork1Height && pindexLast->nHeight + 1 < params.fork2Height)
-        {
-            if (isInSuperblockInterval(pindexLast->nHeight + 1, params)) // Once per week, our interval contains a superblock
-            { // *136/150 to compensate for difficult superblock
-                newLinDifficulty *= 68;
-                newLinDifficulty /= 75;
-            }
-            else if (isInSuperblockInterval(pindexLast->nHeight, params))
-            { // *150/136 to compensate for previous adjustment
-                newLinDifficulty *= 75;
-                newLinDifficulty /= 68;
-            }
-        }
-
-        mpz_root(newDifficulty.get_mpz_t(), newLinDifficulty.get_mpz_t(), 9);
-        uint32_t minDifficulty(304);
-        if (newDifficulty < minDifficulty)
-            newDifficulty = minDifficulty;
-
-        std::string newDifficultyStr(newDifficulty.get_str(16));
-        newDifficultyStr = std::string(64U - newDifficultyStr.length(), '0') + newDifficultyStr;
-        arith_uint256 newDifficultyU256(UintToArith256(uint256::FromHex(newDifficultyStr).value()));
-        return newDifficultyU256.GetCompact();
+    // Clamp extreme timespans
+    if (nActualTimespan < 1) {
+        nActualTimespan = 1;
     }
-}
+    // Max 12x target (30 minutes for 150s target)
+    if (nActualTimespan > 12 * params.nPowTargetSpacing) {
+        nActualTimespan = 12 * params.nPowTargetSpacing;
+    }
 
-std::optional<uint32_t> DeriveTrailingZeros(unsigned int nBits, unsigned int nBitsOffset, const int32_t powVersion, const uint32_t nBitsMin)
-{
-    if (nBits < nBitsMin)
-        return {};
-    nBits += nBitsOffset;
-    uint32_t trailingZeros;
-    if (powVersion == -1)
-        trailingZeros = (nBits & 0x007FFFFFU) >> 8U;
-    else if (powVersion == 1)
-        trailingZeros = (nBits >> 8U) + 1;
-    else
-        return {};
+    // Calculate log(actual_timespan) * 2^48 using integer math
+    mpz_t mpz_log_actual, mpz_log2e64;
+    mpz_init_set_ui(mpz_log_actual, static_cast<unsigned long>(nActualTimespan));
+    mpz_init_set_str(mpz_log2e64, LOG2E_64_HEX, 16);
 
-    const unsigned int significativeDigits(265); // 1 + 8 + 256
-    if (trailingZeros < significativeDigits)
-        return {};
-    trailingZeros -= significativeDigits;
-    return trailingZeros;
-}
+    // log_actual = (log2(actual) * 2^(64+48)) / (log2(e) * 2^64)
+    mpz_log2_fixed(mpz_log_actual, mpz_log_actual, 64 + 48);
+    mpz_fdiv_q(mpz_log_actual, mpz_log_actual, mpz_log2e64);
 
-std::optional<mpz_class> DeriveTarget(uint256 hash, unsigned int nBits, unsigned int nBitsOffset, const int32_t powVersion, const uint32_t nBitsMin)
-{
-    mpz_class target(256);
-    if (powVersion == -1) { // Target = 1 . 00000000 . hash . 00...0 = 2^(D - 1) + H*2^(D – 265)
-        for (int i(0) ; i < 256 ; i++) { // Inverts endianness and bit order inside bytes
-            target <<= 1;
-            target += ((hash.begin()[i/8] >> (i % 8)) & 1);
+    uint64_t log_actual = 0;
+    if (mpz_fits_ulong_p(mpz_log_actual)) {
+        log_actual = mpz_get_ui(mpz_log_actual);
+    } else if (mpz_sizeinbase(mpz_log_actual, 2) <= 64) {
+        mpz_t high;
+        mpz_init(high);
+        mpz_fdiv_q_2exp(high, mpz_log_actual, 32);
+        log_actual = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(mpz_log_actual);
+        mpz_clear(high);
+    }
+
+    mpz_clear(mpz_log_actual);
+    mpz_clear(mpz_log2e64);
+
+    const uint64_t log_target = LOG_150_48;
+
+    uint64_t next = nDifficulty;
+
+    // Damping: 1/256 (shift 8) for increases, 1/64 (shift 6) for decreases
+    uint64_t shift = (log_actual > log_target) ? 6 : 8;
+
+    // Apply adjustment
+    if (log_target >= log_actual) {
+        uint64_t delta = log_target - log_actual;
+        next += delta >> shift;
+    } else {
+        uint64_t delta = log_actual - log_target;
+        // Check for underflow
+        if (nDifficulty >= (delta >> shift)) {
+            next -= delta >> shift;
+        } else {
+            next = params.nDifficultyMin;
         }
     }
-    else if (powVersion == 1) { // Here, rather than using 8 zeros, we fill this field with L = round(2^(8 + Df/2^8) - 2^8)
-        uint32_t df(nBits & 255U);
-        target += (10U*df*df*df + 7383U*df*df + 5840720U*df + 3997440U) >> 23U; // Gives the same results as L using only integers
-        target <<= 256;
-        mpz_class hashGmp;
-        mpz_import(hashGmp.get_mpz_t(), 8, -1, sizeof(uint32_t), 0, 0, hash.begin());
-        target += hashGmp;
-    }
-    else // Check must be done before calling DeriveTarget
-        return {};
 
-    // Now padding Target with zeros such that its size is the Difficulty (PoW Version -1) or such that Target = ~2^Difficulty (else)
-    const auto trailingZeros(DeriveTrailingZeros(nBits, nBitsOffset, powVersion, nBitsMin));
-    if (!trailingZeros)
-        return {};
-    target <<= *trailingZeros;
-    return target;
-}
+    // Clamp change to ±1.0 merit per block
+    if (next > nDifficulty + TWO_POW48) {
+        next = nDifficulty + TWO_POW48;
+    }
+    if (next < nDifficulty - TWO_POW48 && nDifficulty >= TWO_POW48) {
+        next = nDifficulty - TWO_POW48;
+    }
 
-uint32_t CheckConstellation(mpz_class n, std::vector<int32_t> offsets, uint32_t iterations)
-{
-    uint32_t tupleLength(0);
-    for (const auto &offset : offsets)
-    {
-        n += offset;
-        if (mpz_probab_prime_p(n.get_mpz_t(), iterations) == 0)
-            break;
-        tupleLength++;
+    // Enforce minimum
+    if (next < params.nDifficultyMin) {
+        next = params.nDifficultyMin;
     }
-    return tupleLength;
-}
 
-static std::vector<uint64_t> GeneratePrimeTable(const uint64_t limit) // Using Sieve of Eratosthenes
-{
-    if (limit < 2) return {};
-    std::vector<uint64_t> compositeTable((limit + 127ULL)/128ULL, 0ULL);
-    for (uint64_t f(3ULL) ; f*f <= limit ; f += 2ULL) {
-        if (compositeTable[f >> 7ULL] & (1ULL << ((f >> 1ULL) & 63ULL))) continue;
-        for (uint64_t m((f*f) >> 1ULL) ; m <= (limit >> 1ULL) ; m += f)
-            compositeTable[m >> 6ULL] |= 1ULL << (m & 63ULL);
-    }
-    std::vector<uint64_t> primeTable(1, 2);
-    for (uint64_t i(1ULL) ; (i << 1ULL) + 1ULL <= limit ; i++) {
-        if (!(compositeTable[i >> 6ULL] & (1ULL << (i & 63ULL))))
-            primeTable.push_back((i << 1ULL) + 1ULL);
-    }
-    if (limit == 821641) {
-        assert(primeTable.size() == 65536);
-        assert(primeTable[0] == 2);
-        assert(primeTable[32767] == 386093);
-        assert(primeTable[65535] == 821641);
-    }
-    return primeTable;
-}
-const std::vector<uint64_t> primeTable(GeneratePrimeTable(821641)); // Used to calculate the Primorial when checking
-
-// Bypasses the actual proof of work check during fuzz testing .
-bool CheckProofOfWork(uint256 hash, unsigned int nBits, uint256 nOnce, const Consensus::Params& params)
-{
-    if (EnableFuzzDeterminism()) return true;
-    return CheckProofOfWorkImpl(hash, nBits, nOnce, params);
-}
-
-bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, uint256 nOnce, const Consensus::Params& params)
-{
-    uint64_t nBitsOffset(0ULL);
-    if (hash == params.hashGenesisBlockForPoW)
-        return true;
-
-    int32_t powVersion;
-    if ((nOnce.GetUint64(0) & 1) == 1)
-    {
-        // Now that we forked, we can have simple Sanity Checks. They also eliminate cases like negative numbers or overflows.
-        if (nBits < 33632256 || nBits > 34210816) // All Difficulties before Fork 2 were between 304 and 2564.
-            return false;
-        powVersion = -1;
-    }
-    else if ((nOnce.GetUint64(0) & 31U) == 2U) {
-        if (nBits < params.nBitsMin)
-            return false;
-        if ((nOnce.GetUint64(0) & 65535U) != 2U) {
-            uint64_t nBits64(nBits);
-            nBitsOffset = (nOnce.GetUint64(0) & 65504U) << 8U;
-            if (nBits64 + nBitsOffset > 4294967295ULL)
-                nBitsOffset = 4294967295ULL - nBits64;
-        }
-        powVersion = 1;
-    }
-    else
-        return false;
-
-    const auto trailingZeros(DeriveTrailingZeros(nBits, nBitsOffset, powVersion, params.nBitsMin));
-    if (!trailingZeros)
-        return false;
-    const std::optional<mpz_class> target(DeriveTarget(hash, nBits, nBitsOffset, powVersion, params.nBitsMin));
-    if (!target)
-        return false;
-    mpz_class offset, offsetLimit(1);
-    offsetLimit <<= *trailingZeros;
-    // Calculate the PoW result
-    if (powVersion == -1)
-        mpz_import(offset.get_mpz_t(), 8, -1, sizeof(uint32_t), 0, 0, nOnce.begin()); // [31-0 Offset]
-    else if (powVersion == 1)
-    {
-        const uint8_t* rawOffset(nOnce.begin()); // [31-30 Primorial Number|29-14 Primorial Factor|13-2 Primorial Offset|1-0 Reserved/Version]
-        const uint16_t primorialNumber(reinterpret_cast<const uint16_t*>(&rawOffset[30])[0]);
-        mpz_class primorial(1), primorialFactor, primorialOffset;
-        for (uint16_t i(0) ; i < primorialNumber ; i++)
-        {
-            mpz_mul_ui(primorial.get_mpz_t(), primorial.get_mpz_t(), primeTable[i]);
-            if (primorial > offsetLimit) {
-                LogError("CheckProofOfWork(): too large Primorial Number %s\n", primorialNumber);
-                return false;
-            }
-        }
-        mpz_import(primorialFactor.get_mpz_t(), 16, -1, sizeof(uint8_t), 0, 0, &rawOffset[14]);
-        mpz_import(primorialOffset.get_mpz_t(), 12, -1, sizeof(uint8_t), 0, 0, &rawOffset[2]);
-        offset = primorial - (*target % primorial) + primorialFactor*primorial + primorialOffset;
-    }
-    if (offset >= offsetLimit) {
-        LogError("CheckProofOfWork(): offset %s larger than allowed 2^%d\n", offset.get_str().c_str(), *trailingZeros);
-        return false;
-    }
-    const mpz_class result(*target + offset);
-
-    // Check PoW result
-    std::vector<uint32_t> tupleLengths;
-    std::vector<std::vector<int32_t>> acceptedPatterns;
-    if (powVersion == -1)
-        acceptedPatterns = {{0, 4, 2, 4, 2, 4}};
-    else if (powVersion == 1)
-        acceptedPatterns = params.powAcceptedPatterns;
-    for (const auto &pattern : acceptedPatterns)
-    {
-        tupleLengths.push_back(CheckConstellation(result, pattern, 1)); // Quick single iteration test first
-        if (tupleLengths.back() != pattern.size())
-            continue;
-        tupleLengths.back() = CheckConstellation(result, pattern, 31);
-        if (tupleLengths.back() == pattern.size())
-            return true;
-    }
-    return false;
+    return next;
 }

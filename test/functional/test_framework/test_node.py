@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-present The Bitcoin Core developers
-# Copyright (c) 2017-present The Riecoin developers
+# Copyright (c) 2017-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Class for bitcoind node under test"""
@@ -58,7 +58,7 @@ TEST_CLI_MAX_ARG_SIZE = 1024
 
 # The null blocks key (all 0s)
 NULL_BLK_XOR_KEY = bytes([0] * NUM_XOR_BYTES)
-BITCOIN_PID_FILENAME_DEFAULT = "riecoind.pid"
+BITCOIN_PID_FILENAME_DEFAULT = "freycoind.pid"
 
 if sys.platform.startswith("linux"):
     UNIX_PATH_MAX = 108          # includes the trailing NUL
@@ -102,7 +102,7 @@ class TestNode():
         self.index = i
         self.p2p_conn_index = 1
         self.datadir_path = datadir_path
-        self.bitcoinconf = self.datadir_path / "riecoin.conf"
+        self.bitcoinconf = self.datadir_path / "freycoin.conf"
         self.stdout_dir = self.datadir_path / "stdout"
         self.stderr_dir = self.datadir_path / "stderr"
         self.chain = chain
@@ -121,7 +121,7 @@ class TestNode():
         # For those callers that need more flexibility, they can just set the args property directly.
         # Note that common args are set in the config file (see initialize_datadir)
         self.extra_args = extra_args
-        # Configuration for logging is set as command-line args rather than in the riecoin.conf file.
+        # Configuration for logging is set as command-line args rather than in the freycoin.conf file.
         # This means that starting a bitcoind using the temp dir to debug a failed test won't
         # spam debug.log.
         self.args = self.binaries.node_argv(need_ipc=ipcbind) + [
@@ -283,7 +283,7 @@ class TestNode():
         self.process = subprocess.Popen(self.args + extra_args, env=subp_env, stdout=stdout, stderr=stderr, cwd=cwd, **kwargs)
 
         self.running = True
-        self.log.debug("riecoind started, waiting for RPC to come up")
+        self.log.debug("freycoind started, waiting for RPC to come up")
 
         if self.start_perf:
             self._start_perf()
@@ -307,7 +307,7 @@ class TestNode():
                 str_error += "************************\n" if str_error else ''
 
                 raise FailedToStartError(self._node_msg(
-                    f'riecoind exited with status {self.process.returncode} during initialization. {str_error}'))
+                    f'freycoind exited with status {self.process.returncode} during initialization. {str_error}'))
             try:
                 rpc = get_rpc_proxy(
                     rpc_url(self.datadir_path, self.index, self.chain, self.rpchost),
@@ -376,7 +376,7 @@ class TestNode():
                     raise
                 latest_error = suppress_error("missing_credentials", e)
             time.sleep(1.0 / poll_per_s)
-        self._raise_assertion_error(f"Unable to connect to riecoind after {self.rpc_timeout}s (ignored errors: {dict(suppressed_errors)!s}{'' if latest_error is None else f', latest: {latest_error[0]!r}/{latest_error[1]}'})")
+        self._raise_assertion_error(f"Unable to connect to freycoind after {self.rpc_timeout}s (ignored errors: {dict(suppressed_errors)!s}{'' if latest_error is None else f', latest: {latest_error[0]!r}/{latest_error[1]}'})")
 
     def wait_for_cookie_credentials(self):
         """Ensures auth cookie credentials can be read, e.g. for testing CLI with -rpcwait before RPC connection is up."""
@@ -654,7 +654,7 @@ class TestNode():
 
         if not test_success('readelf -S {} | grep .debug_str'.format(shlex.quote(self.binary))):
             self.log.warning(
-                "perf output won't be very useful without debug symbols compiled into riecoind")
+                "perf output won't be very useful without debug symbols compiled into freycoind")
 
         output_path = tempfile.NamedTemporaryFile(
             dir=self.datadir_path,
@@ -706,7 +706,7 @@ class TestNode():
             try:
                 self.start(extra_args, stdout=log_stdout, stderr=log_stderr, *args, **kwargs)
                 ret = self.process.wait(timeout=self.rpc_timeout)
-                self.log.debug(self._node_msg(f'riecoind exited with status {ret} during initialization'))
+                self.log.debug(self._node_msg(f'freycoind exited with status {ret} during initialization'))
                 assert_not_equal(ret, 0) # Exit code must indicate failure
                 self.running = False
                 self.process = None
@@ -730,7 +730,7 @@ class TestNode():
                 self.process.kill()
                 self.running = False
                 self.process = None
-                assert_msg = f'riecoind should have exited within {self.rpc_timeout}s '
+                assert_msg = f'freycoind should have exited within {self.rpc_timeout}s '
                 if expected_msg is None:
                     assert_msg += "with an error"
                 else:
@@ -908,7 +908,7 @@ def arg_to_cli(arg):
 
 
 class TestNodeCLI():
-    """Interface to riecoin-cli for an individual node"""
+    """Interface to freycoin-cli for an individual node"""
     def __init__(self, binaries, datadir, rpc_timeout):
         self.options = []
         self.binaries = binaries
@@ -918,7 +918,7 @@ class TestNodeCLI():
         self.log = logging.getLogger('TestFramework.bitcoincli')
 
     def __call__(self, *options, input=None):
-        # TestNodeCLI is callable with riecoin-cli command-line options
+        # TestNodeCLI is callable with freycoin-cli command-line options
         cli = TestNodeCLI(self.binaries, self.datadir, self.rpc_timeout)
         cli.options = [str(o) for o in options]
         cli.input = input
@@ -937,7 +937,7 @@ class TestNodeCLI():
         return results
 
     def send_cli(self, clicommand=None, *args, **kwargs):
-        """Run riecoin-cli command. Deserializes returned string as python object."""
+        """Run freycoin-cli command. Deserializes returned string as python object."""
         pos_args = [arg_to_cli(arg) for arg in args]
         named_args = [key + "=" + arg_to_cli(value) for (key, value) in kwargs.items() if value is not None]
         p_args = self.binaries.rpc_argv() + [
@@ -965,7 +965,7 @@ class TestNodeCLI():
                 stdin_data = rpc_args
             p_args = p_args[:base_arg_pos] + ['-stdin']
 
-        self.log.debug("Running riecoin-cli {}".format(p_args[2:]))
+        self.log.debug("Running freycoin-cli {}".format(p_args[2:]))
         process = subprocess.Popen(p_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         cli_stdout, cli_stderr = process.communicate(input=stdin_data)
         returncode = process.poll()

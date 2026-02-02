@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -94,19 +94,15 @@ UniValue WriteUTXOSnapshot(
     const std::function<void()>& interruption_point = {});
 
 /* Calculate the difficulty for a given block index.
+ * Returns difficulty as a floating-point value.
+ * For prime gap PoW, this is the merit (gap_size / ln(start_prime)).
+ * The nDifficulty field stores this as 2^48 fixed-point.
  */
-double GetDifficulty(const CBlockIndex& blockindex, const int32_t powVersionOverride)
+double GetDifficulty(const CBlockIndex& blockindex, const int32_t /*powVersionOverride*/)
 {
-    const uint32_t nBits(blockindex.nBits);
-    int32_t powVersion(Params().GetConsensus().GetPoWVersionAtHeight(blockindex.nHeight));
-    if (powVersionOverride != 0) // For blockchain_tests
-        powVersion = powVersionOverride;
-    if (powVersion == -1)
-        return (nBits & 0x007FFFFFU) >> 8U; // The original PoW used the Bitcoin Compact format. This formula is equivalent for any block before Fork 2.
-    else if (powVersion == 1)
-        return static_cast<double>(nBits)/256.;
-    else
-        return 0.;
+    // Convert from 2^48 fixed-point to floating-point
+    // nDifficulty = merit * 2^48
+    return static_cast<double>(blockindex.nDifficulty) / (1ULL << 48);
 }
 
 static int ComputeNextBlockAndDepth(const CBlockIndex& tip, const CBlockIndex& blockindex, const CBlockIndex*& next)
@@ -147,7 +143,7 @@ static const CBlockIndex* ParseHashOrHeight(const UniValue& param, ChainstateMan
     }
 }
 
-UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex, const uint32_t nBitsMin)
+UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex)
 {
     // Serialize passed information without accessing chain state of the active chain!
     AssertLockNotHeld(cs_main); // For performance reasons
@@ -163,9 +159,11 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     result.pushKV("merkleroot", blockindex.hashMerkleRoot.GetHex());
     result.pushKV("time", blockindex.nTime);
     result.pushKV("mediantime", blockindex.GetMedianTimePast());
-    result.pushKV("nonce", blockindex.nNonce.GetHex());
-    result.pushKV("bits", strprintf("%08x", blockindex.nBits));
-    result.pushKV("difficulty", GetDifficulty(blockindex));
+    result.pushKV("nonce", static_cast<uint64_t>(blockindex.nNonce));
+    result.pushKV("difficulty", strprintf("%016llx", blockindex.nDifficulty));
+    result.pushKV("shift", blockindex.nShift);
+    result.pushKV("adder", blockindex.nAdd.GetHex());
+    result.pushKV("merit", GetDifficulty(blockindex));
     result.pushKV("chainwork", blockindex.nChainWork.GetHex());
     result.pushKV("nTx", blockindex.nTx);
 
@@ -176,9 +174,9 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     return result;
 }
 
-UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, const uint32_t nBitsMin)
+UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity)
 {
-    UniValue result = blockheaderToJSON(tip, blockindex, nBitsMin);
+    UniValue result = blockheaderToJSON(tip, blockindex);
 
     result.pushKV("strippedsize", (int)::GetSerializeSize(TX_NO_WITNESS(block)));
     result.pushKV("size", (int)::GetSerializeSize(TX_WITH_WITNESS(block)));
@@ -591,9 +589,11 @@ static RPCHelpMan getblockheader()
                             {RPCResult::Type::STR_HEX, "merkleroot", "The merkle root"},
                             {RPCResult::Type::NUM_TIME, "time", "The block time expressed in " + UNIX_EPOCH_TIME},
                             {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
-                            {RPCResult::Type::STR_HEX, "nonce", "The nonce"},
-                            {RPCResult::Type::STR_HEX, "bits", "nBits: integer representation of the block difficulty target"},
-                            {RPCResult::Type::NUM, "difficulty", "The difficulty"},
+                            {RPCResult::Type::NUM, "nonce", "The nonce"},
+                            {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+                            {RPCResult::Type::NUM, "shift", "Left-shift amount for prime construction"},
+                            {RPCResult::Type::STR_HEX, "adder", "Adder value for prime construction"},
+                            {RPCResult::Type::NUM, "merit", "The difficulty as merit (gap/ln(start))"},
                             {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the current chain"},
                             {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
                             {RPCResult::Type::STR_HEX, "previousblockhash", /*optional=*/true, "The hash of the previous block (if available)"},
@@ -635,7 +635,7 @@ static RPCHelpMan getblockheader()
         return strHex;
     }
 
-    return blockheaderToJSON(*tip, *pblockindex, chainman.GetConsensus().nBitsMin);
+    return blockheaderToJSON(*tip, *pblockindex);
 },
     };
 }
@@ -726,7 +726,7 @@ const RPCResult getblock_vin{
                     {RPCResult::Type::STR, "asm", "Disassembly of the output script"},
                     {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
                     {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
-                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Riecoin address (only if a well-defined address exists)"},
+                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Freycoin address (only if a well-defined address exists)"},
                     {RPCResult::Type::STR, "type", "The type (one of: " + GetAllOutputTypes() + ")"},
                 }},
             }},
@@ -766,9 +766,11 @@ static RPCHelpMan getblock()
                         {{RPCResult::Type::STR_HEX, "", "The transaction id"}}},
                     {RPCResult::Type::NUM_TIME, "time",       "The block time expressed in " + UNIX_EPOCH_TIME},
                     {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
-                    {RPCResult::Type::STR_HEX, "nonce", "The nonce"},
-                    {RPCResult::Type::STR_HEX, "bits", "nBits: integer representation of the block difficulty target"},
-                    {RPCResult::Type::NUM, "difficulty", "The difficulty"},
+                    {RPCResult::Type::NUM, "nonce", "The nonce"},
+                    {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+                    {RPCResult::Type::NUM, "shift", "Left-shift amount for prime construction"},
+                    {RPCResult::Type::STR_HEX, "adder", "Adder value for prime construction"},
+                    {RPCResult::Type::NUM, "merit", "The difficulty as merit (gap/ln(start))"},
                     {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the chain up to this block (in hex)"},
                     {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
                     {RPCResult::Type::STR_HEX, "previousblockhash", /*optional=*/true, "The hash of the previous block (if available)"},
@@ -842,7 +844,7 @@ static RPCHelpMan getblock()
         tx_verbosity = TxVerbosity::SHOW_DETAILS_AND_PREVOUT;
     }
 
-    return blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity, chainman.GetConsensus().nBitsMin);
+    return blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity);
 },
     };
 }
@@ -1168,7 +1170,7 @@ static RPCHelpMan gettxout()
                     {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
                     {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
                     {RPCResult::Type::STR, "type", "The type, eg pubkeyhash"},
-                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Riecoin address (only if a well-defined address exists)"},
+                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Freycoin address (only if a well-defined address exists)"},
                 }},
                 {RPCResult::Type::BOOL, "coinbase", "Coinbase or not"},
             }},
@@ -1258,90 +1260,33 @@ static RPCHelpMan verifychain()
     };
 }
 
-static std::vector<std::vector<int32_t>> supportedPatterns{
-	{0},
-	{0, 2},
-	{0, 2, 4},
-	{0, 4, 2},
-	{0, 2, 4, 2},
-	{0, 2, 4, 2, 4},
-	{0, 4, 2, 4, 2},
-	{0, 4, 2, 4, 2, 4},
-	{0, 2, 4, 2, 4, 6, 2},
-	{0, 2, 6, 4, 2, 4, 2},
-	{0, 2, 4, 2, 4, 6, 2, 6},
-	{0, 2, 4, 6, 2, 6, 4, 2},
-	{0, 6, 2, 6, 4, 2, 4, 2},
-	{0, 2, 4, 2, 4, 6, 2, 6, 4},
-	{0, 2, 4, 6, 2, 6, 4, 2, 4},
-	{0, 4, 2, 4, 6, 2, 6, 4, 2},
-	{0, 4, 6, 2, 6, 4, 2, 4, 2},
-	{0, 2, 4, 2, 4, 6, 2, 6, 4, 2},
-	{0, 2, 4, 6, 2, 6, 4, 2, 4, 2},
-	{0, 2, 4, 2, 4, 6, 2, 6, 4, 2, 4},
-	{0, 4, 2, 4, 6, 2, 6, 4, 2, 4, 2},
-	{0, 2, 4, 2, 4, 6, 2, 6, 4, 2, 4, 6},
-	{0, 6, 4, 2, 4, 6, 2, 6, 4, 2, 4, 2},
-};
-static std::vector<int32_t> getOffsets(mpz_class n, uint32_t iterations) {
-	std::vector<int32_t> primeOffsets;
-	for (int32_t offset(-22) ; offset <= 42 ; offset += 2) {
-		if (mpz_probab_prime_p(mpz_class(n + offset).get_mpz_t(), iterations) != 0)
-			primeOffsets.push_back(offset);
-	}
-	if (primeOffsets.size() == 0)
-		return {};
-	for (uint16_t i(supportedPatterns.size() - 1) ; i > 0 ; i--) {
-		if (supportedPatterns[i].size() > primeOffsets.size())
-			continue;
-		bool patternFound(false);
-		int32_t initialOffset(0);
-		for (uint32_t j(0) ; j < primeOffsets.size() - supportedPatterns[i].size() + 1 ; j++) {
-			initialOffset = primeOffsets[j];
-			for (uint32_t k(1) ; k < supportedPatterns[i].size() ; k++) {
-				if (primeOffsets[j + k] - primeOffsets[j + k - 1] != supportedPatterns[i][k])
-					break;
-				if (k + 1 == supportedPatterns[i].size())
-					patternFound = true;
-			}
-		}
-		if (patternFound) {
-			std::vector<int32_t> offsets;
-			int32_t offset(initialOffset);
-			for (const auto &o : supportedPatterns[i]) {
-				offset += o;
-				offsets.push_back(offset);
-			}
-			return offsets;
-		}
-	}
-	return {primeOffsets[0]};
-}
-
 static RPCHelpMan getresult()
 {
     return RPCHelpMan{
         "getresult",
-        "Returns the PoW result of the provided block.\n",
+        "Returns the prime gap PoW result of the provided block.\n",
                 {
                     {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The block hash"},
                     {"detailed", RPCArg::Type::BOOL, RPCArg::Default{false}, "Set to true to get more detailed PoW information"},
                 },
                 {
-                    RPCResult{"for detailed = false", RPCResult::Type::STR, "", "The PoW result in an human readable format"},
+                    RPCResult{"for detailed = false", RPCResult::Type::STR, "", "The PoW result: merit (gap/ln(start))"},
                     RPCResult{"for detailed = true",
                         RPCResult::Type::OBJ, "", "",
                     {
-                        {RPCResult::Type::STR, "type", "type of PoW"},
-                        {RPCResult::Type::STR, "...", "various fields depending on the PoW type"},
-                        {RPCResult::Type::NUM, "...", "..."},
+                        {RPCResult::Type::STR, "type", "Type of PoW (prime gap)"},
+                        {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty (2^48 fixed-point)"},
+                        {RPCResult::Type::NUM, "shift", "Left-shift amount used"},
+                        {RPCResult::Type::STR_HEX, "adder", "Adder value (256-bit)"},
+                        {RPCResult::Type::NUM, "nonce", "Block nonce"},
+                        {RPCResult::Type::NUM, "merit", "Merit = gap_size / ln(start_prime)"},
                     }},
                 },
                 RPCExamples{
-                    "\nGet the base prime of the block 1323777\n"
-                    + HelpExampleCli("getresult", "3d46e0b9e6cf61165c66f3ac5ad6cd483a44f11efd1bb9df0c5e49cb645e7d7f") +
+                    "\nGet the prime gap result for a block\n"
+                    + HelpExampleCli("getresult", "0000000000000000000123456789abcdef0123456789abcdef0123456789abcd") +
                     "\nAs a JSON-RPC call\n"
-                    + HelpExampleRpc("getresult", "\"3d46e0b9e6cf61165c66f3ac5ad6cd483a44f11efd1bb9df0c5e49cb645e7d7f\"")
+                    + HelpExampleRpc("getresult", "\"0000000000000000000123456789abcdef0123456789abcdef0123456789abcd\"")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -1358,56 +1303,24 @@ static RPCHelpMan getresult()
         block = GetBlockChecked(chainman.m_blockman, *pblockindex);
     }
 
-    uint256 nNonce = ArithToUint256(block.nNonce);
-    int32_t powVersion;
-    if ((nNonce.GetUint64(0) & 1) == 1)
-        powVersion = -1;
-    else if ((nNonce.GetUint64(0) & 31) == 2)
-        powVersion = 1;
-    else
-        return "0";
-
-    uint64_t nBitsOffset(0U);
-    mpz_class target, offset;
-    if (powVersion == -1) {
-        target = *DeriveTarget(block.GetHashForPoW(), block.nBits, nBitsOffset, powVersion, chainman.GetConsensus().nBitsMin);
-        mpz_import(offset.get_mpz_t(), 8, -1, sizeof(uint32_t), 0, 0, nNonce.begin()); // [31-0 Offset]
-    }
-    else if (powVersion == 1)
-    {
-        if ((nNonce.GetUint64(0) & 65535U) != 2U) {
-            uint64_t nBits64(block.nBits);
-            nBitsOffset = (nNonce.GetUint64(0) & 65504U) << 8U;
-            if (nBits64 + nBitsOffset > 4294967295ULL)
-                nBitsOffset = 4294967295ULL - nBitsOffset;
-        }
-        target = *DeriveTarget(block.GetHashForPoW(), block.nBits, nBitsOffset, powVersion, chainman.GetConsensus().nBitsMin);
-        const uint8_t* rawOffset(nNonce.begin()); // [31-30 Primorial Number|29-14 Primorial Factor|13-2 Primorial Offset|1-0 Difficulty Offset/Version]
-        const uint16_t primorialNumber(reinterpret_cast<const uint16_t*>(&rawOffset[30])[0]);
-        mpz_class primorial(1), primorialFactor, primorialOffset;
-        for (uint16_t i(0) ; i < primorialNumber ; i++)
-            mpz_mul_ui(primorial.get_mpz_t(), primorial.get_mpz_t(), primeTable[i]);
-        mpz_import(primorialFactor.get_mpz_t(), 16, -1, sizeof(uint8_t), 0, 0, &rawOffset[14]);
-        mpz_import(primorialOffset.get_mpz_t(), 12, -1, sizeof(uint8_t), 0, 0, &rawOffset[2]);
-        offset = primorial - (target % primorial) + primorialFactor*primorial + primorialOffset;
-    }
-    const mpz_class result(target + offset);
+    // Calculate merit from difficulty (2^48 fixed-point)
+    double merit = static_cast<double>(block.nDifficulty) / (1ULL << 48);
 
     bool detailed(false);
     if (!request.params[1].isNull())
         detailed = request.params[1].get_bool();
-    if (!detailed)
-        return result.get_str();
 
-    std::vector<int32_t> offsets(getOffsets(result, 32));
-    UniValue offsetsUV(UniValue::VARR);
-    for (const auto &offset : offsets)
-        offsetsUV.push_back(offset);
+    if (!detailed) {
+        return strprintf("%.6f", merit);
+    }
+
     UniValue rv(UniValue::VOBJ);
-    rv.pushKV("type", "prime constellation");
-    rv.pushKV("n", result.get_str());
-    rv.pushKV("offsets", offsetsUV);
-    rv.pushKV("length", offsets.size());
+    rv.pushKV("type", "prime gap");
+    rv.pushKV("difficulty", strprintf("%016llx", block.nDifficulty));
+    rv.pushKV("shift", block.nShift);
+    rv.pushKV("adder", block.nAdd.GetHex());
+    rv.pushKV("nonce", static_cast<uint64_t>(block.nNonce));
+    rv.pushKV("merit", merit);
     return rv;
 },
     };
@@ -1481,8 +1394,8 @@ RPCHelpMan getblockchaininfo()
                 {RPCResult::Type::NUM, "blocks", "the height of the most-work fully-validated chain. The genesis block has height 0"},
                 {RPCResult::Type::NUM, "headers", "the current number of headers we have validated"},
                 {RPCResult::Type::STR, "bestblockhash", "the hash of the currently best block"},
-                {RPCResult::Type::STR_HEX, "bits", "nBits: integer representation of the block difficulty target"},
-                {RPCResult::Type::NUM, "difficulty", "the current difficulty"},
+                {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+                {RPCResult::Type::NUM, "merit", "The current difficulty as merit (gap/ln(start))"},
                 {RPCResult::Type::NUM_TIME, "time", "The block time expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::NUM, "verificationprogress", "estimate of verification progress [0..1]"},
@@ -1515,8 +1428,8 @@ RPCHelpMan getblockchaininfo()
     obj.pushKV("blocks", height);
     obj.pushKV("headers", chainman.m_best_header ? chainman.m_best_header->nHeight : -1);
     obj.pushKV("bestblockhash", tip.GetBlockHash().GetHex());
-    obj.pushKV("bits", strprintf("%08x", tip.nBits));
-    obj.pushKV("difficulty", GetDifficulty(tip));
+    obj.pushKV("difficulty", strprintf("%016llx", tip.nDifficulty));
+    obj.pushKV("merit", GetDifficulty(tip));
     obj.pushKV("time", tip.GetBlockTime());
     obj.pushKV("mediantime", tip.GetMedianTimePast());
     obj.pushKV("verificationprogress", chainman.GuessVerificationProgress(&tip));
@@ -3515,8 +3428,8 @@ static RPCHelpMan loadtxoutset()
 const std::vector<RPCResult> RPCHelpForChainstate{
     {RPCResult::Type::NUM, "blocks", "number of blocks in this chainstate"},
     {RPCResult::Type::STR_HEX, "bestblockhash", "blockhash of the tip"},
-    {RPCResult::Type::STR_HEX, "bits", "nBits: integer representation of the block difficulty target"},
-    {RPCResult::Type::NUM, "difficulty", "difficulty of the tip"},
+    {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+    {RPCResult::Type::NUM, "merit", "The difficulty of the tip as merit"},
     {RPCResult::Type::NUM, "verificationprogress", "progress towards the network tip"},
     {RPCResult::Type::STR_HEX, "snapshot_blockhash", /*optional=*/true, "the base block of the snapshot this chainstate is based on, if any"},
     {RPCResult::Type::NUM, "coins_db_cache_bytes", "size of the coinsdb cache"},
@@ -3558,8 +3471,8 @@ return RPCHelpMan{
 
         data.pushKV("blocks",                (int)chain.Height());
         data.pushKV("bestblockhash",         tip->GetBlockHash().GetHex());
-        data.pushKV("bits", strprintf("%08x", tip->nBits));
-        data.pushKV("difficulty", GetDifficulty(*tip));
+        data.pushKV("difficulty", strprintf("%016llx", tip->nDifficulty));
+        data.pushKV("merit", GetDifficulty(*tip));
         data.pushKV("verificationprogress", chainman.GuessVerificationProgress(tip));
         data.pushKV("coins_db_cache_bytes",  cs.m_coinsdb_cache_size_bytes);
         data.pushKV("coins_tip_cache_bytes", cs.m_coinstip_cache_size_bytes);

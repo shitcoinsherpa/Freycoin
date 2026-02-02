@@ -1,9 +1,9 @@
 // Copyright (c) 2017-present The Bitcoin Core developers
-// Copyright (c) 2017-present The Riecoin developers
+// Copyright (c) 2017-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <chain.h>
 #include <clientversion.h>
@@ -45,7 +45,7 @@ using util::SplitString;
 using util::TrimString;
 
 const std::string UNIX_EPOCH_TIME = "UNIX epoch time";
-const std::string EXAMPLE_ADDRESS[2] = {"ric1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrsk4clvn", "ric1qr3yxckxtl7lacvtuzhrdrtrlzvlydane2h37ja"};
+const std::string EXAMPLE_ADDRESS[2] = {"frey1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrsl7tumc", "frey1qrh4t6w6nhhtagkcrpyct6dhsa7wwknvthslfpd"};
 
 std::string GetAllOutputTypes()
 {
@@ -186,12 +186,12 @@ std::string ShellQuoteIfNeeded(const std::string& s)
 
 std::string HelpExampleCli(const std::string& methodname, const std::string& args)
 {
-    return "> riecoin-cli " + methodname + " " + args + "\n";
+    return "> freycoin-cli " + methodname + " " + args + "\n";
 }
 
 std::string HelpExampleCliNamed(const std::string& methodname, const RPCArgList& args)
 {
-    std::string result = "> riecoin-cli -named " + methodname;
+    std::string result = "> freycoin-cli -named " + methodname;
     for (const auto& argpair: args) {
         const auto& value = argpair.second.isStr()
                 ? argpair.second.get_str()
@@ -1399,7 +1399,7 @@ std::vector<RPCResult> ScriptPubKeyDoc() {
              {RPCResult::Type::STR, "asm", "Disassembly of the output script"},
              {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
              {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
-             {RPCResult::Type::STR, "address", /*optional=*/true, "The Riecoin address (only if a well-defined address exists)"},
+             {RPCResult::Type::STR, "address", /*optional=*/true, "The Freycoin address (only if a well-defined address exists)"},
              {RPCResult::Type::STR, "type", "The type (one of: " + GetAllOutputTypes() + ")"},
          };
 }

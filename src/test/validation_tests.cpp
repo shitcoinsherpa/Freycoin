@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2021 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -42,7 +42,6 @@ static void TestBlockSubsidyHalvings(int nSubsidyHalvingInterval)
 {
     Consensus::Params consensusParams;
     consensusParams.nSubsidyHalvingInterval = nSubsidyHalvingInterval;
-    consensusParams.fork1Height = 2147483647; // Disable SuperBlocks
     TestBlockSubsidyHalvings(consensusParams);
 }
 
@@ -50,7 +49,6 @@ BOOST_AUTO_TEST_CASE(block_subsidy_test)
 {
     Consensus::Params consensusParams;
     consensusParams.nSubsidyHalvingInterval = 840000;
-    consensusParams.fork1Height = 2147483647; // Disable SuperBlocks
     TestBlockSubsidyHalvings(consensusParams); // As in main
     TestBlockSubsidyHalvings(150); // As in regtest
     TestBlockSubsidyHalvings(1000); // Just another interval

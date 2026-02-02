@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2023-present The Riecoin developers
+# Copyright (c) 2023-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test validateaddress for main chain"""
@@ -16,19 +16,19 @@ INVALID_DATA = [
         "Invalid or unsupported Segwit (Bech32) encoding or Script.",  # Invalid hrp
         [],
     ),
-    ("ric1qw508d6qejxtdg4y5r3zarvary0c5xw7kn4h7nl", "Invalid Bech32m checksum", [42]),
+    ("frey1qw508d6qejxtdg4y5r3zarvary0c5xw7kn4h7nl", "Invalid Bech32m checksum", [42]),
     (
         "RIC13W508D6QEJXTDG4Y5R3ZARVARY0C5XW7KEMPD5T",
         "Version 1+ witness address must use Bech32m checksum",
         [],
     ),
     (
-        "ric1rw5cmwppx",
+        "frey1rw5cmwppx",
         "Version 1+ witness address must use Bech32m checksum",  # Invalid program length
         [],
     ),
     (
-        "ric10w508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kw5pgs7z9",
+        "frey10w508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kw5pgs7z9",
         "Version 1+ witness address must use Bech32m checksum",  # Invalid program length
         [],
     ),
@@ -43,12 +43,12 @@ INVALID_DATA = [
         [],
     ),
     (
-        "ric1qw508d6qejxtdg4y5r3zarvary0c5xw7kn4h7Nk",
+        "frey1qw508d6qejxtdg4y5r3zarvary0c5xw7kn4h7Nk",
         "Invalid character or mixed case",  # ric1, Mixed case, not in BIP 173 test vectors
         [41],
     ),
     (
-        "ric1zw508d6qejxtdg4y5r3zarvaryvqdf7g2g",
+        "frey1zw508d6qejxtdg4y5r3zarvaryvqdf7g2g",
         "Version 1+ witness address must use Bech32m checksum",  # Wrong padding
         [],
     ),
@@ -57,7 +57,7 @@ INVALID_DATA = [
         "Invalid or unsupported Segwit (Bech32) encoding or Script.",  # tb1, Non-zero padding in 8-to-5 conversion
         [],
     ),
-    ("ric1tpvwza", "Empty Bech32 data section", []),
+    ("frey1c2rdlj", "Empty Bech32 data section", []),
     # BIP 350
     (
         "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut",
@@ -65,7 +65,7 @@ INVALID_DATA = [
         [],
     ),
     (
-        "ric1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc3hc2h",
+        "frey1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc3hc2h",
         "Version 1+ witness address must use Bech32m checksum",  # Invalid checksum (Bech32 instead of Bech32m)
         [],
     ),
@@ -80,7 +80,7 @@ INVALID_DATA = [
         [],
     ),
     (
-        "ric1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpqynocl5",
+        "frey1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpqynocl5",
         "Invalid Base 32 character",  # Invalid character in checksum
         [59],
     ),
@@ -89,9 +89,9 @@ INVALID_DATA = [
         "Invalid Bech32 address witness version",
         [],
     ),
-    ("ric1pw5frv2la", "Invalid Bech32 address program size (1 byte)", []),
+    ("frey1pw5gvyljq", "Invalid Bech32 address program size (1 byte)", []),
     (
-        "ric1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav25n42h6x",
+        "frey1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav25xg8w05",
         "Invalid Bech32 address program size (41 bytes)",
         [],
     ),
@@ -106,7 +106,7 @@ INVALID_DATA = [
         [],
     ),
     (
-        "ric1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07ql3pm5n",
+        "frey1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qsktl9w",
         "Invalid padding in Bech32 data section",  # zero padding of more than 4 bits
         [],
     ),
@@ -115,7 +115,7 @@ INVALID_DATA = [
         "Invalid or unsupported Segwit (Bech32) encoding or Script.",  # tb1, Non-zero padding in 8-to-5 conversion
         [],
     ),
-    ("ric1tpvwza", "Empty Bech32 data section", []),
+    ("frey1c2rdlj", "Empty Bech32 data section", []),
 ]
 VALID_DATA = [
     # BIP 350
@@ -128,21 +128,21 @@ VALID_DATA = [
     #   "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
     # ),
     (
-        "ric1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qzl235f",
+        "frey1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qt5ejrz",
         "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
     ),
     (
-        "ric1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kvm2k0z",
+        "frey1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kfg7t9u",
         "5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6",
     ),
     ("RIC1SW50QZUMJPG", "6002751e"),
-    ("ric1zw508d6qejxtdg4y5r3zarvaryvptjcnn", "5210751e76e8199196d454941c45d1b3a323"),
+    ("frey1zw508d6qejxtdg4y5r3zarvaryvvsp46h", "5210751e76e8199196d454941c45d1b3a323"),
     # (
     #   "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy",
     #   "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
     # ),
     (
-        "ric1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvseswfzl4n",
+        "frey1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvses8z3uzc",
         "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
     ),
     # (
@@ -150,16 +150,16 @@ VALID_DATA = [
     #   "5120000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
     # ),
     (
-        "ric1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvses3zj6gd",
+        "frey1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsescfpelx",
         "5120000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
     ),
     (
-        "ric1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqdd8504",
+        "frey1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqyx5hc7",
         "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
     ),
     # PayToAnchor(P2A)
     (
-        "ric1pfees6jykan",
+        "frey1pfeeszh4dfd",
         "51024e73",
     ),
 ]

@@ -1,5 +1,5 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -20,7 +20,7 @@ BOOST_FIXTURE_TEST_SUITE(policyestimator_tests, ChainTestingSetup)
 
 BOOST_AUTO_TEST_CASE(BlockPolicyEstimates)
 {
-    return; // Bitcoin Developers might eventually rewrite this Test for EstimateRawFee rather than the Deprecated (removed in Riecoin) EstimateFee, so keep this file for now.
+    return; // Bitcoin Developers might eventually rewrite this Test for EstimateRawFee rather than the Deprecated (removed in Freycoin) EstimateFee, so keep this file for now.
 }
 
 BOOST_AUTO_TEST_SUITE_END()

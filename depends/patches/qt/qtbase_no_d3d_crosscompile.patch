@@ -1,0 +1,28 @@
+--- a/qtbase/src/gui/CMakeLists.txt
++++ b/qtbase/src/gui/CMakeLists.txt
+@@ -417,13 +417,6 @@ qt_internal_extend_target(Gui CONDITION WIN32
+         platform/windows/qwindowsmimeconverter.h platform/windows/qwindowsmimeconverter.cpp
+         platform/windows/qwindowsnativeinterface.cpp
+         platform/windows/qwindowsthemecache.cpp platform/windows/qwindowsthemecache_p.h
+-        rhi/qrhid3d11.cpp rhi/qrhid3d11_p.h
+-        rhi/qrhid3dhelpers.cpp rhi/qrhid3dhelpers_p.h
+-        rhi/vs_test_p.h
+-        rhi/qrhid3d12.cpp rhi/qrhid3d12_p.h
+-        rhi/cs_mipmap_p.h
+-        ../3rdparty/D3D12MemoryAllocator/D3D12MemAlloc.h
+-        ../3rdparty/D3D12MemoryAllocator/D3D12MemAlloc.cpp
+         text/windows/qwindowsfontdatabase.cpp text/windows/qwindowsfontdatabase_p.h
+         text/windows/qwindowsfontdatabasebase.cpp text/windows/qwindowsfontdatabasebase_p.h
+         text/windows/qwindowsfontengine.cpp text/windows/qwindowsfontengine_p.h
+@@ -435,11 +428,6 @@ qt_internal_extend_target(Gui CONDITION WIN32
+         shell32
+         user32
+         uxtheme
+-    PUBLIC_LIBRARIES
+-        d3d11
+-        dxgi
+-        dxguid
+-        d3d12
+ )
+ 
+ if(QT_FEATURE_graphicsframecapture)

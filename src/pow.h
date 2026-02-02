@@ -1,6 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
+// Copyright (c) 2014-2017 Jonnie Frey (Gapcoin)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,40 +9,70 @@
 #define BITCOIN_POW_H
 
 #include <consensus/params.h>
-#include <gmp.h>
-#include <gmpxx.h>
-
 #include <cstdint>
 
 class CBlockHeader;
 class CBlockIndex;
 class uint256;
-class arith_uint256;
 
 /**
- * Convert nBits value to target.
+ * Check whether a block satisfies the proof-of-work requirement.
  *
- * @param[in] hash        hash the target depends on
- * @param[in] nBits       integer representation of the target
- * @param[in] nBitsOffset integer altering nBits to allow larger targets
- * @param[in] powVersion  PoW Version to use for the derivation
- * @param[in] nBitsMin    PoW limit (consensus parameter)
+ * Prime Gap PoW Validation:
+ * 1. Construct starting prime: start = GetHash() * 2^nShift + nAdd
+ * 2. Verify start is prime (BPSW primality test)
+ * 3. Find next prime p2 after start
+ * 4. Compute gap merit: gap_size / ln(start)
+ * 5. Compute difficulty with randomness: merit + rand(start, p2) % (2/ln(start))
+ * 6. Accept if achieved difficulty >= nDifficulty
  *
- * @return                the proof-of-work target or nullopt if nBits or powVersion is invalid
+ * @param[in] block   The block header to validate
+ * @param[in] params  Consensus parameters
+ * @return true if the proof-of-work is valid
  */
-std::optional<mpz_class> DeriveTarget(uint256 hash, unsigned int nBits, unsigned int nBitsOffset, const int32_t powVersion, const uint32_t nBitsMin);
+bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params);
 
-// MainNet Only, Pre Fork 2 SuperBlocks
-inline bool isInSuperblockInterval(int nHeight, const Consensus::Params& params) {return ((nHeight/288) % 14) == 12;} // once per week
-inline bool isSuperblock(int nHeight, const Consensus::Params& params) {return ((nHeight % 288) == 144) && isInSuperblockInterval(nHeight, params);}
+/**
+ * Calculate the next required difficulty for the block following pindexLast.
+ *
+ * Uses logarithmic difficulty adjustment:
+ *   next = current + log(target_spacing / actual_spacing)
+ *
+ * With damping: increases at 1/256 rate, decreases at 1/64 rate.
+ * Clamped to ±1 per block to prevent instability.
+ *
+ * @param[in] pindexLast  The last block in the chain
+ * @param[in] params      Consensus parameters
+ * @return The required nDifficulty for the next block
+ */
+uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params);
 
-uint32_t GenerateTarget(mpz_class &gmpTarget, uint256 hash, uint32_t compactBits, const int32_t powVersion);
-unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params&);
-unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params&);
+/**
+ * Calculate next difficulty given previous difficulty and solve time.
+ *
+ * @param[in] nDifficulty     Previous block's difficulty
+ * @param[in] nActualTimespan Time between prev and prev-prev blocks
+ * @param[in] params          Consensus parameters
+ * @return The required nDifficulty for the next block
+ */
+uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, const Consensus::Params& params);
 
-extern const std::vector<uint64_t> primeTable;
-/** Check whether a Nonce satisfies the proof-of-work requirement */
-bool CheckProofOfWork(uint256 hash, unsigned int nBits, uint256 nNonce, const Consensus::Params&);
-bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, uint256 nNonce, const Consensus::Params&);
+/**
+ * Minimum difficulty constant (merit ~16).
+ * Corresponds to gaps achievable by anyone with basic hardware.
+ */
+constexpr uint64_t MIN_DIFFICULTY = 16ULL << 48;
+
+/**
+ * Maximum shift for starting prime construction.
+ * Limits starting prime size to hash * 2^256, preventing DoS via huge numbers.
+ */
+constexpr uint16_t MAX_SHIFT = 256;
+
+/**
+ * Minimum shift for starting prime construction.
+ * Ensures starting primes are large enough for meaningful gaps.
+ */
+constexpr uint16_t MIN_SHIFT = 14;
 
 #endif // BITCOIN_POW_H

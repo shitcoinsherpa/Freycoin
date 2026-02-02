@@ -88,8 +88,10 @@ void generateFakeBlock(const CChainParams& params,
     block.hashPrevBlock = tip.prev_block_hash;
     block.hashMerkleRoot = BlockMerkleRoot(block);
     block.nTime = ++tip.prev_block_time;
-    block.nBits = params.GenesisBlock().nBits;
+    block.nDifficulty = params.GenesisBlock().nDifficulty;
     block.nNonce = 0;
+    block.nShift = 20;
+    block.nAdd.SetNull();
 
     {
         LOCK(::cs_main);

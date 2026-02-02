@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 The Bitcoin Core developers
-# Copyright (c) 2013-present The Riecoin developers
+# Copyright (c) 2013-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 import os
@@ -10,12 +10,12 @@ import tempfile
 import argparse
 
 BINARIES = [
-'bin/riecoin',
-'bin/riecoind',
-'bin/riecoin-cli',
-'bin/riecoin-tx',
-'bin/riecoin-wallet',
-'bin/riecoin-qt',
+'bin/freycoin',
+'bin/freycoind',
+'bin/freycoin-cli',
+'bin/freycoin-tx',
+'bin/freycoin-wallet',
+'bin/freycoin-qt',
 ]
 
 parser = argparse.ArgumentParser(

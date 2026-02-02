@@ -55,21 +55,21 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS forms)
 
-configure_file(riecoin_locale.qrc riecoin_locale.qrc USE_SOURCE_PERMISSIONS COPYONLY)
+configure_file(freycoin_locale.qrc freycoin_locale.qrc USE_SOURCE_PERMISSIONS COPYONLY)
 
-# The riecoinqt sources have to include headers in
+# The freycoinqt sources have to include headers in
 # order to parse them to collect translatable strings.
-add_library(riecoinqt STATIC EXCLUDE_FROM_ALL
+add_library(freycoinqt STATIC EXCLUDE_FROM_ALL
   bantablemodel.cpp
   bantablemodel.h
-  riecoin.cpp
-  riecoin.h
-  riecoinaddressvalidator.cpp
-  riecoinaddressvalidator.h
-  riecoinamountfield.cpp
-  riecoinamountfield.h
-  riecoingui.cpp
-  riecoingui.h
+  freycoin.cpp
+  freycoin.h
+  freycoinaddressvalidator.cpp
+  freycoinaddressvalidator.h
+  freycoinamountfield.cpp
+  freycoinamountfield.h
+  freycoingui.cpp
+  freycoingui.h
   clientmodel.cpp
   clientmodel.h
   csvmodelwriter.cpp
@@ -116,15 +116,15 @@ add_library(riecoinqt STATIC EXCLUDE_FROM_ALL
   utilitydialog.h
   $<$<PLATFORM_ID:Windows>:winshutdownmonitor.cpp>
   $<$<PLATFORM_ID:Windows>:winshutdownmonitor.h>
-  riecoin.qrc
-  ${CMAKE_CURRENT_BINARY_DIR}/riecoin_locale.qrc
+  freycoin.qrc
+  ${CMAKE_CURRENT_BINARY_DIR}/freycoin_locale.qrc
 )
-target_compile_definitions(riecoinqt
+target_compile_definitions(freycoinqt
   PUBLIC
     QT_NO_KEYWORDS
     QT_USE_QSTRINGBUILDER
 )
-target_include_directories(riecoinqt
+target_include_directories(freycoinqt
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
 )
@@ -132,12 +132,12 @@ set_property(SOURCE macnotificationhandler.mm
   # Ignore warnings "'NSUserNotificationCenter' is deprecated: first deprecated in macOS 11.0".
   APPEND PROPERTY COMPILE_OPTIONS -Wno-deprecated-declarations
 )
-target_link_libraries(riecoinqt
+target_link_libraries(freycoinqt
   PUBLIC
     Qt6::Widgets
   PRIVATE
     core_interface
-    riecoin_cli
+    freycoin_cli
     leveldb
     Boost::headers
     $<TARGET_NAME_IF_EXISTS:QRencode::QRencode>
@@ -146,7 +146,7 @@ target_link_libraries(riecoinqt
 )
 
 if(ENABLE_WALLET)
-  target_sources(riecoinqt
+  target_sources(freycoinqt
     PRIVATE
       addressbookpage.cpp
       addressbookpage.h
@@ -211,21 +211,21 @@ if(ENABLE_WALLET)
       walletview.cpp
       walletview.h
   )
-  target_link_libraries(riecoinqt
+  target_link_libraries(freycoinqt
     PRIVATE
-      riecoin_wallet
+      freycoin_wallet
       Qt6::Network
   )
 endif()
 
 if(WITH_DBUS)
-  target_link_libraries(riecoinqt PRIVATE Qt6::DBus)
+  target_link_libraries(freycoinqt PRIVATE Qt6::DBus)
 endif()
 
 if(qt_lib_type STREQUAL "STATIC_LIBRARY")
   # We want to define static plugins to link ourselves, thus preventing
   # automatic linking against a "sane" set of default static plugins.
-  qt6_import_plugins(riecoinqt
+  qt6_import_plugins(freycoinqt
     EXCLUDE_BY_TYPE
       accessiblebridge
       platforms
@@ -246,41 +246,41 @@ endif()
 
 add_subdirectory(locale)
 
-add_executable(riecoin-qt
+add_executable(freycoin-qt
   main.cpp
-  ../init/riecoin-qt.cpp
+  ../init/freycoin-qt.cpp
 )
 
-add_windows_resources(riecoin-qt res/riecoin-qt-res.rc)
-add_windows_application_manifest(riecoin-qt)
+add_windows_resources(freycoin-qt res/freycoin-qt-res.rc)
+add_windows_application_manifest(freycoin-qt)
 
-target_link_libraries(riecoin-qt
+target_link_libraries(freycoin-qt
   core_interface
-  riecoinqt
-  riecoin_node
+  freycoinqt
+  freycoin_node
 )
 
-import_plugins(riecoin-qt)
-install_binary_component(riecoin-qt HAS_MANPAGE)
+import_plugins(freycoin-qt)
+install_binary_component(freycoin-qt HAS_MANPAGE)
 if(WIN32)
-  set_target_properties(riecoin-qt PROPERTIES WIN32_EXECUTABLE TRUE)
+  set_target_properties(freycoin-qt PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
 if(ENABLE_IPC)
-  add_executable(riecoin-gui
+  add_executable(freycoin-gui
     main.cpp
-    ../init/riecoin-gui.cpp
+    ../init/freycoin-gui.cpp
   )
-  target_link_libraries(riecoin-gui
+  target_link_libraries(freycoin-gui
     core_interface
-    riecoinqt
-    riecoin_node
-    riecoin_ipc
+    freycoinqt
+    freycoin_node
+    freycoin_ipc
   )
-  import_plugins(riecoin-gui)
-  install_binary_component(riecoin-gui INTERNAL)
+  import_plugins(freycoin-gui)
+  install_binary_component(freycoin-gui INTERNAL)
   if(WIN32)
-    set_target_properties(riecoin-gui PROPERTIES WIN32_EXECUTABLE TRUE)
+    set_target_properties(freycoin-gui PROPERTIES WIN32_EXECUTABLE TRUE)
   endif()
 endif()
 

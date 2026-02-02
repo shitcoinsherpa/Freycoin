@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022- The Bitcoin Core developers
-# Copyright (c) 2013-present The Riecoin developers
+# Copyright (c) 2013-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """
@@ -85,7 +85,7 @@ class P2PIBDStallingTest(BitcoinTestFramework):
         # returning the number of downloaded (but not connected) blocks.
         bytes_recv = 172761 if not self.options.v2transport else 169692
         # self.wait_until(lambda: self.total_bytes_recv_for_blocks() == bytes_recv) # Original from Bitcoin Core
-        # Todo: calculate the exact byte value for Riecoin
+        # Todo: calculate the exact byte value for Freycoin
         self.wait_until(lambda: self.total_bytes_recv_for_blocks() > bytes_recv)
 
         self.all_sync_send_with_ping(peers)

@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -22,8 +22,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <gmp.h>
-#include <gmpxx.h>
 
 /**
  * Maximum amount of time that a block timestamp is allowed to exceed the
@@ -189,12 +187,17 @@ public:
     //! @sa ActivateSnapshot
     uint32_t nStatus GUARDED_BY(::cs_main){0};
 
-    //! block header
+    //! block header (consensus fields)
     int32_t nVersion{0};
     uint256 hashMerkleRoot{};
-    int64_t nTime{0};
-    uint32_t nBits{0};
-    arith_uint256 nNonce{0};
+    uint32_t nTime{0};
+    uint64_t nDifficulty{0};
+    uint32_t nNonce{0};
+
+    //! block header (proof fields)
+    uint16_t nShift{0};
+    uint256 nAdd{};
+    uint16_t nReserved{0};
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     //! Initialized to SEQ_ID_INIT_FROM_DISK{1} when loading blocks from disk, except for blocks
@@ -208,8 +211,11 @@ public:
         : nVersion{block.nVersion},
           hashMerkleRoot{block.hashMerkleRoot},
           nTime{block.nTime},
-          nBits{block.nBits},
-          nNonce{block.nNonce}
+          nDifficulty{block.nDifficulty},
+          nNonce{block.nNonce},
+          nShift{block.nShift},
+          nAdd{block.nAdd},
+          nReserved{block.nReserved}
     {
     }
 
@@ -243,8 +249,11 @@ public:
             block.hashPrevBlock = pprev->GetBlockHash();
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime = nTime;
-        block.nBits = nBits;
+        block.nDifficulty = nDifficulty;
         block.nNonce = nNonce;
+        block.nShift = nShift;
+        block.nAdd = nAdd;
+        block.nReserved = nReserved;
         return block;
     }
 
@@ -395,13 +404,18 @@ public:
         if (obj.nStatus & BLOCK_HAVE_DATA) READWRITE(VARINT(obj.nDataPos));
         if (obj.nStatus & BLOCK_HAVE_UNDO) READWRITE(VARINT(obj.nUndoPos));
 
-        // block header
+        // block header (consensus fields)
         READWRITE(obj.nVersion);
         READWRITE(obj.hashPrev);
         READWRITE(obj.hashMerkleRoot);
         READWRITE(obj.nTime);
-        READWRITE(obj.nBits);
+        READWRITE(obj.nDifficulty);
         READWRITE(obj.nNonce);
+
+        // block header (proof fields)
+        READWRITE(obj.nShift);
+        READWRITE(obj.nAdd);
+        READWRITE(obj.nReserved);
     }
 
     uint256 ConstructBlockHash() const
@@ -411,8 +425,11 @@ public:
         block.hashPrevBlock = hashPrev;
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime = nTime;
-        block.nBits = nBits;
+        block.nDifficulty = nDifficulty;
         block.nNonce = nNonce;
+        block.nShift = nShift;
+        block.nAdd = nAdd;
+        block.nReserved = nReserved;
         return block.GetHash();
     }
 

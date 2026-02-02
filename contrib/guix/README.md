@@ -1,6 +1,6 @@
-# Bootstrappable Riecoin Core Builds
+# Bootstrappable Freycoin Core Builds
 
-This directory contains the files necessary to perform bootstrappable Riecoin
+This directory contains the files necessary to perform bootstrappable Freycoin
 Core builds.
 
 [Bootstrappability][b17e] furthers our binary security guarantees by allowing us
@@ -56,7 +56,7 @@ tar -C depends/SDKs -xaf /path/to/SDK/tarball
 section below before starting a build. For a full list of customization options, see the
 [recognized environment variables][env-vars-list] section.*
 
-To build Riecoin Core reproducibly with all default options, invoke the
+To build Freycoin Core reproducibly with all default options, invoke the
 following from the top of a clean repository:
 
 ```sh

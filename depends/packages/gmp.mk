@@ -9,7 +9,7 @@ $(package)_config_opts=--disable-shared --enable-cxx --enable-fat CFLAGS="-O2 -f
 endef
 
 define $(package)_config_cmds
-  ./configure $($(package)_config_opts) --build=$(build) --host=$(host) --prefix=$(host_prefix)
+  CC_FOR_BUILD=gcc CPP_FOR_BUILD="gcc -E" ./configure $($(package)_config_opts) --build=$(build) --host=$(host) --prefix=$(host_prefix)
 endef
 
 define $(package)_build_cmds

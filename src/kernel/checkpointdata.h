@@ -1,9 +1,9 @@
-// Copyright (c) 2025-present The Riecoin developers
+// Copyright (c) 2025-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef RIECOIN_KERNEL_CHECKPOINTDATA_H
-#define RIECOIN_KERNEL_CHECKPOINTDATA_H
+#ifndef FREYCOIN_KERNEL_CHECKPOINTDATA_H
+#define FREYCOIN_KERNEL_CHECKPOINTDATA_H
 
 #include <kernel/chainparams.h>
 
@@ -1335,4 +1335,4 @@ static const CheckpointData testCheckpointData = {
 	uint256{"d3a817e17f519106caa781263c26bb03f611801b718c8d2553d42bf953ba2cf1"}, 178000 // Assumed Valid Block
 };
 
-#endif // RIECOIN_KERNEL_CHECKPOINTDATA_H
+#endif // FREYCOIN_KERNEL_CHECKPOINTDATA_H

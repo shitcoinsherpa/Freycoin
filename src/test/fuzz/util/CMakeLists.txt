@@ -16,7 +16,7 @@ target_link_libraries(test_fuzz
   PRIVATE
     core_interface
     test_util
-    riecoin_node
+    freycoin_node
     Boost::headers
 )
 

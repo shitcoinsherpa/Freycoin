@@ -4,7 +4,7 @@
 
 #include <node/kernel_notifications.h>
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <chain.h>
 #include <common/args.h>

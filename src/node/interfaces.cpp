@@ -1,5 +1,5 @@
 // Copyright (c) 2018-present The Bitcoin Core developers
-// Copyright (c) 2018-present The Riecoin developers
+// Copyright (c) 2018-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -63,7 +63,7 @@
 #include <validation.h>
 #include <validationinterface.h>
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <any>
 #include <memory>

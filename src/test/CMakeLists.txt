@@ -1,11 +1,11 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
 # Do not use generator expressions in test sources because the
 # SOURCES property is processed to gather test suite macros.
-add_executable(test_riecoin
+add_executable(test_freycoin
   main.cpp
   addrman_tests.cpp
   allocator_tests.cpp
@@ -76,6 +76,9 @@ add_executable(test_riecoin
   policyestimator_tests.cpp
   pool_tests.cpp
   pow_tests.cpp
+  pow_math_tests.cpp
+  primality_tests.cpp
+  difficulty_adjustment_tests.cpp
   prevector_tests.cpp
   raii_event_tests.cpp
   random_tests.cpp
@@ -133,7 +136,7 @@ add_executable(test_riecoin
 )
 
 include(TargetDataSources)
-target_json_data_sources(test_riecoin
+target_json_data_sources(test_freycoin
   data/base58_encode_decode.json
   data/bip341_wallet_vectors.json
   data/blockfilters.json
@@ -144,22 +147,25 @@ target_json_data_sources(test_riecoin
   data/tx_invalid.json
   data/tx_valid.json
 )
-target_raw_data_sources(test_riecoin NAMESPACE test::data
+target_raw_data_sources(test_freycoin NAMESPACE test::data
   data/asmap.raw
 )
 
-add_windows_application_manifest(test_riecoin)
+add_windows_application_manifest(test_freycoin)
 
-target_link_libraries(test_riecoin
+target_link_libraries(test_freycoin
   core_interface
   test_util
-  riecoin_cli
-  riecoin_node
-  riecoin_consensus
+  freycoin_cli
+  freycoin_node
+  freycoin_pow
+  freycoin_consensus
   minisketch
   secp256k1
   Boost::headers
   libevent::extra
+  $<TARGET_NAME_IF_EXISTS:GMP::GMP>
+  $<TARGET_NAME_IF_EXISTS:MPFR::MPFR>
 )
 
 if(ENABLE_WALLET)
@@ -167,18 +173,18 @@ if(ENABLE_WALLET)
 endif()
 
 if(ENABLE_IPC)
-  target_link_libraries(riecoin_ipc_test
+  target_link_libraries(freycoin_ipc_test
     PRIVATE
       core_interface
       univalue
       Boost::headers
   )
 
-  target_sources(test_riecoin
+  target_sources(test_freycoin
     PRIVATE
       ipc_tests.cpp
   )
-  target_link_libraries(test_riecoin riecoin_ipc_test riecoin_ipc)
+  target_link_libraries(test_freycoin freycoin_ipc_test freycoin_ipc)
 
   configure_file(.clang-tidy.in .clang-tidy USE_SOURCE_PERMISSIONS COPYONLY)
 endif()
@@ -198,7 +204,7 @@ function(add_boost_test source_file)
   )
   foreach(test_suite_name IN LISTS test_suite_macro)
     add_test(NAME ${test_suite_name}
-      COMMAND test_riecoin --run_test=${test_suite_name} --catch_system_error=no --log_level=test_suite -- DEBUG_LOG_OUT
+      COMMAND test_freycoin --run_test=${test_suite_name} --catch_system_error=no --log_level=test_suite -- DEBUG_LOG_OUT
     )
     set_property(TEST ${test_suite_name} PROPERTY
       SKIP_REGULAR_EXPRESSION
@@ -210,8 +216,8 @@ function(add_boost_test source_file)
 endfunction()
 
 function(add_all_test_targets)
-  get_target_property(test_source_dir test_riecoin SOURCE_DIR)
-  get_target_property(test_sources test_riecoin SOURCES)
+  get_target_property(test_source_dir test_freycoin SOURCE_DIR)
+  get_target_property(test_sources test_freycoin SOURCES)
   foreach(test_source ${test_sources})
     cmake_path(IS_RELATIVE test_source result)
     if(result)
@@ -223,4 +229,4 @@ endfunction()
 
 add_all_test_targets()
 
-install_binary_component(test_riecoin INTERNAL)
+install_binary_component(test_freycoin INTERNAL)

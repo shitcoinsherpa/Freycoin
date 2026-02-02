@@ -1,0 +1,13 @@
+--- a/qtbase/src/gui/rhi/qrhi.cpp
++++ b/qtbase/src/gui/rhi/qrhi.cpp
+@@ -12,10 +12,6 @@
+ #if QT_CONFIG(vulkan)
+ #include "qrhivulkan_p.h"
+ #endif
+-#ifdef Q_OS_WIN
+-#include "qrhid3d11_p.h"
+-#include "qrhid3d12_p.h"
+-#endif
+ #if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+ #include "qrhimetal_p.h"
+ #endif

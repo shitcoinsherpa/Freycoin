@@ -1,0 +1,25 @@
+--- a/qtbase/src/gui/rhi/qrhi.cpp
++++ b/qtbase/src/gui/rhi/qrhi.cpp
+@@ -8323,22 +8323,8 @@
+         break;
+ #endif
+     case D3D12:
+-#ifdef Q_OS_WIN
+-#ifdef QRHI_D3D12_AVAILABLE
+-        r->d = new QRhiD3D12(static_cast<QRhiD3D12InitParams *>(params),
+-                             static_cast<QRhiD3D12NativeHandles *>(importDevice));
+-        break;
+-#else
+-        qWarning("Qt was built without Direct3D 12 support. "
+-                 "This is likely due to having ancient SDK headers (such as d3d12.h) in the Qt build environment. "
+-                 "Rebuild Qt with an SDK supporting D3D12 features introduced in Windows 10 version 1703, "
+-                 "or use an MSVC build as those typically are built with more up-to-date SDKs.");
+-        break;
+-#endif
+-#else
+         qWarning("This platform has no Direct3D 12 support");
+         break;
+-#endif
+     }
+ 
+     if (r->d) {

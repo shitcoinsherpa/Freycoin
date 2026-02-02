@@ -1,9 +1,9 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2024-present The Riecoin developers
+// Copyright (c) 2024-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <qt/optionsmodel.h>
 
@@ -187,7 +187,7 @@ bool OptionsModel::Init(bilingual_str& error)
 
     // Display
     if (!settings.contains("strThirdPartyTxUrls"))
-        settings.setValue("strThirdPartyTxUrls", "https://riecoin.xyz/Explorer/Transaction/%s");
+        settings.setValue("strThirdPartyTxUrls", "https://freycoin.xyz/Explorer/Transaction/%s");
     strThirdPartyTxUrls = settings.value("strThirdPartyTxUrls", "").toString();
 
     if (!settings.contains("fCoinControlFeatures"))

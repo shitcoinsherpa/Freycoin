@@ -16,11 +16,11 @@ For example:
 BUILDDIR=$PWD/my-build-dir contrib/devtools/gen-manpages.py
 ```
 
-gen-riecoin-conf.sh
+gen-freycoin-conf.sh
 ===================
 
-Generates a riecoin.conf file in `share/examples/` by parsing the output from `riecoind --help`. This script is run during the
-release process to include a riecoin.conf with the release binaries and can also be run by users to generate a file locally.
+Generates a freycoin.conf file in `share/examples/` by parsing the output from `freycoind --help`. This script is run during the
+release process to include a freycoin.conf with the release binaries and can also be run by users to generate a file locally.
 When generating a file as part of the release process, make sure to commit the changes after running the script.
 
 This script assumes a build directory named `build` as suggested by example build documentation.
@@ -28,7 +28,7 @@ To use it with a different build directory, set `BUILDDIR`.
 For example:
 
 ```bash
-BUILDDIR=$PWD/my-build-dir contrib/devtools/gen-riecoin-conf.sh
+BUILDDIR=$PWD/my-build-dir contrib/devtools/gen-freycoin-conf.sh
 ```
 
 circular-dependencies.py

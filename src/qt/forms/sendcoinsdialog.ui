@@ -823,7 +823,7 @@
                <item>
                 <layout class="QHBoxLayout" name="horizontalLayoutFee13">
                  <item>
-                  <widget class="RiecoinAmountField" name="customFee"/>
+                  <widget class="FreycoinAmountField" name="customFee"/>
                  </item>
                  <item>
                   <widget class="QLabel" name="labelCustomPerKilobyte">
@@ -1084,7 +1084,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
         <string>S&amp;end</string>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/send</normaloff>:/icons/send</iconset>
        </property>
        <property name="autoDefault">
@@ -1110,7 +1110,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
         <string>Clear &amp;All</string>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/remove</normaloff>:/icons/remove</iconset>
        </property>
        <property name="autoDefault">
@@ -1127,7 +1127,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
         <string>Add &amp;Recipient</string>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/add</normaloff>:/icons/add</iconset>
        </property>
        <property name="autoDefault">
@@ -1198,14 +1198,14 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
    <header>qt/qvalidatedlineedit.h</header>
   </customwidget>
   <customwidget>
-   <class>RiecoinAmountField</class>
+   <class>FreycoinAmountField</class>
    <extends>QLineEdit</extends>
-   <header>qt/riecoinamountfield.h</header>
+   <header>qt/freycoinamountfield.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="../riecoin.qrc"/>
+  <include location="../freycoin.qrc"/>
  </resources>
  <connections/>
  <buttongroups>

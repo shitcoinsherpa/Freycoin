@@ -1,5 +1,5 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
@@ -13,4 +13,4 @@ target_sources(fuzz
     spend.cpp
     wallet_bdb_parser.cpp
 )
-target_link_libraries(fuzz riecoin_wallet)
+target_link_libraries(fuzz freycoin_wallet)

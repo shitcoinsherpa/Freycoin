@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-present The Bitcoin Core developers
-# Copyright (c) 2015-present The Riecoin developers
+# Copyright (c) 2015-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test block processing."""
@@ -106,7 +106,7 @@ class FullBlockTest(BitcoinTestFramework):
         self.spendable_outputs = []
 
         # Create a new block
-        # Commented out invalid Coinbase (cannot test anymore with unconditional Bip34 enforcement in Riecoin.)
+        # Commented out invalid Coinbase (cannot test anymore with unconditional Bip34 enforcement in Freycoin.)
         b_dup_cb = self.next_block('dup_cb')
         # b_dup_cb.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
         duplicate_tx = b_dup_cb.vtx[0]
@@ -659,7 +659,7 @@ class FullBlockTest(BitcoinTestFramework):
         b47.nNonce = uint256_from_str(bytearray.fromhex("0200000000000000000000000000000000000000000000000000000000000000"))
         self.send_blocks([b47], False, force_send=True, reject_reason='short-constellation', reconnect=True)
 
-        # In Riecoin, Blocks > 15 s in the future are rejected, but in RegTest, this is reverted to the Bitcoin's 2 h until all the affected tests are rewritten.
+        # In Freycoin, Blocks > 15 s in the future are rejected, but in RegTest, this is reverted to the Bitcoin's 2 h until all the affected tests are rewritten.
         self.log.info("Reject a block with a timestamp >2 hours in the future")
         self.move_tip(44)
         b48 = self.next_block(48)
@@ -1387,7 +1387,7 @@ class FullBlockTest(BitcoinTestFramework):
         if spend is None:
             block = create_block(base_block_hash, coinbase, block_time, version=version)
         else:
-            coinbase.vout[0].nValue += spend.vout[0].nValue//2 - 1  # burn half as per Riecoin Burn Policy, rest but one riemann to fees
+            coinbase.vout[0].nValue += spend.vout[0].nValue//2 - 1  # burn half as per Freycoin Burn Policy, rest but one riemann to fees
             tx = self.create_tx(spend, 0, 1, output_script=script)  # spend 1 riemann
             self.sign_tx(tx, spend)
             block = create_block(base_block_hash, coinbase, block_time, version=version, txlist=[tx])

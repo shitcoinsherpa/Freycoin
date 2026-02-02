@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -118,13 +118,13 @@ BOOST_AUTO_TEST_CASE(findearliestatleast_test)
             int64_t medianTimePast = vBlocksMain[i].GetMedianTimePast();
             int r{int(m_rng.randrange(medianTimePast))};
             vBlocksMain[i].nTime = uint32_t(r + medianTimePast);
-            vBlocksMain[i].nTimeMax = std::max(vBlocksMain[i].nTime, vBlocksMain[i-1].nTimeMax);
+            vBlocksMain[i].nTimeMax = std::max(static_cast<int64_t>(vBlocksMain[i].nTime), vBlocksMain[i-1].nTimeMax);
         }
     }
     // Check that we set nTimeMax up correctly.
     int64_t curTimeMax(0);
     for (unsigned int i=0; i<vBlocksMain.size(); ++i) {
-        curTimeMax = std::max(curTimeMax, vBlocksMain[i].nTime);
+        curTimeMax = std::max(curTimeMax, static_cast<int64_t>(vBlocksMain[i].nTime));
         BOOST_CHECK(curTimeMax == vBlocksMain[i].nTimeMax);
     }
 

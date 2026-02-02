@@ -1,9 +1,9 @@
-// Copyright (c) 2025-present The Riecoin developers
+// Copyright (c) 2025-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef RIECOIN_CONSENSUS_BLACKLIST_H
-#define RIECOIN_CONSENSUS_BLACKLIST_H
+#ifndef FREYCOIN_CONSENSUS_BLACKLIST_H
+#define FREYCOIN_CONSENSUS_BLACKLIST_H
 
 #include <kernel/chainparams.h>
 
@@ -220,4 +220,4 @@ static const Blacklist blacklist = {
 	}
 };
 
-#endif // RIECOIN_CONSENSUS_BLACKLIST_H
+#endif // FREYCOIN_CONSENSUS_BLACKLIST_H

@@ -2,10 +2,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <kernel/riecoinkernel.h>
-#include <kernel/riecoinkernel_wrapper.h>
+#include <kernel/freycoinkernel.h>
+#include <kernel/freycoinkernel_wrapper.h>
 
-#define BOOST_TEST_MODULE Riecoin Kernel Test Suite
+#define BOOST_TEST_MODULE Freycoin Kernel Test Suite
 #include <boost/test/included/unit_test.hpp>
 
 #include <test/kernel/block_data.h>

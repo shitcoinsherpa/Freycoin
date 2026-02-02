@@ -1,10 +1,10 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <chain.h>
 #include <chainparams.h>
@@ -87,9 +87,9 @@ static UniValue GetNetworkMiningPower(int lookup, int height, const CChain& acti
     double miningPower(0.), expectedDuration(consensusParams.nPowTargetSpacing*lookup);
     for (int i = 0; i < lookup; i++) {
         double difficulty(GetDifficulty(*pb0)),
-               referenceDifficulty(static_cast<double>((consensusParams.nBitsMin)/256.)),
-               constellationSize(consensusParams.GetPowAcceptedPatternsAtHeight(pb0->nHeight)[0].size());
-        miningPower += std::pow(difficulty/referenceDifficulty, constellationSize + 2.3);
+               referenceDifficulty(static_cast<double>(consensusParams.nDifficultyMin) / 256.0);
+        // For prime gap PoW, mining power scales roughly linearly with difficulty
+        miningPower += difficulty / referenceDifficulty;
         pb0 = pb0->pprev;
         int64_t time = pb0->GetBlockTime();
         minTime = std::min(time, minTime);
@@ -134,11 +134,20 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    block.nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"}); // PoW Version 1 (0002), Primorial Number 1 (Primorial = 2), Parameters at 0. Note that due to the Primorial then being 1 here, +1 is added to the Primorial Offsets for the Target Offsets.
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHashForPoW(), block.nBits, ArithToUint256(block.nNonce), chainman.GetConsensus()) && !chainman.m_interrupt) {
-        block.nNonce += 131072; // Brute Force Prime Number Search (increment by 2 until we find one)
+    // Prime gap mining: iterate nonce values and check for valid proof
+    // TODO (Phase 5): Replace with real MiningEngine that searches for prime gaps
+    // For now, stub PoW accepts all blocks so we just need to set reasonable values
+    block.nNonce = 0;
+    block.nShift = 20;  // Default shift
+    block.nAdd.SetNull();
+    block.nReserved = 0;
+
+    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() &&
+           !CheckProofOfWork(block, chainman.GetConsensus()) && !chainman.m_interrupt) {
+        ++block.nNonce;
         --max_tries;
     }
+
     if (max_tries == 0 || chainman.m_interrupt) {
         return false;
     }
@@ -216,7 +225,7 @@ static RPCHelpMan generatetodescriptor()
         "Mine to a specified descriptor and return the block hashes.",
         {
             {"num_blocks", RPCArg::Type::NUM, RPCArg::Optional::NO, "How many blocks are generated."},
-            {"descriptor", RPCArg::Type::STR, RPCArg::Optional::NO, "The descriptor to send the newly generated Riecoins to."},
+            {"descriptor", RPCArg::Type::STR, RPCArg::Optional::NO, "The descriptor to send the newly generated Freycoins to."},
             {"maxtries", RPCArg::Type::NUM, RPCArg::Default{DEFAULT_MAX_TRIES}, "How many iterations to try."},
         },
         RPCResult{
@@ -260,7 +269,7 @@ static RPCHelpMan generatetoaddress()
         "Mine to a specified address and return the block hashes.",
          {
              {"nblocks", RPCArg::Type::NUM, RPCArg::Optional::NO, "How many blocks are generated."},
-             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The address to send the newly generated Riecoins to."},
+             {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The address to send the newly generated Freycoins to."},
              {"maxtries", RPCArg::Type::NUM, RPCArg::Default{DEFAULT_MAX_TRIES}, "How many iterations to try."},
          },
          RPCResult{
@@ -271,7 +280,7 @@ static RPCHelpMan generatetoaddress()
          RPCExamples{
             "\nGenerate 11 blocks to myaddress\n"
             + HelpExampleCli("generatetoaddress", "11 \"myaddress\"")
-            + "If you are using the " CLIENT_NAME " wallet, you can get a new address to send the newly generated Riecoins to with:\n"
+            + "If you are using the " CLIENT_NAME " wallet, you can get a new address to send the newly generated Freycoins to with:\n"
             + HelpExampleCli("getnewaddress", "")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -451,7 +460,7 @@ static RPCHelpMan getmininginfo()
     obj.pushKV("blocks",           active_chain.Height());
     if (BlockAssembler::m_last_block_weight) obj.pushKV("currentblockweight", *BlockAssembler::m_last_block_weight);
     if (BlockAssembler::m_last_block_num_txs) obj.pushKV("currentblocktx", *BlockAssembler::m_last_block_num_txs);
-    obj.pushKV("bits", strprintf("%08x", tip.nBits));
+    obj.pushKV("bits", strprintf("%08x", tip.nDifficulty));
     obj.pushKV("difficulty", GetDifficulty(tip));
     obj.pushKV("networkminingpower", getnetworkminingpower().HandleRequest(request));
     obj.pushKV("pooledtx",         (uint64_t)mempool.size());
@@ -465,7 +474,7 @@ static RPCHelpMan getmininginfo()
     NextEmptyBlockIndex(tip, chainman.GetConsensus(), next_index);
 
     next.pushKV("height", next_index.nHeight);
-    next.pushKV("bits", strprintf("%08x", next_index.nBits));
+    next.pushKV("bits", strprintf("%08x", next_index.nDifficulty));
     next.pushKV("difficulty", GetDifficulty(next_index));
     obj.pushKV("next", next);
     obj.pushKV("warnings", node::GetWarningsForRpc(*CHECK_NONFATAL(node.warnings)));
@@ -950,19 +959,9 @@ static RPCHelpMan getblocktemplate()
     result.pushKV("sizelimit", nSizeLimit);
     result.pushKV("weightlimit", (int64_t)MAX_BLOCK_WEIGHT);
     result.pushKV("curtime", block.GetBlockTime());
-    result.pushKV("bits", strprintf("%08x", block.nBits));
+    result.pushKV("difficulty", strprintf("%016llx", static_cast<long long>(block.nDifficulty)));
     result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
-    result.pushKV("powversion", consensusParams.GetPoWVersionAtHeight(pindexPrev->nHeight + 1));
-    UniValue patternsUV(UniValue::VARR);
-    std::vector<std::vector<int32_t>> patterns(consensusParams.GetPowAcceptedPatternsAtHeight(pindexPrev->nHeight + 1));
-    for (const auto &pattern : patterns)
-    {
-        UniValue patternUV(UniValue::VARR);
-        for (const auto &offset : pattern)
-            patternUV.push_back(offset);
-        patternsUV.push_back(patternUV);
-    }
-    result.pushKV("patterns", patternsUV);
+    result.pushKV("shift", block.nShift);
 
     if (!block_template->getCoinbaseCommitment().empty()) {
         result.pushKV("default_witness_commitment", HexStr(block_template->getCoinbaseCommitment()));

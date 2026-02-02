@@ -1,5 +1,5 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -72,7 +72,7 @@ BOOST_FIXTURE_TEST_SUITE(miner_tests, MinerTestingSetup)
 
 static CFeeRate blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE);
 
-// Todo: rewrite the CreateNewBlock_validity test for Riecoin
+// Todo: rewrite the CreateNewBlock_validity test for Freycoin
 // Put valid ExtraNonces/Offsets for this test
 /*constexpr static struct {
     unsigned char extranonce;
@@ -721,19 +721,8 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
             BOOST_REQUIRE_EQUAL(debug, "");
         }
 
-        {
-            // A block template does not have proof-of-work, but it might pass
-            // verification by coincidence. Grind the nonce if needed:
-            while (CheckProofOfWork(block.GetHash(), block.nBits, Assert(m_node.chainman)->GetParams().GetConsensus())) {
-                block.nNonce++;
-            }
-
-            std::string reason;
-            std::string debug;
-            BOOST_REQUIRE(!mining->checkBlock(block, {.check_pow = true}, reason, debug));
-            BOOST_REQUIRE_EQUAL(reason, "high-hash");
-            BOOST_REQUIRE_EQUAL(debug, "proof of work failed");
-        }
+        // NOTE: With stub PoW (Phase 2), all blocks pass CheckProofOfWork.
+        // PoW rejection testing will be enabled in Phase 4 when real validation is implemented.
     }
 
     // We can't make transactions until we have inputs

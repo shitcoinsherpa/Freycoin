@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-present The Bitcoin Core developers
-# Copyright (c) 2014-present The Riecoin developers
+# Copyright (c) 2014-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Helpful routines for regression testing."""
@@ -300,12 +300,12 @@ def get_binary_paths(config):
 
     paths = types.SimpleNamespace()
     binaries = {
-        "riecoin": "BITCOIN_BIN",
-        "riecoind": "BITCOIND",
-        "riecoin-cli": "BITCOINCLI",
-        "riecoin-tx": "BITCOINTX",
-        "riecoin-chainstate": "BITCOINCHAINSTATE",
-        "riecoin-wallet": "BITCOINWALLET",
+        "freycoin": "BITCOIN_BIN",
+        "freycoind": "BITCOIND",
+        "freycoin-cli": "BITCOINCLI",
+        "freycoin-tx": "BITCOINTX",
+        "freycoin-chainstate": "BITCOINCHAINSTATE",
+        "freycoin-wallet": "BITCOINWALLET",
     }
     # Set paths to bitcoin core binaries allowing overrides with environment
     # variables.
@@ -514,7 +514,7 @@ def initialize_datadir(dirname, n, chain, disable_autoconnect=True):
     datadir = get_datadir_path(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
-    write_config(os.path.join(datadir, "riecoin.conf"), n=n, chain=chain, disable_autoconnect=disable_autoconnect)
+    write_config(os.path.join(datadir, "freycoin.conf"), n=n, chain=chain, disable_autoconnect=disable_autoconnect)
     os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
     os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -583,18 +583,18 @@ def get_temp_default_datadir(temp_dir: pathlib.Path) -> tuple[dict, pathlib.Path
     temp_dir, as well as the complete path it would return."""
     if platform.system() == "Windows":
         env = dict(APPDATA=str(temp_dir))
-        datadir = temp_dir / "Riecoin"
+        datadir = temp_dir / "Freycoin"
     else:
         env = dict(HOME=str(temp_dir))
         if platform.system() == "Darwin":
-            datadir = temp_dir / "Library/Application Support/Riecoin"
+            datadir = temp_dir / "Library/Application Support/Freycoin"
         else:
-            datadir = temp_dir / ".riecoin"
+            datadir = temp_dir / ".freycoin"
     return env, datadir
 
 
 def append_config(datadir, options):
-    with open(os.path.join(datadir, "riecoin.conf"), 'a', encoding='utf8') as f:
+    with open(os.path.join(datadir, "freycoin.conf"), 'a', encoding='utf8') as f:
         for option in options:
             f.write(option + "\n")
 
@@ -602,8 +602,8 @@ def append_config(datadir, options):
 def get_auth_cookie(datadir, chain):
     user = None
     password = None
-    if os.path.isfile(os.path.join(datadir, "riecoin.conf")):
-        with open(os.path.join(datadir, "riecoin.conf"), 'r', encoding='utf8') as f:
+    if os.path.isfile(os.path.join(datadir, "freycoin.conf")):
+        with open(os.path.join(datadir, "freycoin.conf"), 'r', encoding='utf8') as f:
             for line in f:
                 if line.startswith("rpcuser="):
                     assert user is None  # Ensure that there is only one rpcuser line

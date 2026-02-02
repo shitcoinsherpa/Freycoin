@@ -5,7 +5,7 @@
 
 #include <util/fs_helpers.h>
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <logging.h>
 #include <sync.h>

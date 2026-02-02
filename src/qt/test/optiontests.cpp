@@ -2,12 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <common/args.h>
 #include <init.h>
 #include <qt/guiutil.h>
-#include <qt/riecoin.h>
+#include <qt/freycoin.h>
 #include <qt/test/optiontests.h>
 #include <test/util/setup_common.h>
 

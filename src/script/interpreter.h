@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -150,7 +150,29 @@ enum class script_verify_flag_name : uint8_t {
     //
     SCRIPT_VERIFY_END_MARKER
 };
-using enum script_verify_flag_name;
+// GCC 10 doesn't support "using enum", provide explicit aliases for compatibility
+constexpr auto SCRIPT_VERIFY_P2SH = script_verify_flag_name::SCRIPT_VERIFY_P2SH;
+constexpr auto SCRIPT_VERIFY_STRICTENC = script_verify_flag_name::SCRIPT_VERIFY_STRICTENC;
+constexpr auto SCRIPT_VERIFY_DERSIG = script_verify_flag_name::SCRIPT_VERIFY_DERSIG;
+constexpr auto SCRIPT_VERIFY_LOW_S = script_verify_flag_name::SCRIPT_VERIFY_LOW_S;
+constexpr auto SCRIPT_VERIFY_NULLDUMMY = script_verify_flag_name::SCRIPT_VERIFY_NULLDUMMY;
+constexpr auto SCRIPT_VERIFY_SIGPUSHONLY = script_verify_flag_name::SCRIPT_VERIFY_SIGPUSHONLY;
+constexpr auto SCRIPT_VERIFY_MINIMALDATA = script_verify_flag_name::SCRIPT_VERIFY_MINIMALDATA;
+constexpr auto SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS = script_verify_flag_name::SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS;
+constexpr auto SCRIPT_VERIFY_CLEANSTACK = script_verify_flag_name::SCRIPT_VERIFY_CLEANSTACK;
+constexpr auto SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY = script_verify_flag_name::SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY;
+constexpr auto SCRIPT_VERIFY_CHECKSEQUENCEVERIFY = script_verify_flag_name::SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+constexpr auto SCRIPT_VERIFY_WITNESS = script_verify_flag_name::SCRIPT_VERIFY_WITNESS;
+constexpr auto SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM = script_verify_flag_name::SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM;
+constexpr auto SCRIPT_VERIFY_MINIMALIF = script_verify_flag_name::SCRIPT_VERIFY_MINIMALIF;
+constexpr auto SCRIPT_VERIFY_NULLFAIL = script_verify_flag_name::SCRIPT_VERIFY_NULLFAIL;
+constexpr auto SCRIPT_VERIFY_WITNESS_PUBKEYTYPE = script_verify_flag_name::SCRIPT_VERIFY_WITNESS_PUBKEYTYPE;
+constexpr auto SCRIPT_VERIFY_CONST_SCRIPTCODE = script_verify_flag_name::SCRIPT_VERIFY_CONST_SCRIPTCODE;
+constexpr auto SCRIPT_VERIFY_TAPROOT = script_verify_flag_name::SCRIPT_VERIFY_TAPROOT;
+constexpr auto SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION = script_verify_flag_name::SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION;
+constexpr auto SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS = script_verify_flag_name::SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS;
+constexpr auto SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = script_verify_flag_name::SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE;
+constexpr auto SCRIPT_VERIFY_END_MARKER = script_verify_flag_name::SCRIPT_VERIFY_END_MARKER;
 
 static constexpr int MAX_SCRIPT_VERIFY_FLAGS_BITS = static_cast<int>(SCRIPT_VERIFY_END_MARKER);
 

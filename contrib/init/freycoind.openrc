@@ -1,0 +1,93 @@
+#!/sbin/openrc-run
+
+# backward compatibility for existing gentoo layout 
+#
+if [ -d "/var/lib/freycoin/.freycoin" ]; then
+	FREYCOIND_DEFAULT_DATADIR="/var/lib/freycoin/.freycoin"
+else
+	FREYCOIND_DEFAULT_DATADIR="/var/lib/freycoind"
+fi
+
+FREYCOIND_CONFIGFILE=${FREYCOIND_CONFIGFILE:-/etc/freycoin/freycoin.conf}
+FREYCOIND_PIDDIR=${FREYCOIND_PIDDIR:-/var/run/freycoind}
+FREYCOIND_PIDFILE=${FREYCOIND_PIDFILE:-${FREYCOIND_PIDDIR}/freycoind.pid}
+FREYCOIND_DATADIR=${FREYCOIND_DATADIR:-${FREYCOIND_DEFAULT_DATADIR}}
+FREYCOIND_USER=${FREYCOIND_USER:-${BITCOIN_USER:-freycoin}}
+FREYCOIND_GROUP=${FREYCOIND_GROUP:-freycoin}
+FREYCOIND_BIN=${FREYCOIND_BIN:-/usr/bin/freycoind}
+FREYCOIND_NICE=${FREYCOIND_NICE:-${NICELEVEL:-0}}
+FREYCOIND_OPTS="${FREYCOIND_OPTS:-${BITCOIN_OPTS}}"
+
+name="Freycoin Core Daemon"
+description="Freycoin cryptocurrency P2P network daemon"
+
+command="/usr/bin/freycoind"
+command_args="-pid=\"${FREYCOIND_PIDFILE}\" \
+		-conf=\"${FREYCOIND_CONFIGFILE}\" \
+		-datadir=\"${FREYCOIND_DATADIR}\" \
+		-daemon \
+		${FREYCOIND_OPTS}"
+
+required_files="${FREYCOIND_CONFIGFILE}"
+start_stop_daemon_args="-u ${FREYCOIND_USER} \
+			-N ${FREYCOIND_NICE} -w 2000"
+pidfile="${FREYCOIND_PIDFILE}"
+
+# The retry schedule to use when stopping the daemon. Could be either
+# a timeout in seconds or multiple signal/timeout pairs (like
+# "SIGKILL/180 SIGTERM/300")
+retry="${FREYCOIND_SIGTERM_TIMEOUT}"
+
+depend() {
+	need localmount net
+}
+
+# verify
+# 1) that the datadir exists and is writable (or create it)
+# 2) that a directory for the pid exists and is writable
+# 3) ownership and permissions on the config file
+start_pre() {
+	checkpath \
+	-d \
+	--mode 0750 \
+	--owner "${FREYCOIND_USER}:${FREYCOIND_GROUP}" \
+	"${FREYCOIND_DATADIR}"
+
+	checkpath \
+	-d \
+	--mode 0755 \
+	--owner "${FREYCOIND_USER}:${FREYCOIND_GROUP}" \
+	"${FREYCOIND_PIDDIR}"
+
+	checkpath -f \
+	-o "${FREYCOIND_USER}:${FREYCOIND_GROUP}" \
+	-m 0660 \
+	"${FREYCOIND_CONFIGFILE}"
+
+	checkconfig || return 1
+}
+
+checkconfig()
+{
+	if grep -qs '^rpcuser=' "${FREYCOIND_CONFIGFILE}" && \
+		! grep -qs '^rpcpassword=' "${FREYCOIND_CONFIGFILE}" ; then
+		eerror ""
+		eerror "ERROR: You must set a secure rpcpassword to run freycoind."
+		eerror "The setting must appear in ${FREYCOIND_CONFIGFILE}"
+		eerror ""
+		eerror "This password is security critical to securing wallets "
+		eerror "and must not be the same as the rpcuser setting."
+		eerror "You can generate a suitable random password using the following "
+		eerror "command from the shell:"
+		eerror ""
+		eerror "bash -c 'tr -dc a-zA-Z0-9 < /dev/urandom | head -c32 && echo'"
+		eerror ""
+		eerror "It is recommended that you also set alertnotify so you are "
+		eerror "notified of problems:"
+		eerror ""
+		eerror "ie: alertnotify=echo %%s | mail -s \"Freycoin Alert\"" \
+			"admin@foo.com"
+		eerror ""
+		return 1
+	fi
+}

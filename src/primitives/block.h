@@ -1,42 +1,75 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-2023 The Riecoin developers
+// Copyright (c) 2013-2023 The Freycoin developers
+// Copyright (c) 2014-2017 Jonnie Frey (Gapcoin)
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #ifndef BITCOIN_PRIMITIVES_BLOCK_H
 #define BITCOIN_PRIMITIVES_BLOCK_H
 
-#include <arith_uint256.h>
 #include <primitives/transaction.h>
 #include <serialize.h>
 #include <uint256.h>
 #include <util/time.h>
 
-/** Nodes collect new transactions into a block, hash them into a hash tree,
- * and scan through nonce values to make the block's hash satisfy proof-of-work
- * requirements.  When they solve the proof-of-work, they broadcast the block
- * to everyone and the block is added to the block chain.  The first transaction
- * in the block is a special one that creates a new coin owned by the creator
- * of the block.
+/**
+ * Freycoin Block Header (120 bytes)
+ *
+ * Proof-of-Work: Prime Gap Mining
+ * Miners search for prime gaps (consecutive primes far apart).
+ * The starting prime is: hash * 2^nShift + nAdd
+ * Difficulty is based on gap merit: gap_size / ln(start_prime)
+ *
+ * Layout:
+ *   Consensus fields (hashed, 84 bytes):
+ *     nVersion        4B   Block version
+ *     hashPrevBlock  32B   Previous block hash
+ *     hashMerkleRoot 32B   Merkle root of transactions
+ *     nTime           4B   Unix timestamp
+ *     nDifficulty     8B   Target difficulty (2^48 fixed-point merit)
+ *     nNonce          4B   Miner-iterated nonce
+ *
+ *   Proof fields (not hashed, 36 bytes):
+ *     nShift          2B   Left-shift amount for starting prime
+ *     nAdd           32B   Adder to construct starting prime
+ *     nReserved       2B   Reserved for future use
  */
 class CBlockHeader
 {
 public:
-    // header
+    // Consensus fields (included in GetHash())
     int32_t nVersion;
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
-    int64_t nTime;
-    uint32_t nBits;
-    arith_uint256 nNonce;
+    uint32_t nTime;
+    uint64_t nDifficulty;
+    uint32_t nNonce;
+
+    // Proof fields (excluded from GetHash())
+    uint16_t nShift;
+    uint256 nAdd;
+    uint16_t nReserved;
 
     CBlockHeader()
     {
         SetNull();
     }
 
-    SERIALIZE_METHODS(CBlockHeader, obj) { READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce); }
+    SERIALIZE_METHODS(CBlockHeader, obj)
+    {
+        READWRITE(
+            obj.nVersion,
+            obj.hashPrevBlock,
+            obj.hashMerkleRoot,
+            obj.nTime,
+            obj.nDifficulty,
+            obj.nNonce,
+            obj.nShift,
+            obj.nAdd,
+            obj.nReserved
+        );
+    }
 
     void SetNull()
     {
@@ -44,17 +77,20 @@ public:
         hashPrevBlock.SetNull();
         hashMerkleRoot.SetNull();
         nTime = 0;
-        nBits = 0;
+        nDifficulty = 0;
         nNonce = 0;
+        nShift = 0;
+        nAdd.SetNull();
+        nReserved = 0;
     }
 
     bool IsNull() const
     {
-        return (nBits == 0);
+        return (nDifficulty == 0);
     }
 
+    /** Compute block hash (consensus fields only, 84 bytes) */
     uint256 GetHash() const;
-    uint256 GetHashForPoW() const;
 
     NodeSeconds Time() const
     {
@@ -63,10 +99,8 @@ public:
 
     int64_t GetBlockTime() const
     {
-        return nTime;
+        return static_cast<int64_t>(nTime);
     }
-
-    int32_t GetPoWVersion() const;
 };
 
 
@@ -113,8 +147,11 @@ public:
         block.hashPrevBlock  = hashPrevBlock;
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
-        block.nBits          = nBits;
+        block.nDifficulty    = nDifficulty;
         block.nNonce         = nNonce;
+        block.nShift         = nShift;
+        block.nAdd           = nAdd;
+        block.nReserved      = nReserved;
         return block;
     }
 

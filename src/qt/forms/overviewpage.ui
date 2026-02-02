@@ -294,7 +294,7 @@
              <string notr="true">QLabel {color:#FF0000;}</string>
             </property>
             <property name="text">
-             <string>&lt;span style=&quot; font-weight:600;&quot;&gt;Currently Syncing, please wait a moment. Balances may be outdated. &lt;/span&gt;&lt;a href=&quot;https://riecoin.xyz/Core/Sync/&quot;&gt;&lt;span style=&quot; font-weight:504; text-decoration: underline; color:#1d99f3;&quot;&gt;Learn More&lt;/span&gt;&lt;/a&gt;</string>
+             <string>&lt;span style=&quot; font-weight:600;&quot;&gt;Currently Syncing, please wait a moment. Balances may be outdated. &lt;/span&gt;&lt;a href=&quot;https://freycoin.xyz/Core/Sync/&quot;&gt;&lt;span style=&quot; font-weight:504; text-decoration: underline; color:#1d99f3;&quot;&gt;Learn More&lt;/span&gt;&lt;/a&gt;</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>

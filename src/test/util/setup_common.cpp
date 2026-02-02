@@ -1,5 +1,5 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -32,6 +32,7 @@
 #include <policy/fees/block_policy_estimator.h>
 #include <pow.h>
 #include <random.h>
+#include <gmp.h>
 #include <rpc/blockchain.h>
 #include <rpc/register.h>
 #include <rpc/server.h>
@@ -39,6 +40,7 @@
 #include <script/sigcache.h>
 #include <streams.h>
 #include <test/util/coverage.h>
+#include <test/util/mining.h>
 #include <test/util/net.h>
 #include <test/util/random.h>
 #include <test/util/transaction_utils.h>
@@ -412,8 +414,9 @@ CBlock TestChain100Setup::CreateBlock(
     }
     RegenerateCommitments(block, *Assert(m_node.chainman));
 
-    block.nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"});
-    while (!CheckProofOfWork(block.GetHashForPoW(), block.nBits, ArithToUint256(block.nNonce), m_node.chainman->GetConsensus())) block.nNonce += 131072;
+    // Find valid prime gap proof
+    bool found = FindValidPoW(block, chainstate.m_chainman.GetConsensus());
+    Assert(found);
 
     return block;
 }

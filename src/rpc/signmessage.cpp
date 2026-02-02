@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -20,7 +20,7 @@ static RPCHelpMan verifycode()
     return RPCHelpMan{"verifycode",
         "Verify a code.",
         {
-            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Riecoin address to use for the code."},
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Freycoin address to use for the code."},
             {"code", RPCArg::Type::STR, RPCArg::Optional::NO, "The provided code (see signmessage)."},
         },
         RPCResult{
@@ -30,11 +30,11 @@ static RPCHelpMan verifycode()
             "\nUnlock the wallet for 30 seconds\n"
             + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the code\n"
-            + HelpExampleCli("generatecode", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\"") +
+            + HelpExampleCli("generatecode", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\"") +
             "\nVerify the code\n"
-            + HelpExampleCli("verifycode", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\" \"code\"") +
+            + HelpExampleCli("verifycode", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\" \"code\"") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("verifycode", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\", \"code\"")
+            + HelpExampleRpc("verifycode", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\", \"code\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
@@ -71,7 +71,7 @@ static RPCHelpMan verifymessage()
     return RPCHelpMan{"verifymessage",
         "Verify a signed message.",
         {
-            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Riecoin address to use for the signature."},
+            {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Freycoin address to use for the signature."},
             {"signature", RPCArg::Type::STR, RPCArg::Optional::NO, "The signature provided by the signer in base 64 encoding (see signmessage)."},
             {"message", RPCArg::Type::STR, RPCArg::Optional::NO, "The message that was signed."},
         },
@@ -82,11 +82,11 @@ static RPCHelpMan verifymessage()
             "\nUnlock the wallet for 30 seconds\n"
             + HelpExampleCli("walletpassphrase", "\"mypassphrase\" 30") +
             "\nCreate the signature\n"
-            + HelpExampleCli("signmessage", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\" \"my message\"") +
+            + HelpExampleCli("signmessage", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\" \"my message\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifymessage", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifymessage", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\" \"signature\" \"my message\"") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("verifymessage", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\", \"signature\", \"my message\"")
+            + HelpExampleRpc("verifymessage", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\", \"signature\", \"my message\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
@@ -133,9 +133,9 @@ static RPCHelpMan generatecode()
             "\nCreate the code\n"
             + HelpExampleCli("generatecode", "\"privkey\"") +
             "\nVerify the code\n"
-            + HelpExampleCli("verifycode", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\" \"code\"") +
+            + HelpExampleCli("verifycode", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\" \"code\"") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("generatecode", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\"")
+            + HelpExampleRpc("generatecode", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\"")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
@@ -175,7 +175,7 @@ static RPCHelpMan signmessagewithprivkey()
             "\nCreate the signature\n"
             + HelpExampleCli("signmessagewithprivkey", "\"privkey\" \"my message\"") +
             "\nVerify the signature\n"
-            + HelpExampleCli("verifymessage", "\"ric1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqkffwja\" \"signature\" \"my message\"") +
+            + HelpExampleCli("verifymessage", "\"frey1pv3mxn0d5g59n6w6qkxdmavw767wgwqpg499xssqfkjfu5gjt0wjqlz6d9k\" \"signature\" \"my message\"") +
             "\nAs a JSON-RPC call\n"
             + HelpExampleRpc("signmessagewithprivkey", "\"privkey\", \"my message\"")
         },

@@ -8,8 +8,8 @@
 #include <key.h>
 #include <logging.h>
 #include <qt/networkstyle.h>
-#include <qt/riecoin.h>
-#include <qt/riecoingui.h>
+#include <qt/freycoin.h>
+#include <qt/freycoingui.h>
 #include <qt/rpcconsole.h>
 #include <test/util/setup_common.h>
 #include <validation.h>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2021 The Bitcoin Core developers
-# Copyright (c) 2013-present The Riecoin developers
+# Copyright (c) 2013-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test various command line arguments and configuration file parameters."""
@@ -41,7 +41,7 @@ class SettingsTest(BitcoinTestFramework):
     def run_test(self):
         node, = self.nodes
         settings = node.chain_path / "settings.json"
-        conf = node.datadir_path / "riecoin.conf"
+        conf = node.datadir_path / "freycoin.conf"
 
         # Assert default settings file was created
         self.stop_node(0)

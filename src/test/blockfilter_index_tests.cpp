@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -13,6 +13,7 @@
 #include <node/miner.h>
 #include <pow.h>
 #include <test/util/blockfilter.h>
+#include <test/util/mining.h>
 #include <test/util/setup_common.h>
 #include <validation.h>
 
@@ -88,8 +89,9 @@ CBlock BuildChainTestingSetup::CreateBlock(const CBlockIndex* prev,
         block.hashMerkleRoot = BlockMerkleRoot(block);
     }
 
-    block.nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"});
-    while (!CheckProofOfWork(block.GetHashForPoW(), block.nBits, ArithToUint256(block.nNonce), m_node.chainman->GetConsensus())) block.nNonce += 131072;
+    // Find valid prime gap proof
+    bool found = FindValidPoW(block, m_node.chainman->GetConsensus());
+    assert(found);
 
     return block;
 }

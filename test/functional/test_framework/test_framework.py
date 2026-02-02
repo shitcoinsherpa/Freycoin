@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-present The Bitcoin Core developers
-# Copyright (c) 2014-present The Riecoin developers
+# Copyright (c) 2014-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Base class for RPC testing."""
@@ -52,7 +52,7 @@ TEST_EXIT_PASSED = 0
 TEST_EXIT_FAILED = 1
 TEST_EXIT_SKIPPED = 77
 
-TMPDIR_PREFIX = "RiecoinFunctionalTests_"
+TMPDIR_PREFIX = "FreycoinFunctionalTests_"
 
 
 class SkipTest(Exception):
@@ -165,7 +165,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
     def parse_args(self, test_file):
         parser = argparse.ArgumentParser(usage="%(prog)s [options]")
         parser.add_argument("--nocleanup", dest="nocleanup", default=False, action="store_true",
-                            help="Leave riecoinds and test.* datadir on exit or error")
+                            help="Leave freycoinds and test.* datadir on exit or error")
         parser.add_argument("--cachedir", dest="cachedir", default=os.path.abspath(os.path.dirname(test_file) + "/../cache"),
                             help="Directory for caching pregenerated datadirs (default: %(default)s)")
         parser.add_argument("--tmpdir", dest="tmpdir", help="Root directory for datadirs (must not exist)")
@@ -183,7 +183,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         parser.add_argument("--pdbonfailure", dest="pdbonfailure", default=False, action="store_true",
                             help="Attach a python debugger if test fails")
         parser.add_argument("--usecli", dest="usecli", default=False, action="store_true",
-                            help="use riecoin-cli instead of RPC for all commands")
+                            help="use freycoin-cli instead of RPC for all commands")
         parser.add_argument("--perf", dest="perf", default=False, action="store_true",
                             help="profile running nodes with perf for the duration of the test")
         parser.add_argument("--valgrind", dest="valgrind", default=False, action="store_true",
@@ -452,7 +452,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             self.nodes.append(test_node_i)
 
     def start_node(self, i, *args, **kwargs):
-        """Start a riecoind"""
+        """Start a freycoind"""
 
         node = self.nodes[i]
 
@@ -463,7 +463,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             coverage.write_all_rpc_commands(self.options.coveragedir, node._rpc)
 
     def start_nodes(self, extra_args=None, *args, **kwargs):
-        """Start multiple riecoinds"""
+        """Start multiple freycoinds"""
 
         if extra_args is None:
             extra_args = [None] * self.num_nodes
@@ -478,11 +478,11 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
                 coverage.write_all_rpc_commands(self.options.coveragedir, node._rpc)
 
     def stop_node(self, i, expected_stderr='', wait=0):
-        """Stop a riecoind test node"""
+        """Stop a freycoind test node"""
         self.nodes[i].stop_node(expected_stderr, wait=wait)
 
     def stop_nodes(self, wait=0):
-        """Stop multiple riecoind test nodes"""
+        """Stop multiple freycoind test nodes"""
         for node in self.nodes:
             # Issue RPC to stop nodes
             node.stop_node(wait=wait, wait_until_stopped=False)
@@ -859,9 +859,9 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             raise SkipTest("not on a POSIX system")
 
     def skip_if_no_bitcoind_zmq(self):
-        """Skip the running test if riecoind has not been compiled with zmq support."""
+        """Skip the running test if freycoind has not been compiled with zmq support."""
         if not self.is_zmq_compiled():
-            raise SkipTest("riecoind has not been built with zmq enabled.")
+            raise SkipTest("freycoind has not been built with zmq enabled.")
 
     def skip_if_no_wallet(self):
         """Skip the running test if wallet has not been compiled."""
@@ -870,14 +870,14 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             raise SkipTest("wallet has not been compiled.")
 
     def skip_if_no_wallet_tool(self):
-        """Skip the running test if riecoin-wallet has not been compiled."""
+        """Skip the running test if freycoin-wallet has not been compiled."""
         if not self.is_wallet_tool_compiled():
-            raise SkipTest("riecoin-wallet has not been compiled")
+            raise SkipTest("freycoin-wallet has not been compiled")
 
     def skip_if_no_bitcoin_tx(self):
         """Skip the running test if bitcoin-tx has not been compiled."""
         if not self.is_bitcoin_tx_compiled():
-            raise SkipTest("riecoin-tx has not been compiled")
+            raise SkipTest("freycoin-tx has not been compiled")
 
     def skip_if_no_bitcoin_chainstate(self):
         """Skip the running test if bitcoin-chainstate has not been compiled."""
@@ -885,9 +885,9 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             raise SkipTest("bitcoin-chainstate has not been compiled")
 
     def skip_if_no_cli(self):
-        """Skip the running test if riecoin-cli has not been compiled."""
+        """Skip the running test if freycoin-cli has not been compiled."""
         if not self.is_cli_compiled():
-            raise SkipTest("riecoin-cli has not been compiled.")
+            raise SkipTest("freycoin-cli has not been compiled.")
 
     def skip_if_no_ipc(self):
         """Skip the running test if ipc is not compiled."""
@@ -905,7 +905,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             raise SkipTest("This test is not compatible with Valgrind.")
 
     def is_cli_compiled(self):
-        """Checks whether riecoin-cli was compiled."""
+        """Checks whether freycoin-cli was compiled."""
         return self.config["components"].getboolean("ENABLE_CLI")
 
     def is_external_signer_compiled(self):
@@ -917,15 +917,15 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         return self.config["components"].getboolean("ENABLE_WALLET")
 
     def is_wallet_tool_compiled(self):
-        """Checks whether riecoin-wallet was compiled."""
+        """Checks whether freycoin-wallet was compiled."""
         return self.config["components"].getboolean("ENABLE_WALLET_TOOL")
 
     def is_bitcoin_tx_compiled(self):
-        """Checks whether riecoin-tx was compiled."""
+        """Checks whether freycoin-tx was compiled."""
         return self.config["components"].getboolean("BUILD_BITCOIN_TX")
 
     def is_bitcoin_chainstate_compiled(self):
-        """Checks whether riecoin-chainstate was compiled."""
+        """Checks whether freycoin-chainstate was compiled."""
         return self.config["components"].getboolean("ENABLE_BITCOIN_CHAINSTATE")
 
     def is_zmq_compiled(self):

@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -129,16 +129,16 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nVersion       = diskindex.nVersion;
                 pindexNew->hashMerkleRoot = diskindex.hashMerkleRoot;
                 pindexNew->nTime          = diskindex.nTime;
-                pindexNew->nBits          = diskindex.nBits;
+                pindexNew->nDifficulty    = diskindex.nDifficulty;
                 pindexNew->nNonce         = diskindex.nNonce;
+                pindexNew->nShift         = diskindex.nShift;
+                pindexNew->nAdd           = diskindex.nAdd;
+                pindexNew->nReserved      = diskindex.nReserved;
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                // This makes the start very long and disabling this check should not have any practical drawback. It has been so since at least 0.10.2 (2014). So, assume that the disk's PoW data is valid.
-                /*if (!CheckProofOfWork(pindexNew->GetBlockHeader().GetHashForPoW(), pindexNew->nBits, ArithToUint256(pindexNew->nNonce), consensusParams)) {
-                    LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
-                    return false;
-                }*/
+                // PoW validation during load is disabled for performance.
+                // Disk data is assumed valid after initial download.
 
                 pcursor->Next();
             } else {
@@ -228,7 +228,7 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, CBlockInde
         pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
         pindexNew->BuildSkip();
     }
-    pindexNew->nTimeMax = (pindexNew->pprev ? std::max(pindexNew->pprev->nTimeMax, pindexNew->nTime) : pindexNew->nTime);
+    pindexNew->nTimeMax = (pindexNew->pprev ? std::max(pindexNew->pprev->nTimeMax, static_cast<int64_t>(pindexNew->nTime)) : static_cast<int64_t>(pindexNew->nTime));
     pindexNew->nChainWork = (pindexNew->pprev ? pindexNew->pprev->nChainWork : 0) + GetBlockProof(*pindexNew);
     pindexNew->RaiseValidity(BLOCK_VALID_TREE);
     if (best_header == nullptr || best_header->nChainWork < pindexNew->nChainWork) {
@@ -444,7 +444,7 @@ bool BlockManager::LoadBlockIndex(const std::optional<uint256>& snapshot_blockha
         }
         previous_index = pindex;
         pindex->nChainWork = (pindex->pprev ? pindex->pprev->nChainWork : 0) + GetBlockProof(*pindex);
-        pindex->nTimeMax = (pindex->pprev ? std::max(pindex->pprev->nTimeMax, pindex->nTime) : pindex->nTime);
+        pindex->nTimeMax = (pindex->pprev ? std::max(pindex->pprev->nTimeMax, static_cast<int64_t>(pindex->nTime)) : static_cast<int64_t>(pindex->nTime));
 
         // We can link the chain of blocks for which we've received transactions at some point, or
         // blocks that are assumed-valid on the basis of snapshot load (see
@@ -1025,14 +1025,10 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
         return false;
     }
 
-    const auto block_hash{block.GetHash()}, block_hash_pow{block.GetHashForPoW()};
+    const auto block_hash{block.GetHash()};
 
-    // Check the header
-    // This makes some operations like wallet rescanning unreasonably long, and disabling this check should not have any practical drawback. So, assume that the disk's PoW data is valid.
-    /*if (!CheckProofOfWork(block_hash_pow, block.nBits, ArithToUint256(block.nNonce), GetConsensus())) {
-        LogError("Errors in block header at %s while reading block", pos.ToString());
-        return false;
-    }*/
+    // PoW validation during block read is disabled for performance.
+    // Disk data is assumed valid after initial download.
 
     if (expected_hash && block_hash != *expected_hash) {
         LogError("GetHash() doesn't match index at %s while reading block (%s != %s)",

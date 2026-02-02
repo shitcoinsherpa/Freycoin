@@ -107,7 +107,7 @@ execute_process(
     -locations relative
     ${ui_files}
     ${qt_translatable_sources}
-    ${PROJECT_SOURCE_DIR}/src/qt/riecoinstrings.cpp
+    ${PROJECT_SOURCE_DIR}/src/qt/freycoinstrings.cpp
     -ts ${PROJECT_SOURCE_DIR}/src/qt/locale/bitcoin_en.ts
   COMMAND_ERROR_IS_FATAL ANY
 )
