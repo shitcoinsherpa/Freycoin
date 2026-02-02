@@ -318,22 +318,19 @@ grep "CC_FOR_BUILD" depends/packages/gmp.mk
 
 #### Step 4: Build Dependencies
 
-**Use `-O2` and single-threaded** to avoid GCC internal compiler errors:
+On **Ubuntu 24.04 with GCC 13**, the build works reliably with parallel jobs:
 
 ```bash
 cd ~/Freycoin-build/depends
 
 # Clean any previous attempts
-make clean
+rm -rf work sources
 
-# Build with -O2 (avoids GCC ICE at -O3) and single-threaded for stability
-CXXFLAGS="-O2" make HOST=x86_64-w64-mingw32 -j1
-
-# After native_qt completes (~20 min), you can use more cores for the rest:
-# CXXFLAGS="-O2" make HOST=x86_64-w64-mingw32 -j$(nproc)
+# Build (30-60 minutes)
+make HOST=x86_64-w64-mingw32 -j4
 ```
 
-This takes 1-2 hours. When complete, you'll see:
+When complete, you'll see:
 ```
 copying packages: native_qt gmp boost libevent qt qrencode sqlite zeromq
 to: /root/Freycoin-build/depends/x86_64-w64-mingw32
@@ -380,10 +377,12 @@ ls -lh /mnt/d/AI/Freycoin/build-win-release/
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `'bash\r': No such file` | CRLF line endings | Fresh git clone, don't copy from Windows |
-| `internal compiler error` in Qt | GCC ICE at -O3 | Use `CXXFLAGS="-O2"` |
+| `internal compiler error` in Qt | GCC ICE at -O3 | Use Ubuntu 24.04 (GCC 13 is stable at -O3) |
 | `Cannot determine executable suffix` in GMP | Missing CC_FOR_BUILD | Add to gmp.mk config_cmds |
 | `qrhid3d11_p.h: No such file` | Missing D3D patches | Add qtbase_no_d3d*.patch files |
 | `'bit_cast' is not a member of 'std'` | MinGW GCC too old | Use Ubuntu 24.04 (GCC 13) |
+| `semaphore: No such file or directory` | MinGW GCC 10 lacks C++20 | Use Ubuntu 24.04 (GCC 13) |
+| `Overloaded` template deduction fails | GCC 10 CTAD bug | Use Ubuntu 24.04 (GCC 13) |
 
 #### Key Files Modified for Cross-Compilation
 

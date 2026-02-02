@@ -14,6 +14,8 @@ namespace util {
 //! Implementation comes from and example usage can be found at
 //! https://en.cppreference.com/w/cpp/utility/variant/visit#Example
 template<class... Ts> struct Overloaded : Ts... { using Ts::operator()...; };
+// Explicit deduction guide (required by C++17, works with all compilers)
+template<class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
 } // namespace util
 
 #endif // BITCOIN_UTIL_OVERLOADED_H
