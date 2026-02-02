@@ -249,9 +249,11 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
     mpz_init(mpz_hash);
     uint256_to_mpz(mpz_hash, hash);
 
-    // Verify hash is in range (2^255, 2^256) - i.e., 256 bits
+    // Hash should have at least MIN_HASH_BITS to ensure adequate PoW entropy
+    // (SHA256 outputs 256 bits, but leading zeros are valid and reduce effective bits)
+    constexpr size_t MIN_HASH_BITS = 200;
     size_t hash_bits = mpz_sizeinbase(mpz_hash, 2);
-    if (hash_bits != 256) {
+    if (hash_bits < MIN_HASH_BITS) {
         mpz_clear(mpz_hash);
         return false;
     }

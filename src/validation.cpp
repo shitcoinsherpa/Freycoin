@@ -3816,6 +3816,12 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
 
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
+    // Skip PoW validation for genesis block (hashPrevBlock is null)
+    // Genesis block hash is verified separately against consensusParams.hashGenesisBlock
+    if (block.hashPrevBlock.IsNull()) {
+        return true;
+    }
+
     // Check proof of work matches claimed amount (prime gap validation)
     if (fCheckPOW && !CheckProofOfWork(block, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-gap", "prime gap proof of work failed");
