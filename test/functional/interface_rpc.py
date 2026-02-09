@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2018-present The Bitcoin Core developers
-# Copyright (c) 2018-present The Riecoin developers
+# Copyright (c) 2018-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Tests some generic aspects of the RPC interface."""
@@ -219,7 +219,7 @@ class RPCInterfaceTest(BitcoinTestFramework):
         expect_http_rpc_status(200, None,                   self.nodes[0], "getblockcount", [],  2, False)
         block_count = self.nodes[0].getblockcount()
         # Notification response status code: HTTP_NO_CONTENT
-        expect_http_rpc_status(204, None,                   self.nodes[0], "generatetoaddress", [1, "rric1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxmufz"],  2, True)
+        expect_http_rpc_status(204, None,                   self.nodes[0], "generatetoaddress", [1, "rfrey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxk3gnu"],  2, True)
         # The command worked even though there was no response
         assert_equal(block_count + 1, self.nodes[0].getblockcount())
         # No error response for notifications even if they are invalid

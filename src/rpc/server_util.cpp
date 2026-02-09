@@ -139,12 +139,18 @@ void NextEmptyBlockIndex(CBlockIndex& tip, const Consensus::Params& consensusPar
     CBlockHeader next_header{};
     next_header.hashPrevBlock  = tip.GetBlockHash();
     UpdateTime(&next_header, consensusParams, &tip);
-    next_header.nBits = GetNextWorkRequired(&tip, consensusParams);
-    next_header.nNonce = 2;
+    next_header.nDifficulty = GetNextWorkRequired(&tip, consensusParams);
+    next_header.nNonce = 0;
+    next_header.nShift = 20;
+    next_header.nAdd.SetNull();
+    next_header.nReserved = 0;
 
     next_index.pprev = &tip;
     next_index.nTime = next_header.nTime;
-    next_index.nBits = next_header.nBits;
+    next_index.nDifficulty = next_header.nDifficulty;
     next_index.nNonce = next_header.nNonce;
+    next_index.nShift = next_header.nShift;
+    next_index.nAdd = next_header.nAdd;
+    next_index.nReserved = next_header.nReserved;
     next_index.nHeight = tip.nHeight + 1;
 }

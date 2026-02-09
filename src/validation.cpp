@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <validation.h>
 
@@ -1920,24 +1920,18 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
+    static constexpr CAmount TAIL_EMISSION = COIN / 10; // 0.1 FREY perpetual floor
+
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
-    // Force block reward to zero when right shift is undefined.
     if (halvings >= 64)
-        return 0;
+        return TAIL_EMISSION;
 
     CAmount nSubsidy = 50 * COIN;
     // Subsidy is cut in half every 840,000 blocks which will occur approximately every 4 years.
     nSubsidy >>= halvings;
 
-    // Validate old Blocks under obsolete Subsidy rules
-    // Since Blocks with Coinbase Values less than the normal Subsidy are valid and unclaimed rewards cannot be retrieved, the following do not longer need special code:
-    // - The Fair Launch (no reward for the first 576 Blocks and linear increasing for next 576)
-    // - The Blocks surrounding a SuperBlock (136/150 the normal Subsidy to compensate)
-    // We still need to handle SuperBlocks.
-    if (nHeight > consensusParams.fork1Height && nHeight < consensusParams.fork2Height) {
-        if (isSuperblock(nHeight, consensusParams))
-            nSubsidy *= 28; // It was actually 2084/75x = ~27.8x, but we can consider an small upper bound and save a division...
-    }
+    if (nSubsidy < TAIL_EMISSION)
+        nSubsidy = TAIL_EMISSION;
 
     return nSubsidy;
 }
@@ -2330,7 +2324,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
 
 script_verify_flags GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman)
 {
-    // Always enforcing the following in Riecoin
+    // Always enforcing the following in Freycoin
     script_verify_flags flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY | SCRIPT_VERIFY_NULLDUMMY};
     return flags;
 }
@@ -2434,7 +2428,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // can be duplicated to remove the ability to spend the first instance -- even after
     // being sent to another address.
     // See BIP30, CVE-2012-1909, and http://r6.ca/blog/20120206T005236Z.html for more information.
-    // Always enforced in Riecoin
+    // Always enforced in Freycoin
     for (const auto& tx : block.vtx) {
         for (size_t o = 0; o < tx->vout.size(); o++) {
             if (view.HaveCoin(COutPoint(tx->GetHash(), o))) {
@@ -2575,9 +2569,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
              Ticks<SecondsDouble>(m_chainman.time_connect),
              Ticks<MillisecondsDouble>(m_chainman.time_connect) / m_chainman.num_blocks_total);
 
-    CAmount blockReward = GetBlockSubsidy(pindex->nHeight, params.GetConsensus()) + nFees/2; // At least half of Fees must be Burnt.
-    if (params.GetConsensus().fork2Height == 1482768 && pindex->nHeight < 2142898) // Only effective about 1 month after 24.04 Release in MainNet.
-        blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus());
+    CAmount blockReward = GetBlockSubsidy(pindex->nHeight, params.GetConsensus()) + nFees;
     if (block.vtx[0]->GetValueOut() > blockReward && state.IsValid()) {
         state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-amount",
                       strprintf("coinbase pays too much (actual=%d vs limit=%d)", block.vtx[0]->GetValueOut(), blockReward));
@@ -3828,9 +3820,15 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
 
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
-    // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetHashForPoW(), block.nBits, ArithToUint256(block.nNonce), consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "short-constellation", "proof of work failed");
+    // Skip PoW validation for genesis block (hashPrevBlock is null)
+    // Genesis block hash is verified separately against consensusParams.hashGenesisBlock
+    if (block.hashPrevBlock.IsNull()) {
+        return true;
+    }
+
+    // Check proof of work matches claimed amount (prime gap validation)
+    if (fCheckPOW && !CheckProofOfWork(block, consensusParams))
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-gap", "prime gap proof of work failed");
 
     return true;
 }
@@ -4071,12 +4069,10 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     assert(pindexPrev != nullptr);
     const int nHeight = pindexPrev->nHeight + 1;
 
-    // Check proof of work
+    // Check proof of work difficulty matches expected
     const Consensus::Params& consensusParams = chainman.GetConsensus();
-    if (block.nBits != GetNextWorkRequired(pindexPrev, consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
-    if (block.GetPoWVersion() != consensusParams.GetPoWVersionAtHeight(nHeight))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-pow-version", "incorrect proof of work version");
+    if (block.nDifficulty != GetNextWorkRequired(pindexPrev, consensusParams))
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-difficulty", "incorrect difficulty target");
 
     // Check against checkpoints, don't accept any forks from the main chain prior to hardcoded checkpoint.
     const CBlockIndex* pcheckpoint = blockman.GetCheckpoint(chainman.GetParams().Checkpoints().assumedValidBlockHash);
@@ -4097,14 +4093,13 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
         return state.Invalid(BlockValidationResult::BLOCK_TIME_FUTURE, "time-too-new", "block timestamp too far in the future");
     }
 
-    if (nHeight >= consensusParams.fork2Height) { // Stricter Timestamp Check starting from Fork 2 (note that the MAX_FUTURE_BLOCK_TIME above was also reduced to 15 s).
-        if (block.GetBlockTime() < pindexPrev->GetBlockTime() - 15)
-            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "time-too-old", "block's timestamp is too early");
-    }
+    // Stricter timestamp check: blocks shouldn't go more than 15s backwards
+    if (block.GetBlockTime() < pindexPrev->GetBlockTime() - 15)
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "time-too-old", "block's timestamp is too early");
 
     // Reject blocks with outdated version
     if (block.nVersion < 2 ||
-       (block.nVersion < 4 && (nHeight >= 1096704 || chainman.GetParams().GetChainType() != ChainType::MAIN))) { // Though we do enforce DERSIG/CLTV retroactively in 24.04+, not all Blocks had Version >= 4 before SegWit Activation in Riecoin.
+       (block.nVersion < 4 && (nHeight >= 1096704 || chainman.GetParams().GetChainType() != ChainType::MAIN))) { // Though we do enforce DERSIG/CLTV retroactively in 24.04+, not all Blocks had Version >= 4 before SegWit Activation in Freycoin.
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, strprintf("bad-version(0x%08x)", block.nVersion),
                                  strprintf("rejected nVersion=0x%08x block", block.nVersion));
     }
@@ -4233,7 +4228,7 @@ bool ChainstateManager::ProcessNewBlockHeaders(std::span<const CBlockHeader> hea
     AssertLockNotHeld(cs_main);
     {
         LOCK(cs_main);
-        // PoW Check in Riecoin is quite expensive and makes Initial Sync very long, recognize existing Batches of Headers and don't check the PoW for them.
+        // PoW Check in Freycoin is quite expensive and makes Initial Sync very long, recognize existing Batches of Headers and don't check the PoW for them.
         bool knownHeaderBatch(false);
         if (headers.size() == MAX_HEADERS_RESULTS) {
             if (GetParams().Checkpoints().isKnownHeaderBatch(headers, m_best_header->nHeight + 1))

@@ -81,7 +81,9 @@ public:
 
     const uint256& ToUint256() const LIFETIMEBOUND
     {
-        return std::visit([](const auto& id) -> const uint256& { return id.ToUint256(); }, *this);
+        // Cast to base variant type for GCC 10 std::visit compatibility
+        return std::visit([](const auto& id) -> const uint256& { return id.ToUint256(); },
+                          static_cast<const std::variant<Txid, Wtxid>&>(*this));
     }
 
     friend auto operator<=>(const GenTxid& a, const GenTxid& b)

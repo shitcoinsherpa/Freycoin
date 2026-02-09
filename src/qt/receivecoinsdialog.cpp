@@ -1,5 +1,5 @@
 // Copyright (c) The Bitcoin Core developers
-// Copyright (c) The Riecoin developers
+// Copyright (c) The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -94,7 +94,7 @@ void ReceiveCoinsDialog::setModel(WalletModel *_model)
             ui->addressType->setItemData(index, tooltip, Qt::ToolTipRole);
             if (model->wallet().getDefaultAddressType() == type) ui->addressType->setCurrentIndex(index);
         };
-        add_address_type(OutputType::BECH32M, tr("Bech32m"), tr("A ric1p address (P2TR/Taproot)."));
+        add_address_type(OutputType::BECH32M, tr("Bech32m"), tr("A frey1p address (P2TR/Taproot)."));
 
         // Set the button to be enabled or disabled based on whether the wallet can give out new addresses.
         ui->receiveButton->setEnabled(model->wallet().canGetAddresses());

@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2021 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -21,7 +21,7 @@ enum HTTPStatusCode
     HTTP_SERVICE_UNAVAILABLE   = 503,
 };
 
-//! Bitcoin RPC error codes
+//! Freycoin RPC error codes
 enum RPCErrorCode
 {
     //! Standard JSON-RPC 2.0 errors
@@ -32,7 +32,7 @@ enum RPCErrorCode
     // It should not be used for application-layer errors.
     RPC_METHOD_NOT_FOUND = -32601,
     RPC_INVALID_PARAMS   = -32602,
-    // RPC_INTERNAL_ERROR should only be used for genuine errors in bitcoind
+    // RPC_INTERNAL_ERROR should only be used for genuine errors in freycoind
     // (for example datadir corruption).
     RPC_INTERNAL_ERROR   = -32603,
     RPC_PARSE_ERROR      = -32700,

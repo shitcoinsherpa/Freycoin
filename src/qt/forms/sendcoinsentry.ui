@@ -50,7 +50,7 @@
      <item>
       <widget class="QValidatedLineEdit" name="payTo">
        <property name="toolTip">
-        <string>The Riecoin address to send the payment to</string>
+        <string>The Freycoin address to send the payment to</string>
        </property>
       </widget>
      </item>
@@ -63,7 +63,7 @@
         <string/>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/address-book</normaloff>:/icons/address-book</iconset>
        </property>
        <property name="iconSize">
@@ -86,7 +86,7 @@
         <string/>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/editpaste</normaloff>:/icons/editpaste</iconset>
        </property>
        <property name="iconSize">
@@ -109,7 +109,7 @@
         <string/>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/remove</normaloff>:/icons/remove</iconset>
        </property>
        <property name="iconSize">
@@ -164,23 +164,23 @@
       <number>6</number>
      </property>
      <item>
-      <widget class="RiecoinAmountField" name="payAmount" native="true">
+      <widget class="FreycoinAmountField" name="payAmount" native="true">
        <property name="toolTip">
-        <string>The amount of RIC to send</string>
+        <string>The amount of FREY to send</string>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QLabel" name="unitlLabel">
        <property name="text">
-        <string>RIC</string>
+        <string>FREY</string>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QCheckBox" name="checkboxSubtractFeeFromAmount">
        <property name="toolTip">
-        <string>The fee will be deducted from the amount being sent. The recipient will receive less Riecoins than you enter in the amount field. If multiple recipients are selected, the fee is split equally.</string>
+        <string>The fee will be deducted from the amount being sent. The recipient will receive less Freycoins than you enter in the amount field. If multiple recipients are selected, the fee is split equally.</string>
        </property>
        <property name="text">
         <string>S&amp;ubtract fee from amount</string>
@@ -209,7 +209,7 @@
    <item row="3" column="1">
     <widget class="QLabel" name="messageTextLabel">
      <property name="toolTip">
-      <string>A message that was attached to the riecoin: URI which will be stored with the transaction for your reference. Note: This message will not be sent over the Riecoin network.</string>
+      <string>A message that was attached to the freycoin: URI which will be stored with the transaction for your reference. Note: This message will not be sent over the Freycoin network.</string>
      </property>
      <property name="textFormat">
       <enum>Qt::PlainText</enum>
@@ -232,9 +232,9 @@
    <header>qt/qvalidatedlineedit.h</header>
   </customwidget>
   <customwidget>
-   <class>RiecoinAmountField</class>
+   <class>FreycoinAmountField</class>
    <extends>QWidget</extends>
-   <header>qt/riecoinamountfield.h</header>
+   <header>qt/freycoinamountfield.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
@@ -247,7 +247,7 @@
   <tabstop>payAmount</tabstop>
  </tabstops>
  <resources>
-  <include location="../riecoin.qrc"/>
+  <include location="../freycoin.qrc"/>
  </resources>
  <connections/>
 </ui>

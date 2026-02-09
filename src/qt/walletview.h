@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2021 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,6 +11,7 @@
 #include <QStackedWidget>
 
 class ClientModel;
+class MiningPage;
 class OverviewPage;
 class PlatformStyle;
 class ReceiveCoinsDialog;
@@ -61,6 +62,7 @@ private:
     QWidget *transactionsPage;
     ReceiveCoinsDialog *receiveCoinsPage;
     SendCoinsDialog *sendCoinsPage;
+    MiningPage *miningPage;
     AddressBookPage *usedSendingAddressesPage;
     AddressBookPage *usedReceivingAddressesPage;
 
@@ -74,6 +76,8 @@ public Q_SLOTS:
     void gotoReceiveCoinsPage();
     /** Switch to send coins page */
     void gotoSendCoinsPage(QString addr = "");
+    /** Switch to mining page */
+    void gotoMiningPage();
 
     /** Generate Code with Address */
     void generateCode();

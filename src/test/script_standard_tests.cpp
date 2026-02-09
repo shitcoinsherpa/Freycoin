@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -448,7 +448,7 @@ BOOST_AUTO_TEST_CASE(script_standard_taproot_builder)
     BOOST_CHECK(builder.IsValid() && builder.IsComplete());
     builder.Finalize(key_inner);
     BOOST_CHECK(builder.IsValid() && builder.IsComplete());
-    BOOST_CHECK_EQUAL(EncodeDestination(builder.GetOutput()), "ric1pj6gaw944fy0xpmzzu45ugqde4rz7mqj5kj0tg8kmr5f0pjq8vnaq8lq44r");
+    BOOST_CHECK_EQUAL(EncodeDestination(builder.GetOutput()), "frey1pj6gaw944fy0xpmzzu45ugqde4rz7mqj5kj0tg8kmr5f0pjq8vnaqw5nkzg");
 }
 
 BOOST_AUTO_TEST_CASE(bip341_spk_test_vectors)

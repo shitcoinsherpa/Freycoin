@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <init.h>
 
@@ -164,7 +164,7 @@ static const char* DEFAULT_ASMAP_FILENAME="ip_asn.map";
 /**
  * The PID file facilities.
  */
-static const char* BITCOIN_PID_FILENAME = "riecoind.pid";
+static const char* BITCOIN_PID_FILENAME = "freycoind.pid";
 /**
  * True if this process has created a PID file.
  * Used to determine whether we should remove the PID file on shutdown.
@@ -1387,9 +1387,9 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     // Warn about relative -datadir path.
     if (args.IsArgSet("-datadir") && !args.GetPathArg("-datadir").is_absolute()) {
         LogPrintf("Warning: relative datadir option '%s' specified, which will be interpreted relative to the "
-                  "current working directory '%s'. This is fragile, because if Riecoin is started in the future "
+                  "current working directory '%s'. This is fragile, because if Freycoin is started in the future "
                   "from a different location, it will be unable to locate the current data files. There could "
-                  "also be data loss if Riecoin is started while in a temporary directory.\n",
+                  "also be data loss if Freycoin is started while in a temporary directory.\n",
                   args.GetArg("-datadir", ""), fs::PathToString(fs::current_path()));
     }
 

@@ -18,7 +18,7 @@
 #include <future>
 #include <ios>
 #include <iostream>
-#include <source_location>
+#include <compat/source_location.h>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -118,16 +118,16 @@ BOOST_FIXTURE_TEST_CASE(logging_LogPrintStr, LogSetup)
         BCLog::LogFlags category;
         BCLog::Level level;
         std::string prefix;
-        std::source_location loc;
+        compat::source_location loc;
     };
 
     std::vector<Case> cases = {
-        {"foo1: bar1", BCLog::NET, BCLog::Level::Debug, "[net] ", std::source_location::current()},
-        {"foo2: bar2", BCLog::NET, BCLog::Level::Info, "[net:info] ", std::source_location::current()},
-        {"foo3: bar3", BCLog::ALL, BCLog::Level::Debug, "[debug] ", std::source_location::current()},
-        {"foo4: bar4", BCLog::ALL, BCLog::Level::Info, "", std::source_location::current()},
-        {"foo5: bar5", BCLog::NONE, BCLog::Level::Debug, "[debug] ", std::source_location::current()},
-        {"foo6: bar6", BCLog::NONE, BCLog::Level::Info, "", std::source_location::current()},
+        {"foo1: bar1", BCLog::NET, BCLog::Level::Debug, "[net] ", compat::source_location::current()},
+        {"foo2: bar2", BCLog::NET, BCLog::Level::Info, "[net:info] ", compat::source_location::current()},
+        {"foo3: bar3", BCLog::ALL, BCLog::Level::Debug, "[debug] ", compat::source_location::current()},
+        {"foo4: bar4", BCLog::ALL, BCLog::Level::Info, "", compat::source_location::current()},
+        {"foo5: bar5", BCLog::NONE, BCLog::Level::Debug, "[debug] ", compat::source_location::current()},
+        {"foo6: bar6", BCLog::NONE, BCLog::Level::Info, "", compat::source_location::current()},
     };
 
     std::vector<std::string> expected;
@@ -237,7 +237,7 @@ BOOST_FIXTURE_TEST_CASE(logging_Conf, LogSetup)
         ResetLogger();
         ArgsManager args;
         args.AddArg("-loglevel", "...", ArgsManager::ALLOW_ANY, OptionsCategory::DEBUG_TEST);
-        const char* argv_test[] = {"bitcoind", "-loglevel=debug"};
+        const char* argv_test[] = {"freycoind", "-loglevel=debug"};
         std::string err;
         BOOST_REQUIRE(args.ParseParameters(2, argv_test, err));
 
@@ -251,7 +251,7 @@ BOOST_FIXTURE_TEST_CASE(logging_Conf, LogSetup)
         ResetLogger();
         ArgsManager args;
         args.AddArg("-loglevel", "...", ArgsManager::ALLOW_ANY, OptionsCategory::DEBUG_TEST);
-        const char* argv_test[] = {"bitcoind", "-loglevel=net:trace"};
+        const char* argv_test[] = {"freycoind", "-loglevel=net:trace"};
         std::string err;
         BOOST_REQUIRE(args.ParseParameters(2, argv_test, err));
 
@@ -270,7 +270,7 @@ BOOST_FIXTURE_TEST_CASE(logging_Conf, LogSetup)
         ResetLogger();
         ArgsManager args;
         args.AddArg("-loglevel", "...", ArgsManager::ALLOW_ANY, OptionsCategory::DEBUG_TEST);
-        const char* argv_test[] = {"bitcoind", "-loglevel=debug", "-loglevel=net:trace", "-loglevel=http:info"};
+        const char* argv_test[] = {"freycoind", "-loglevel=debug", "-loglevel=net:trace", "-loglevel=http:info"};
         std::string err;
         BOOST_REQUIRE(args.ParseParameters(4, argv_test, err));
 
@@ -327,8 +327,8 @@ BOOST_AUTO_TEST_CASE(logging_log_rate_limiter)
     auto& limiter{*Assert(limiter_)};
 
     using Status = BCLog::LogRateLimiter::Status;
-    auto source_loc_1{std::source_location::current()};
-    auto source_loc_2{std::source_location::current()};
+    auto source_loc_1{compat::source_location::current()};
+    auto source_loc_2{compat::source_location::current()};
 
     // A fresh limiter should not have any suppressions
     BOOST_CHECK(!limiter.SuppressionsActive());
@@ -415,7 +415,7 @@ void LogFromLocation(Location location, const std::string& message) {
  */
 void TestLogFromLocation(Location location, const std::string& message,
                          BCLog::LogRateLimiter::Status status, bool suppressions_active,
-                         std::source_location source = std::source_location::current())
+                         compat::source_location source = compat::source_location::current())
 {
     BOOST_TEST_INFO_SCOPE("TestLogFromLocation called from " << source.file_name() << ":" << source.line());
     using Status = BCLog::LogRateLimiter::Status;

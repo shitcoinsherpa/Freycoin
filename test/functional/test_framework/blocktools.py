@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-present The Bitcoin Core developers
-# Copyright (c) 2015-present The Riecoin developers
+# Copyright (c) 2015-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Utilities for manipulating blocks and transactions."""
@@ -55,7 +55,7 @@ MAX_STANDARD_TX_WEIGHT = 400000
 # Genesis block time (regtest)
 TIME_GENESIS_BLOCK = 1707684554
 
-MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60 # Should be 15 s for Riecoin actually, but would break many Tests, leave it at 2 h.
+MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60 # Should be 15 s for Freycoin actually, but would break many Tests, leave it at 2 h.
 
 # Coinbase transaction outputs can only be spent after this number of new blocks (network rule)
 COINBASE_MATURITY = 100

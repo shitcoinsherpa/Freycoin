@@ -1,5 +1,5 @@
 // Copyright (c) 2020-present The Bitcoin Core developers
-// Copyright (c) 2020-present The Riecoin developers
+// Copyright (c) 2020-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -30,7 +30,7 @@ FUZZ_TARGET(pow, .init = initialize_pow)
     const Consensus::Params& consensus_params = Params().GetConsensus();
     std::vector<std::unique_ptr<CBlockIndex>> blocks;
     const uint32_t fixed_time = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
-    const uint32_t fixed_bits = fuzzed_data_provider.ConsumeIntegral<uint32_t>();
+    const uint64_t fixed_difficulty = fuzzed_data_provider.ConsumeIntegral<uint64_t>();
     LIMITED_WHILE(fuzzed_data_provider.remaining_bytes() > 0, 10000) {
         const std::optional<CBlockHeader> block_header = ConsumeDeserializable<CBlockHeader>(fuzzed_data_provider);
         if (!block_header) {
@@ -54,7 +54,7 @@ FUZZ_TARGET(pow, .init = initialize_pow)
                 }
             }
             if (fuzzed_data_provider.ConsumeBool()) {
-                current_block.nBits = fixed_bits;
+                current_block.nDifficulty = fixed_difficulty;
             }
             if (fuzzed_data_provider.ConsumeBool()) {
                 current_block.nChainWork = previous_block != nullptr ? previous_block->nChainWork + GetBlockProof(*previous_block) : arith_uint256{0};
@@ -64,7 +64,8 @@ FUZZ_TARGET(pow, .init = initialize_pow)
         }
         {
             (void)GetBlockProof(current_block);
-            (void)CalculateNextWorkRequired(&current_block, fuzzed_data_provider.ConsumeIntegralInRange<int64_t>(0, std::numeric_limits<int64_t>::max()), consensus_params);
+            const int64_t timespan = fuzzed_data_provider.ConsumeIntegralInRange<int64_t>(0, std::numeric_limits<int64_t>::max());
+            (void)CalculateNextWorkRequired(current_block.nDifficulty, timespan, consensus_params);
             if (current_block.nHeight != std::numeric_limits<int>::max()) {
                 (void)GetNextWorkRequired(&current_block, consensus_params);
             }
@@ -79,10 +80,9 @@ FUZZ_TARGET(pow, .init = initialize_pow)
             }
         }
         {
-            const std::optional<uint256> hash = ConsumeDeserializable<uint256>(fuzzed_data_provider);
-            if (hash) {
-                (void)CheckProofOfWorkImpl(*hash, fuzzed_data_provider.ConsumeIntegral<unsigned int>(), ArithToUint256(current_block.nNonce), consensus_params);
-            }
+            // CheckProofOfWork requires a complete block header
+            CBlockHeader header = current_block.GetBlockHeader();
+            (void)CheckProofOfWork(header, consensus_params);
         }
     }
 }

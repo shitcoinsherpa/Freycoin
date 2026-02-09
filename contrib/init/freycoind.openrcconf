@@ -1,0 +1,33 @@
+# /etc/conf.d/freycoind: config file for /etc/init.d/freycoind
+
+# Config file location
+#FREYCOIND_CONFIGFILE="/etc/freycoin/freycoin.conf"
+
+# What directory to write pidfile to?  (created and owned by $FREYCOIND_USER)
+#FREYCOIND_PIDDIR="/var/run/freycoind"
+
+# What filename to give the pidfile
+#FREYCOIND_PIDFILE="${FREYCOIND_PIDDIR}/freycoind.pid"
+
+# Where to write freycoind data (be mindful that the blockchain is large)
+#FREYCOIND_DATADIR="/var/lib/freycoind"
+
+# User and group to own freycoind process
+#FREYCOIND_USER="freycoin"
+#FREYCOIND_GROUP="freycoin"
+
+# Path to freycoind executable
+#FREYCOIND_BIN="/usr/bin/freycoind"
+
+# Nice value to run freycoind under
+#FREYCOIND_NICE=0
+
+# Additional options (avoid -conf and -datadir, use flags above)
+#FREYCOIND_OPTS=""
+
+# The timeout in seconds OpenRC will wait for freycoind to terminate
+# after a SIGTERM has been raised.
+# Note that this will be mapped as argument to start-stop-daemon's
+# '--retry' option, which means you can specify a retry schedule
+# here. For more information see man 8 start-stop-daemon.
+FREYCOIND_SIGTERM_TIMEOUT=600

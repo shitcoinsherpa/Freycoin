@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -906,7 +906,7 @@ BOOST_FIXTURE_TEST_CASE(util_ArgsMerge, ArgsMergeTestingSetup)
 
     // If check below fails, should manually dump the results with:
     //
-    //   ARGS_MERGE_TEST_OUT=results.txt ./test_riecoin --run_test=argsman_tests/util_ArgsMerge
+    //   ARGS_MERGE_TEST_OUT=results.txt ./test_freycoin --run_test=argsman_tests/util_ArgsMerge
     //
     // And verify diff against previous results to make sure the changes are expected.
     //
@@ -1009,7 +1009,7 @@ BOOST_FIXTURE_TEST_CASE(util_ChainMerge, ChainMergeTestingSetup)
 
     // If check below fails, should manually dump the results with:
     //
-    //   CHAIN_MERGE_TEST_OUT=results.txt ./test_riecoin --run_test=argsman_tests/util_ChainMerge
+    //   CHAIN_MERGE_TEST_OUT=results.txt ./test_freycoin --run_test=argsman_tests/util_ChainMerge
     //
     // And verify diff against previous results to make sure the changes are expected.
     //

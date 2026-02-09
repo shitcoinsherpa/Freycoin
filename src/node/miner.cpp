@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -157,8 +157,12 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock()
     // Fill in header
     pblock->hashPrevBlock = pindexPrev->GetBlockHash();
     UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
-    pblock->nBits = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus());
-    pblock->nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"});
+    pblock->nDifficulty = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus());
+    // Proof fields - initialized to defaults, miner will fill these
+    pblock->nNonce = 0;
+    pblock->nShift = 20;  // Default shift (will be adjusted by miner)
+    pblock->nAdd.SetNull();
+    pblock->nReserved = 0;
 
     if (m_options.test_block_validity) {
         if (BlockValidationState state{TestBlockValidity(m_chainstate, *pblock, /*check_pow=*/false, /*check_merkle_root=*/false)}; !state.IsValid()) {

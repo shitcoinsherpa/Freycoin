@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-present The Bitcoin Core developers
-# Copyright (c) 2014-present The Riecoin developers
+# Copyright (c) 2014-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the RBF code."""
@@ -612,7 +612,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
             replacement_expected_size = replacement_placeholder_tx['tx'].get_vsize()
             replacement_required_fee = get_fee(replacement_expected_size, incremental_setting_decimal) + replacee_tx['fee']
 
-            # Show that replacement fails when paying 1 satoshi shy of the required fee
+            # Show that replacement fails when paying 1 frey shy of the required fee
             failed_replacement_tx = self.wallet.create_self_transfer(utxo_to_spend=confirmed_utxo, fee=replacement_required_fee - Decimal("0.00000001"), version=2, target_vsize=200)
             assert_raises_rpc_error(-26, "insufficient fee", node.sendrawtransaction, failed_replacement_tx['hex'])
             replacement_tx = self.wallet.create_self_transfer(utxo_to_spend=confirmed_utxo, fee=replacement_required_fee, version=2, target_vsize=200)

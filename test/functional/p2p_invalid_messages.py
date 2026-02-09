@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-present The Bitcoin Core developers
-# Copyright (c) 2015-present The Riecoin developers
+# Copyright (c) 2015-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test node responses to invalid network messages."""
@@ -184,7 +184,7 @@ class InvalidMessagesTest(BitcoinTestFramework):
         node = self.nodes[0]
         conn = node.add_p2p_connection(SenderOfAddrV2())
 
-        # Make sure bitcoind signals support for ADDRv2, otherwise this test
+        # Make sure freycoind signals support for ADDRv2, otherwise this test
         # will bombard an old node with messages it does not recognize which
         # will produce unexpected results.
         conn.wait_for_sendaddrv2()

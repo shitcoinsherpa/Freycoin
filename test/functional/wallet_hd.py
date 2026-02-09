@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2016-present The Bitcoin Core developers
-# Copyright (c) 2016-present The Riecoin developers
+# Copyright (c) 2016-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test Hierarchical Deterministic wallet function."""
@@ -37,7 +37,7 @@ class WalletHDTest(BitcoinTestFramework):
         assert_equal(change_addrV["hdkeypath"], "m/86h/1h/0h/1/0")
 
         # Import a non-HD private key in the HD wallet
-        non_hd_add = 'rric1qmevj8zfx0wdvp05cqwkmr6mxkfx60yezt3gjvx'
+        non_hd_add = 'rfrey1qmevj8zfx0wdvp05cqwkmr6mxkfx60yez4yrd8u'
         non_hd_key = 'prv886efa8b717fc4f44af66bd2cb9396e4714f641a55337b1b3bc7f808b2200b8e'
         wallet_importprivkey(self.nodes[1], non_hd_key, "now")
 

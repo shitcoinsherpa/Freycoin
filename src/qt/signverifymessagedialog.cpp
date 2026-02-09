@@ -1,5 +1,5 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -12,7 +12,7 @@
 #include <qt/walletmodel.h>
 
 #include <common/signmessage.h>
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 #include <key_io.h>
 #include <wallet/wallet.h>
 

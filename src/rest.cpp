@@ -3,7 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <rest.h>
 
@@ -269,7 +269,7 @@ static bool rest_headers(const std::any& context,
     case RESTResponseFormat::JSON: {
         UniValue jsonHeaders(UniValue::VARR);
         for (const CBlockIndex *pindex : headers) {
-            jsonHeaders.push_back(blockheaderToJSON(*tip, *pindex, chainman.GetConsensus().nBitsMin));
+            jsonHeaders.push_back(blockheaderToJSON(*tip, *pindex));
         }
         std::string strJSON = jsonHeaders.write() + "\n";
         req->WriteHeader("Content-Type", "application/json");
@@ -449,7 +449,7 @@ static bool rest_block(const std::any& context,
         CBlock block{};
         DataStream block_stream{block_data};
         block_stream >> TX_WITH_WITNESS(block);
-        UniValue objBlock = blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity, chainman.GetConsensus().nBitsMin);
+        UniValue objBlock = blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity);
         std::string strJSON = objBlock.write() + "\n";
         req->WriteHeader("Content-Type", "application/json");
         req->WriteReply(HTTP_OK, strJSON);

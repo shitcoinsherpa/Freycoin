@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-present The Bitcoin Core developers
-# Copyright (c) 2014-present The Riecoin developers
+# Copyright (c) 2014-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Run regression test suite.
@@ -127,7 +127,7 @@ BASE_SCRIPTS = [
     'p2p_dns_seeds.py',
     'wallet_groups.py',
     'p2p_blockfilters.py',
-    # 'feature_assumevalid.py', # -AssumeValid works differently in Riecoin, need to be adjusted with some Hardcoded RegTest Chain.
+    # 'feature_assumevalid.py', # -AssumeValid works differently in Freycoin, need to be adjusted with some Hardcoded RegTest Chain.
     'wallet_taproot.py',
     'feature_bip68_sequence.py',
     'rpc_packages.py',
@@ -174,7 +174,7 @@ BASE_SCRIPTS = [
     'tool_bitcoin_chainstate.py',
     'tool_wallet.py',
     # 'wallet_txn_clone.py', # Test might not work with Bech32/Bech32M.
-    # 'tool_utils.py', # The whole Test Data in test/functional/data/util must be adjusted for Riecoin.
+    # 'tool_utils.py', # The whole Test Data in test/functional/data/util must be adjusted for Freycoin.
     'wallet_txn_clone.py --segwit',
     'rpc_getchaintips.py',
     'rpc_misc.py',
@@ -278,7 +278,7 @@ BASE_SCRIPTS = [
     # 'wallet_importdescriptors.py', # Needs adjustments for Bech32/Bech32M
     'wallet_crosschain.py',
     'mining_basic.py',
-    # 'mining_mainnet.py', # Needs to be rewritten for Riecoin
+    # 'mining_mainnet.py', # Needs to be rewritten for Freycoin
     'p2p_mutated_blocks.py',
     'rpc_named_arguments.py',
     'feature_startupnotify.py',
@@ -400,7 +400,7 @@ def main():
     parser.add_argument('--failfast', '-F', action='store_true', help='stop execution after the first test failure')
     parser.add_argument('--filter', help='filter scripts to run by regular expression')
     parser.add_argument("--nocleanup", dest="nocleanup", default=False, action="store_true",
-                        help="Leave bitcoinds and test.* datadir on exit or error")
+                        help="Leave freycoinds and test.* datadir on exit or error")
     parser.add_argument('--resultsfile', '-r', help='store test results (as CSV) to the provided file')
 
     args, unknown_args = parser.parse_known_args()
@@ -441,9 +441,9 @@ def main():
         assert results_filepath.parent.exists(), "Results file parent directory does not exist"
         logging.debug("Test results will be written to " + str(results_filepath))
 
-    enable_bitcoind = config["components"].getboolean("ENABLE_BITCOIND")
+    enable_freycoind = config["components"].getboolean("ENABLE_freycoind")
 
-    if not enable_bitcoind:
+    if not enable_freycoind:
         print("No functional tests to run.")
         print("Re-compile with the -DBUILD_DAEMON=ON build option")
         sys.exit(1)
@@ -545,11 +545,11 @@ def main():
 def run_tests(*, test_list, build_dir, tmpdir, jobs=1, enable_coverage=False, args=None, combined_logs_len=0, failfast=False, use_term_control, results_filepath=None):
     args = args or []
 
-    # Warn if bitcoind is already running
+    # Warn if freycoind is already running
     try:
         # pgrep exits with code zero when one or more matching processes found
-        if subprocess.run(["pgrep", "-x", "riecoind"], stdout=subprocess.DEVNULL).returncode == 0:
-            print("%sWARNING!%s There is already a riecoind process running on this system. Tests may fail unexpectedly due to resource contention!" % (BOLD[1], BOLD[0]))
+        if subprocess.run(["pgrep", "-x", "freycoind"], stdout=subprocess.DEVNULL).returncode == 0:
+            print("%sWARNING!%s There is already a freycoind process running on this system. Tests may fail unexpectedly due to resource contention!" % (BOLD[1], BOLD[0]))
     except OSError:
         # pgrep not supported
         pass
@@ -841,7 +841,7 @@ def check_script_list(*, src_dir, fail_on_warn):
     python_files = set([test_file for test_file in os.listdir(script_dir) if test_file.endswith(".py")])
     missed_tests = list(python_files - set(map(lambda x: x.split()[0], ALL_SCRIPTS + NON_SCRIPTS)))
     if len(missed_tests) != 0:
-        print("%sWARNING!%s The following scripts are not being run: %s. Check the test lists in test_runner.py. Some may be commented out because they need to be adjusted for Riecoin, you are welcomed to help fix them!" % (BOLD[1], BOLD[0], str(missed_tests)))
+        print("%sWARNING!%s The following scripts are not being run: %s. Check the test lists in test_runner.py. Some may be commented out because they need to be adjusted for Freycoin, you are welcomed to help fix them!" % (BOLD[1], BOLD[0], str(missed_tests)))
         if fail_on_warn:
             sys.exit(1)
 
@@ -853,7 +853,7 @@ class RPCCoverage():
     Coverage calculation works by having each test script subprocess write
     coverage files into a particular directory. These files contain the RPC
     commands invoked during testing, as well as a complete listing of RPC
-    commands per `riecoin-cli help` (`rpc_interface.txt`).
+    commands per `freycoin-cli help` (`rpc_interface.txt`).
 
     After all tests complete, the commands run are combined and diff'd against
     the complete list to calculate uncovered RPC commands.

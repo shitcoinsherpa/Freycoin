@@ -1,0 +1,17 @@
+--- a/qtbase/src/gui/rhi/qrhi.cpp
++++ b/qtbase/src/gui/rhi/qrhi.cpp
+@@ -8303,15 +8303,9 @@
+         break;
+ #endif
+     case D3D11:
+-#ifdef Q_OS_WIN
+-        r->d = new QRhiD3D11(static_cast<QRhiD3D11InitParams *>(params),
+-                             static_cast<QRhiD3D11NativeHandles *>(importDevice));
+-        break;
+-#else
+         qWarning("This platform has no Direct3D 11 support");
+         break;
+-#endif
+     case Metal:
+ #if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+         r->d = new QRhiMetal(static_cast<QRhiMetalInitParams *>(params),

@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,6 +8,7 @@
 #include <consensus/merkle.h>
 #include <pow.h>
 #include <streams.h>
+#include <test/util/mining.h>
 #include <test/util/random.h>
 #include <test/util/txmempool.h>
 
@@ -36,7 +37,9 @@ static CBlock BuildBlockTestCase(FastRandomContext& ctx) {
     block.vtx[0] = MakeTransactionRef(tx);
     block.nVersion = 42;
     block.hashPrevBlock = ctx.rand256();
-    block.nBits = 0x00012000; // 288
+    block.nDifficulty = 16ULL << 48; // MIN_DIFFICULTY
+    block.nShift = 20;
+    block.nAdd.SetNull();
 
     tx.vin[0].prevout.hash = Txid::FromUint256(ctx.rand256());
     tx.vin[0].prevout.n = 0;
@@ -52,8 +55,11 @@ static CBlock BuildBlockTestCase(FastRandomContext& ctx) {
     bool mutated;
     block.hashMerkleRoot = BlockMerkleRoot(block, &mutated);
     assert(!mutated);
-    block.nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"});
-    while (!CheckProofOfWork(block.GetHashForPoW(), block.nBits, ArithToUint256(block.nNonce), Params().GetConsensus())) block.nNonce += 131072;
+
+    // Find valid prime gap proof
+    bool found = FindValidPoW(block, Params().GetConsensus());
+    assert(found);
+
     return block;
 }
 
@@ -279,13 +285,17 @@ BOOST_AUTO_TEST_CASE(EmptyBlockRoundTripTest)
     block.vtx[0] = MakeTransactionRef(std::move(coinbase));
     block.nVersion = 42;
     block.hashPrevBlock = rand_ctx.rand256();
-    block.nBits = 0x00012000; // 288
+    block.nDifficulty = 16ULL << 48; // MIN_DIFFICULTY
+    block.nShift = 20;
+    block.nAdd.SetNull();
 
     bool mutated;
     block.hashMerkleRoot = BlockMerkleRoot(block, &mutated);
     assert(!mutated);
-    block.nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"});
-    while (!CheckProofOfWork(block.GetHashForPoW(), block.nBits, ArithToUint256(block.nNonce), Params().GetConsensus())) block.nNonce += 131072;
+
+    // Find valid prime gap proof
+    bool found = FindValidPoW(block, Params().GetConsensus());
+    assert(found);
 
     // Test simple header round-trip with only coinbase
     {

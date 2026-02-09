@@ -1,0 +1,152 @@
+extends layout
+
+block headContent
+	title Freycoin Explorer
+	
+block content
+
+
+	if (getblockchaininfo == null)
+		div.alert.alert-danger
+			h5.mb-3 Unable to get basic blockchain data
+			ul
+				li
+					p
+						b If you just started your node, it may still be initializing.
+						div At startup, freycoind verifies its block index before making itself available to serve data. The amount of time the verification process takes depends largely on the speed of the machine freycoind is running on.
+				li
+					p
+						b If you believe your freycoind node is already initialized...
+						div Check your RPC connection info and/or check this application's error log for possible hints about the cause of this issue.
+	else
+
+		+dismissableAlert("homepageWelcomeBannerDismissed")
+			h5 Freycoin Explorer
+				span.fw-light :
+					span.fst-italic.ms-1 Mathematical Discovery Network
+
+			span.fw-light Every block mined discovers prime gaps — advancing number theory while securing the network. Proof-of-Work with meaning.
+
+			if (discoveryStats)
+				hr
+				.row.text-center.g-3
+					.col-4.col-md-2
+						.fs-4.fw-bold #{discoveryStats.blocksMined.toLocaleString()}
+						.text-muted.small Blocks Mined
+					.col-4.col-md-2
+						.fs-4.fw-bold.text-success #{discoveryStats.uniqueGapSizes.toLocaleString()}
+						.text-muted.small Unique Gap Sizes
+					.col-4.col-md-2
+						.fs-4.fw-bold.text-warning #{discoveryStats.potentialRecords.toLocaleString()}
+						.text-muted.small Potential Records
+					if (discoveryStats.highestMerit24h > 0)
+						.col-6.col-md-3
+							.fs-5.fw-bold #{discoveryStats.highestMerit24h.toFixed(10)}
+							.text-muted.small Best Merit (24h)
+								if (discoveryStats.highestMerit24hBlock)
+									a.ms-1(href="./block-height/" + discoveryStats.highestMerit24hBlock) Block ##{discoveryStats.highestMerit24hBlock}
+					.col-6.col-md-3
+						.fs-5.fw-bold #{discoveryStats.globalSummary.totalGlobal.toLocaleString()}
+						.text-muted.small Global Records Tracked
+
+			hr
+
+			.d-flex.flex-wrap.gap-2
+				a.btn.btn-sm.btn-primary(href="./prime-gap-records")
+					i.bi-trophy.me-1
+					| Prime Gap Records
+				a.btn.btn-sm.btn-outline-primary(href="./global-gap-records")
+					i.bi-globe2.me-1
+					| Global Records
+				a.btn.btn-sm.btn-outline-primary(href="./missing-gaps")
+					i.bi-search.me-1
+					| Missing Gaps
+				a.btn.btn-sm.btn-outline-secondary.ms-auto(href="https://freycoin.tech", target="_blank")
+					i.bi-globe.me-1
+					| freycoin.tech
+
+		
+
+
+
+		if (getblockchaininfo.initialblockdownload && !["regtest", "signet"].includes(global.activeBlockchain))
+			div.alert.alert-warning.shadow-sm.border.mb-3
+				div.fw-bold.mb-1 Initial Block Download (IBD) - In Progress...
+
+				div.mb-1 Your node is currently downloading and verifying blockchain data. Until the process is finished, some features of this tool will be unusable and/or unreliable.
+
+				span.fw-bold Progress: 
+				span #{new Decimal(getblockchaininfo.verificationprogress).times(100).toDP(3)}%
+
+
+		
+		include includes/index-network-summary.pug
+		
+		
+		
+		
+						
+
+
+		if (latestBlocks)
+			.d-flex.justify-content-between
+				div
+					+sectionTitle("Latest Blocks")
+
+				div
+					a.small.ms-2(href="./blocks") Browse blocks &raquo;
+
+			+contentSection
+				- var blocks = latestBlocks;
+				- var blockOffset = 0;
+
+				include includes/blocks-list.pug
+							
+
+		+contentSection("Tools")
+			include includes/tools-card.pug
+				
+
+block endOfBody
+	script.
+		var audio = new Audio('./audio/609335__kenneth_cooney__levelup.wav');
+		var tipInfo = null;
+
+		function refreshHalvingCountdownUI() {
+			$.get("./snippet/index-halving-countdown", function(data) {
+				$("#index-halving-countdown").html(data);
+				enableTooltipsAndPopovers();
+			});
+		}
+
+		function checkHalvingCountdown() {
+			$.get("./api/blocks/tip", function(data) {
+				if (data.height > tipInfo.height) {
+					tipInfo = data;
+
+					audio.play();
+
+					refreshHalvingCountdownUI();
+				}
+
+				console.log(tipInfo);
+			});
+		}
+
+		$(document).ready(function() {
+			$.get("./snippet/next-block", function(data) {
+				$("#index-next-block").html(data);
+				enableTooltipsAndPopovers();
+			});
+
+			$.get("./api/blocks/tip", function(data) {
+				tipInfo = data;
+			});
+
+			if ($("#index-halving-countdown-wrapper").length) {
+				refreshHalvingCountdownUI();
+
+				setInterval(checkHalvingCountdown, 3000);
+			}
+		});
+		

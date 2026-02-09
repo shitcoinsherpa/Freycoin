@@ -1,6 +1,6 @@
 // Copyright (c) 2017 Pieter Wuille
 // Copyright (c) 2021-present The Bitcoin Core developers
-// Copyright (c) 2024-present The Riecoin developers
+// Copyright (c) 2024-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 

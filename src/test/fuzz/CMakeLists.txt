@@ -139,9 +139,9 @@ target_link_libraries(fuzz
   core_interface
   fuzzer_interface
   test_fuzz
-  riecoin_cli
-  riecoin_common
-  riecoin_util
+  freycoin_cli
+  freycoin_common
+  freycoin_util
   minisketch
   leveldb
   univalue

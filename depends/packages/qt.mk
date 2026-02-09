@@ -19,6 +19,10 @@ $(package)_patches += qtbase_plugins_cocoa.patch
 $(package)_patches += qtbase_skip_tools.patch
 $(package)_patches += rcc_hardcode_timestamp.patch
 $(package)_patches += qttools_skip_dependencies.patch
+$(package)_patches += qtbase_no_d3d_crosscompile.patch
+$(package)_patches += qtbase_no_d3d_rhi_includes.patch
+$(package)_patches += qtbase_no_d3d11_backend.patch
+$(package)_patches += qtbase_no_d3d12_backend.patch
 
 $(package)_qttranslations_file_name=$(qt_details_qttranslations_file_name)
 $(package)_qttranslations_sha256_hash=$(qt_details_qttranslations_sha256_hash)
@@ -110,6 +114,7 @@ $(package)_config_opts += -no-feature-undostack
 $(package)_config_opts += -no-feature-undoview
 $(package)_config_opts += -no-feature-vnc
 $(package)_config_opts += -no-feature-vulkan
+$(package)_config_opts += -no-feature-networklistmanager
 
 # Core tools.
 $(package)_config_opts += -no-feature-androiddeployqt
@@ -205,6 +210,10 @@ $(package)_cmake_opts += -DQT_INTERNAL_APPLE_SDK_VERSION=$(OSX_SDK_VERSION)
 $(package)_cmake_opts += -DQT_INTERNAL_XCODE_VERSION=$(XCODE_VERSION)
 $(package)_cmake_opts += -DQT_NO_APPLE_SDK_MAX_VERSION_CHECK=ON
 endif
+ifeq ($(host_os),mingw32)
+$(package)_cmake_opts += -DQT_FEATURE_rhi_d3d12=OFF
+$(package)_cmake_opts += -DQT_FEATURE_rhi_d3d11=OFF
+endif
 endef
 
 define $(package)_fetch_cmds
@@ -266,6 +275,12 @@ define $(package)_preprocess_cmds
 endef
 ifeq ($(host),$(build))
   $(package)_preprocess_cmds += && patch -p1 -i $($(package)_patch_dir)/qttools_skip_dependencies.patch
+endif
+ifeq ($(host_os),mingw32)
+  $(package)_preprocess_cmds += && patch -p1 -i $($(package)_patch_dir)/qtbase_no_d3d_crosscompile.patch
+  $(package)_preprocess_cmds += && patch -p1 -i $($(package)_patch_dir)/qtbase_no_d3d_rhi_includes.patch
+  $(package)_preprocess_cmds += && patch -p1 -i $($(package)_patch_dir)/qtbase_no_d3d11_backend.patch
+  $(package)_preprocess_cmds += && patch -p1 -i $($(package)_patch_dir)/qtbase_no_d3d12_backend.patch
 endif
 
 define $(package)_config_cmds

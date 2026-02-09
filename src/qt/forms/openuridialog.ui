@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Open Riecoin URI</string>
+   <string>Open Freycoin URI</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -26,7 +26,7 @@
      <item>
       <widget class="QValidatedLineEdit" name="uriEdit">
        <property name="placeholderText">
-        <string notr="true">riecoin:</string>
+        <string notr="true">freycoin:</string>
        </property>
       </widget>
      </item>
@@ -39,7 +39,7 @@
         <string/>
        </property>
        <property name="icon">
-        <iconset resource="../bitcoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/editpaste</normaloff>:/icons/editpaste
         </iconset>
        </property>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2019-2022 The Bitcoin Core developers
-# Copyright (c) 2013-present The Riecoin developers
+# Copyright (c) 2013-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the importdescriptors RPC.
@@ -208,7 +208,7 @@ class ImportDescriptorsTest(BitcoinTestFramework):
         xpriv = "tprv8ZgxMBicQKsPeuVhWwi6wuMQGfPKi9Li5GtX35jVNknACgqe3CY4g5xgkfDDJcmtF7o1QnxWDRYw4H5P26PXq7sbcUkEqeR4fg3Kxp2tigg"
         xpub = "tpubD6NzVbkrYhZ4YNXVQbNhMK1WqguFsUXceaVJKbmno2aZ3B6QfbMeraaYvnBSGpV3vxLyTTK9DYT1yoEck4XUScMzXoQ2U2oSmE2JyMedq3H"
         addresses = ["tMfJ8KZP9XG7xj1LGb52HjwRMi9mx8eixU", "t6yM36TRSbqiYY2PnvK8Jj1dS63ZY7coP7"] # hdkeypath=m/0'/0'/0' and 1'
-        addresses += ["rric1qrd3n235cj2czsfmsuvqqpr3lu6lg0ju7q83f6u", "rric1qfqeppuvj0ww98r6qghmdkj70tv8qpche8xxd6g"] # wpkh subscripts corresponding to the above addresses
+        addresses += ["rfrey1qrd3n235cj2czsfmsuvqqpr3lu6lg0ju7q83f6u", "rfrey1qfqeppuvj0ww98r6qghmdkj70tv8qpche8xxd6g"] # wpkh subscripts corresponding to the above addresses
         desc = "sh(wpkh(" + xpub + "/0/0/*" + "))"
 
         self.log.info("Ranged descriptors cannot have labels")
@@ -323,11 +323,11 @@ class ImportDescriptorsTest(BitcoinTestFramework):
         self.log.info('Key ranges should be imported in order')
         xpub = "tpubDAXcJ7s7ZwicqjprRaEWdPoHKrCS215qxGYxpusRLLmJuT69ZSicuGdSfyvyKpvUNYBW1s2U3NSrT6vrCYB9e6nZUEvrqnwXPF8ArTCRXMY"
         addresses = [
-            'rric1qtmp74ayg7p24uslctssvjm06q5phz4yrkrkxpr', # m/0'/0'/0
-            'rric1q8vprchan07gzagd5e6v9wd7azyucksq2k8s5yg', # m/0'/0'/1
-            'rric1qtuqdtha7zmqgcrr26n2rqxztv5y8rafj363jdn', # m/0'/0'/2
-            'rric1qau64272ymawq26t90md6an0ps99qkrseyc458q', # m/0'/0'/3
-            'rric1qsg97266hrh6cpmutqen8s4s962aryy77z7p86q', # m/0'/0'/4
+            'rfrey1qtmp74ayg7p24uslctssvjm06q5phz4yrkrkxpr', # m/0'/0'/0
+            'rfrey1q8vprchan07gzagd5e6v9wd7azyucksq2k8s5yg', # m/0'/0'/1
+            'rfrey1qtuqdtha7zmqgcrr26n2rqxztv5y8rafj363jdn', # m/0'/0'/2
+            'rfrey1qau64272ymawq26t90md6an0ps99qkrseyc458q', # m/0'/0'/3
+            'rfrey1qsg97266hrh6cpmutqen8s4s962aryy77z7p86q', # m/0'/0'/4
         ]
 
         self.test_importdesc({'desc': descsum_create('wpkh([80002067/0h/0h]' + xpub + '/*)'),
@@ -475,9 +475,9 @@ class ImportDescriptorsTest(BitcoinTestFramework):
 
         assert_equal(wmulti_priv.getwalletinfo()['keypoolsize'], 1001) # Range end (1000) is inclusive, so 1001 addresses generated
         addr = wmulti_priv.getnewaddress('', 'bech32') # uses receive 0
-        assert_equal(addr, 'rric1qdt0qy5p7dzhxzmegnn4ulzhard33s2809arjqgjndx87rv5vd0fqwy47v4') # Derived at m/84'/0'/0'/0
+        assert_equal(addr, 'rfrey1qdt0qy5p7dzhxzmegnn4ulzhard33s2809arjqgjndx87rv5vd0fqwy47v4') # Derived at m/84'/0'/0'/0
         change_addr = wmulti_priv.getrawchangeaddress('bech32') # uses change 0
-        assert_equal(change_addr, 'rric1qt9uhe3a9hnq7vajl7a094z4s3crm9ttf8zw3f5v9gr2nyd7e3lnsqfz60t') # Derived at m/84'/1'/0'/0
+        assert_equal(change_addr, 'rfrey1qt9uhe3a9hnq7vajl7a094z4s3crm9ttf8zw3f5v9gr2nyd7e3lnsqfz60t') # Derived at m/84'/1'/0'/0
         assert_equal(wmulti_priv.getwalletinfo()['keypoolsize'], 1000)
         txid = w0.sendtoaddress(addr, 10)
         self.generate(self.nodes[0], 6)
@@ -508,9 +508,9 @@ class ImportDescriptorsTest(BitcoinTestFramework):
 
         assert_equal(wmulti_pub.getwalletinfo()['keypoolsize'], 1000) # The first one was already consumed by previous import and is detected as used
         addr = wmulti_pub.getnewaddress('', 'bech32') # uses receive 1
-        assert_equal(addr, 'rric1qp8s25ckjl7gr6x2q3dx3tn2pytwp05upkjztk6ey857tt50r5aeqhxv9th') # Derived at m/84'/0'/0'/1
+        assert_equal(addr, 'rfrey1qp8s25ckjl7gr6x2q3dx3tn2pytwp05upkjztk6ey857tt50r5aeqhxv9th') # Derived at m/84'/0'/0'/1
         change_addr = wmulti_pub.getrawchangeaddress('bech32') # uses change 2
-        assert_equal(change_addr, 'rric1qp6j3jw8yetefte7kw6v5pc89rkgakzy98p6gf7ayslaveaxqyjushjrw82') # Derived at m/84'/1'/0'/2
+        assert_equal(change_addr, 'rfrey1qp6j3jw8yetefte7kw6v5pc89rkgakzy98p6gf7ayslaveaxqyjushjrw82') # Derived at m/84'/1'/0'/2
         assert send_txid in self.nodes[0].getrawmempool(True)
         assert send_txid in (x['txid'] for x in wmulti_pub.listunspent(0))
         assert_equal(wmulti_pub.getwalletinfo()['keypoolsize'], 999)

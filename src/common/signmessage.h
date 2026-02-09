@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -78,7 +78,7 @@ enum class SigningResult {
 };
 
 /** Verify a signed message.
- * @param[in] address Signer's Riecoin address
+ * @param[in] address Signer's Freycoin address
  * @param[in] signature The signature in base64 format.
  * @param[in] message The message that was signed.
  * @return result code */

@@ -3,7 +3,7 @@
         "5120eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         {
             "asm": "1 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-            "address": "rric1pamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhqxxy9h9",
+            "address": "rfrey1pamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhqqkw3dm",
             "desc": "rawtr(eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee)#jk7c6kys",
             "type": "witness_v1_taproot"
         }
@@ -12,8 +12,8 @@
         "5102eeee",
         {
             "asm": "1 -28398",
-            "address": "rric1pamhqlnh8h5",
-            "desc": "addr(rric1pamhqlnh8h5)#3ygce3rv",
+            "address": "rfrey1pamhqy3wesn",
+            "desc": "addr(rfrey1pamhqy3wesn)#3ygce3rv",
             "type": "witness_unknown"
         }
     ],
@@ -21,8 +21,8 @@
         "0020eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         {
             "asm": "0 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-            "address": "rric1qamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhqed5q2m",
-            "desc": "addr(rric1qamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhqed5q2m)#rvm2us3p",
+            "address": "rfrey1qamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhqla75s9",
+            "desc": "addr(rfrey1qamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhqla75s9)#rvm2us3p",
             "type": "witness_v0_scripthash",
             "p2sh": "a9142c2a15843f870db5ed0490c9322231678bdbbe8387"
         }
@@ -69,9 +69,9 @@
             "p2sh": "a9146bb4a8e91b6f586998dbd264347bd9508d6d56ad87",
             "segwit": {
                 "asm": "0 96c2368fc30514a438a8bd909f93c49a1549d77198ccbdb792043b666cb24f42",
-                "desc": "addr(rric1qjmprdr7rq522gw9ghkgfly7yng25n4m3nrxtmdujqsakvm9jfapq87z3jy)#vjrpxpm9",
+                "desc": "addr(rfrey1qjmprdr7rq522gw9ghkgfly7yng25n4m3nrxtmdujqsakvm9jfapqpwg9g6)#vjrpxpm9",
                 "hex": "002096c2368fc30514a438a8bd909f93c49a1549d77198ccbdb792043b666cb24f42",
-                "address": "rric1qjmprdr7rq522gw9ghkgfly7yng25n4m3nrxtmdujqsakvm9jfapq87z3jy",
+                "address": "rfrey1qjmprdr7rq522gw9ghkgfly7yng25n4m3nrxtmdujqsakvm9jfapqpwg9g6",
                 "type": "witness_v0_scripthash",
                 "p2sh-segwit": "a914111a16c5a5768a2c2627d4995bb78817478b2aaa87"
             }

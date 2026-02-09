@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2019-present The Bitcoin Core developers
-# Copyright (c) 2019-present The Riecoin developers
+# Copyright (c) 2019-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 export LC_ALL=C
@@ -245,7 +245,7 @@ mkdir -p "$DISTSRC"
           -Werror=dev \
           ${CONFIGFLAGS}
 
-    # Build Riecoin Core
+    # Build Freycoin Core
     cmake --build build -j "$JOBS" ${V:+--verbose}
 
     # Perform basic security checks on a series of executables.
@@ -259,16 +259,16 @@ mkdir -p "$DISTSRC"
     case "$HOST" in
         *mingw*)
             cmake --build build -j "$JOBS" -t deploy ${V:+--verbose}
-            mv build/riecoin-win64-setup.exe "${OUTDIR}/${DISTNAME}-win64-setup.exe"
+            mv build/freycoin-win64-setup.exe "${OUTDIR}/${DISTNAME}-win64-setup.exe"
             ;;
     esac
 
-    # Setup the directory where our Riecoin Core build for HOST will be
+    # Setup the directory where our Freycoin Core build for HOST will be
     # installed. This directory will also later serve as the input for our
     # binary tarballs.
     INSTALLPATH="${PWD}/installed/${DISTNAME}"
     mkdir -p "${INSTALLPATH}"
-    # Install built Riecoin Core to $INSTALLPATH
+    # Install built Freycoin Core to $INSTALLPATH
     case "$HOST" in
         *darwin*)
             # This workaround can be dropped for CMake >= 3.27.
@@ -304,9 +304,9 @@ mkdir -p "$DISTSRC"
                 ;;
         esac
 
-        # copy over the example riecoin.conf file. if contrib/devtools/gen-riecoin-conf.sh
+        # copy over the example freycoin.conf file. if contrib/devtools/gen-freycoin-conf.sh
         # has not been run before buildling, this file will be a stub
-        cp "${DISTSRC}/share/examples/riecoin.conf" "${DISTNAME}/"
+        cp "${DISTSRC}/share/examples/freycoin.conf" "${DISTNAME}/"
 
         cp -r "${DISTSRC}/share/rpcauth" "${DISTNAME}/share/"
 

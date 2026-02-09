@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2016-present The Bitcoin Core developers
-# Copyright (c) 2016-present The Riecoin developers
+# Copyright (c) 2016-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test label RPCs.
@@ -81,7 +81,7 @@ class WalletLabelsTest(BitcoinTestFramework):
             linked_addresses.add(address_group[0][0])
 
         # send 50 from each address to a third address not in this wallet
-        common_address = "rric1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrs8rqekw"
+        common_address = "rfrey1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrspn2dvs"
         node.sendmany(
             amounts={common_address: 100},
             subtractfeefrom=[common_address],
@@ -165,13 +165,13 @@ class WalletLabelsTest(BitcoinTestFramework):
         node.createwallet(wallet_name='watch_only', disable_private_keys=True)
         wallet_watch_only = node.get_wallet_rpc('watch_only')
         BECH32_VALID = {
-            '✔️_VER15_PROG40': 'rric10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0q8t6g',
-            '✔️_VER16_PROG03': 'rric1sqqqqqjnewvv',
-            '✔️_VER16_PROB02': 'rric1sqqqquca47f',
+            '✔️_VER15_PROG40': 'rfrey10qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqz5rm00',
+            '✔️_VER16_PROG03': 'rfrey1sqqqqq4v7twa',
+            '✔️_VER16_PROB02': 'rfrey1sqqqq86ytew',
         }
         BECH32_INVALID = {
-            '❌_VER15_PROG41': 'rric1sqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqh2t46u',
-            '❌_VER16_PROB01': 'rric1sqqt9pu7y',
+            '❌_VER15_PROG41': 'rfrey1sqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsad2yj',
+            '❌_VER16_PROB01': 'rfrey1sqquanlfy',
         }
         for l in BECH32_VALID:
             ad = BECH32_VALID[l]

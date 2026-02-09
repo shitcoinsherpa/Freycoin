@@ -83,7 +83,7 @@
                <string>Your current spendable balance</string>
               </property>
               <property name="text">
-               <string notr="true">84 000 000.00000000 RIC</string>
+               <string notr="true">84 000 000.00000000 FREY</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -109,7 +109,7 @@
                <string>Your current total balance</string>
               </property>
               <property name="text">
-               <string notr="true">84 000 000.00000000 RIC</string>
+               <string notr="true">84 000 000.00000000 FREY</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -135,7 +135,7 @@
                <string>Mined balance that has not yet matured</string>
               </property>
               <property name="text">
-               <string notr="true">0.00000000 RIC</string>
+               <string notr="true">0.00000000 FREY</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -181,7 +181,7 @@
                <string>Total of transactions that have yet to be confirmed, and do not yet count toward the spendable balance</string>
               </property>
               <property name="text">
-               <string notr="true">0.00000000 RIC</string>
+               <string notr="true">0.00000000 FREY</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -294,7 +294,7 @@
              <string notr="true">QLabel {color:#FF0000;}</string>
             </property>
             <property name="text">
-             <string>&lt;span style=&quot; font-weight:600;&quot;&gt;Currently Syncing, please wait a moment. Balances may be outdated. &lt;/span&gt;&lt;a href=&quot;https://riecoin.xyz/Core/Sync/&quot;&gt;&lt;span style=&quot; font-weight:504; text-decoration: underline; color:#1d99f3;&quot;&gt;Learn More&lt;/span&gt;&lt;/a&gt;</string>
+             <string>&lt;span style=&quot; font-weight:600;&quot;&gt;Currently Syncing, please wait a moment. Balances may be outdated. &lt;/span&gt;&lt;a href=&quot;https://freycoin.xyz/Core/Sync/&quot;&gt;&lt;span style=&quot; font-weight:504; text-decoration: underline; color:#1d99f3;&quot;&gt;Learn More&lt;/span&gt;&lt;/a&gt;</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>

@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -29,7 +29,7 @@ static CBlockIndex* CreateBlockIndexWithNbits(uint32_t nbits)
     CBlockIndex* block_index = new CBlockIndex();
     block_index->nHeight = 46367;
     block_index->nTime = 1269211443;
-    block_index->nBits = nbits;
+    block_index->nDifficulty = nbits;
     return block_index;
 }
 

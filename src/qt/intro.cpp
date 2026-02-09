@@ -1,9 +1,9 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <chainparams.h>
 #include <qt/intro.h>
@@ -41,7 +41,7 @@ Intro::Intro(QWidget *parent, int64_t blockchain_size_gb, int64_t chain_state_si
         .arg(CLIENT_NAME)
         .arg(m_blockchain_size_gb)
         .arg(2014)
-        .arg(tr("Riecoin"))
+        .arg(tr("Freycoin"))
     );
     ui->lblExplanation2->setText(ui->lblExplanation2->text().arg(CLIENT_NAME));
 
@@ -102,7 +102,7 @@ bool Intro::showIfNeeded(bool& did_show_intro)
         /* If current default data directory does not exist, let the user choose one */
         Intro intro(nullptr, Params().AssumedBlockchainSize(), Params().AssumedChainStateSize());
         intro.setDataDirectory(dataDir);
-        intro.setWindowIcon(QIcon(":icons/riecoin"));
+        intro.setWindowIcon(QIcon(":icons/freycoin"));
         did_show_intro = true;
 
         while(true)
@@ -130,8 +130,8 @@ bool Intro::showIfNeeded(bool& did_show_intro)
         settings.setValue("fReset", false);
     }
     /* Only override -datadir if different from the default, to make it possible to
-     * override -datadir in the riecoin.conf file in the default data directory
-     * (to be consistent with bitcoind behavior)
+     * override -datadir in the freycoin.conf file in the default data directory
+     * (to be consistent with freycoind behavior)
      */
     if(dataDir != GUIUtil::getDefaultDataDirectory()) {
         gArgs.SoftSetArg("-datadir", fs::PathToString(GUIUtil::QStringToPath(dataDir))); // use OS locale for path setting

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -327,8 +327,8 @@ static RPCHelpMan addnode()
                 },
                 RPCResult{RPCResult::Type::NONE, "", ""},
                 RPCExamples{
-                    HelpExampleCli("addnode", "\"192.168.0.6:28333\" \"onetry\" true")
-            + HelpExampleRpc("addnode", "\"192.168.0.6:28333\", \"onetry\" true")
+                    HelpExampleCli("addnode", "\"192.168.0.6:31470\" \"onetry\" true")
+            + HelpExampleRpc("addnode", "\"192.168.0.6:31470\", \"onetry\" true")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -391,8 +391,8 @@ static RPCHelpMan addconnection()
                 { RPCResult::Type::STR, "connection_type", "Type of connection opened." },
             }},
         RPCExamples{
-            HelpExampleCli("addconnection", "\"192.168.0.6:28333\" \"outbound-full-relay\" true")
-            + HelpExampleRpc("addconnection", "\"192.168.0.6:28333\" \"outbound-full-relay\" true")
+            HelpExampleCli("addconnection", "\"192.168.0.6:31470\" \"outbound-full-relay\" true")
+            + HelpExampleRpc("addconnection", "\"192.168.0.6:31470\" \"outbound-full-relay\" true")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -450,9 +450,9 @@ static RPCHelpMan disconnectnode()
                 },
                 RPCResult{RPCResult::Type::NONE, "", ""},
                 RPCExamples{
-                    HelpExampleCli("disconnectnode", "\"192.168.0.6:28333\"")
+                    HelpExampleCli("disconnectnode", "\"192.168.0.6:31470\"")
             + HelpExampleCli("disconnectnode", "\"\" 1")
-            + HelpExampleRpc("disconnectnode", "\"192.168.0.6:28333\"")
+            + HelpExampleRpc("disconnectnode", "\"192.168.0.6:31470\"")
             + HelpExampleRpc("disconnectnode", "\"\", 1")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
@@ -503,7 +503,7 @@ static RPCHelpMan getaddednodeinfo()
                             {
                                 {RPCResult::Type::OBJ, "", "",
                                 {
-                                    {RPCResult::Type::STR, "address", "The Riecoin server IP and port we're connected to"},
+                                    {RPCResult::Type::STR, "address", "The Freycoin server IP and port we're connected to"},
                                     {RPCResult::Type::STR, "connected", "connection, inbound or outbound"},
                                 }},
                             }},
@@ -979,8 +979,8 @@ static RPCHelpMan addpeeraddress()
             },
         },
         RPCExamples{
-            HelpExampleCli("addpeeraddress", "\"1.2.3.4\" 28333 true")
-    + HelpExampleRpc("addpeeraddress", "\"1.2.3.4\", 28333, true")
+            HelpExampleCli("addpeeraddress", "\"1.2.3.4\" 31470 true")
+    + HelpExampleRpc("addpeeraddress", "\"1.2.3.4\", 31470, true")
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {

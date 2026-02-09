@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-present The Bitcoin Core developers
-# Copyright (c) 2015-present The Riecoin developers
+# Copyright (c) 2015-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test block processing."""
@@ -106,7 +106,7 @@ class FullBlockTest(BitcoinTestFramework):
         self.spendable_outputs = []
 
         # Create a new block
-        # Commented out invalid Coinbase (cannot test anymore with unconditional Bip34 enforcement in Riecoin.)
+        # Commented out invalid Coinbase (cannot test anymore with unconditional Bip34 enforcement in Freycoin.)
         b_dup_cb = self.next_block('dup_cb')
         # b_dup_cb.vtx[0].vin[0].scriptSig = DUPLICATE_COINBASE_SCRIPT_SIG
         duplicate_tx = b_dup_cb.vtx[0]
@@ -386,7 +386,7 @@ class FullBlockTest(BitcoinTestFramework):
         b26 = self.update_block(26, [])
         self.send_blocks([b26], success=False, reject_reason='bad-cb-length', reconnect=True)
 
-        # Extend the b26 chain to make sure bitcoind isn't accepting b26
+        # Extend the b26 chain to make sure freycoind isn't accepting b26
         b27 = self.next_block(27, spend=out[7])
         self.send_blocks([b27], False)
 
@@ -397,7 +397,7 @@ class FullBlockTest(BitcoinTestFramework):
         b28 = self.update_block(28, [])
         self.send_blocks([b28], success=False, reject_reason='bad-cb-length', reconnect=True)
 
-        # Extend the b28 chain to make sure bitcoind isn't accepting b28
+        # Extend the b28 chain to make sure freycoind isn't accepting b28
         b29 = self.next_block(29, spend=out[7])
         self.send_blocks([b29], False)
 
@@ -503,7 +503,7 @@ class FullBlockTest(BitcoinTestFramework):
         redeem_script = CScript([self.coinbase_pubkey] + [OP_2DUP, OP_CHECKSIGVERIFY] * 5 + [OP_CHECKSIG])
         p2sh_script = script_to_p2sh_script(redeem_script)
 
-        # Create a transaction that spends one satoshi to the p2sh_script, the rest to OP_TRUE
+        # Create a transaction that spends one frey to the p2sh_script, the rest to OP_TRUE
         # This must be signed because it is spending a coinbase
         spend = out[11]
         tx = self.create_tx(spend, 0, 1, p2sh_script)
@@ -512,7 +512,7 @@ class FullBlockTest(BitcoinTestFramework):
         b39 = self.update_block(39, [tx])
         b39_outputs += 1
 
-        # Until block is full, add tx's with 1 satoshi to p2sh_script, the rest to OP_TRUE
+        # Until block is full, add tx's with 1 frey to p2sh_script, the rest to OP_TRUE
         tx_new = None
         tx_last = tx
         total_weight = b39.get_weight()
@@ -659,7 +659,7 @@ class FullBlockTest(BitcoinTestFramework):
         b47.nNonce = uint256_from_str(bytearray.fromhex("0200000000000000000000000000000000000000000000000000000000000000"))
         self.send_blocks([b47], False, force_send=True, reject_reason='short-constellation', reconnect=True)
 
-        # In Riecoin, Blocks > 15 s in the future are rejected, but in RegTest, this is reverted to the Bitcoin's 2 h until all the affected tests are rewritten.
+        # In Freycoin, Blocks > 15 s in the future are rejected, but in RegTest, this is reverted to the Bitcoin's 2 h until all the affected tests are rewritten.
         self.log.info("Reject a block with a timestamp >2 hours in the future")
         self.move_tip(44)
         b48 = self.next_block(48)
@@ -952,7 +952,7 @@ class FullBlockTest(BitcoinTestFramework):
         assert_equal(b64a.get_weight(), MAX_BLOCK_WEIGHT + 8 * 4)
         self.send_blocks([b64a], success=False, reject_reason='non-canonical ReadCompactSize()')
 
-        # bitcoind doesn't disconnect us for sending a bloated block, but if we subsequently
+        # freycoind doesn't disconnect us for sending a bloated block, but if we subsequently
         # resend the header message, it won't send us the getdata message again. Just
         # disconnect and reconnect and then call sync_blocks.
         # TODO: improve this test to be less dependent on P2P DOS behaviour.
@@ -1014,11 +1014,11 @@ class FullBlockTest(BitcoinTestFramework):
         # -> b64 (18) -> b65 (19) -> b69 (20)
         #                        \-> b68 (20)
         #
-        # b68 - coinbase with an extra 10 satoshis,
-        #       creates a tx that has 9 satoshis from out[20] go to fees
-        #       this fails because the coinbase is trying to claim 1 satoshi too much in fees
+        # b68 - coinbase with an extra 10 freys,
+        #       creates a tx that has 9 freys from out[20] go to fees
+        #       this fails because the coinbase is trying to claim 1 frey too much in fees
         #
-        # b69 - coinbase with extra 10 satoshis, and a tx that gives a 10 satoshi fee
+        # b69 - coinbase with extra 10 freys, and a tx that gives a 10 frey fee
         #       this succeeds
         #
         self.log.info("Reject a block trying to claim too much subsidy in the coinbase transaction")
@@ -1387,7 +1387,7 @@ class FullBlockTest(BitcoinTestFramework):
         if spend is None:
             block = create_block(base_block_hash, coinbase, block_time, version=version)
         else:
-            coinbase.vout[0].nValue += spend.vout[0].nValue//2 - 1  # burn half as per Riecoin Burn Policy, rest but one riemann to fees
+            coinbase.vout[0].nValue += spend.vout[0].nValue//2 - 1  # burn half as per Freycoin Burn Policy, rest but one riemann to fees
             tx = self.create_tx(spend, 0, 1, output_script=script)  # spend 1 riemann
             self.sign_tx(tx, spend)
             block = create_block(base_block_hash, coinbase, block_time, version=version, txlist=[tx])

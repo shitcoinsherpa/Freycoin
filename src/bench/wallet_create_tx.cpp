@@ -88,8 +88,10 @@ void generateFakeBlock(const CChainParams& params,
     block.hashPrevBlock = tip.prev_block_hash;
     block.hashMerkleRoot = BlockMerkleRoot(block);
     block.nTime = ++tip.prev_block_time;
-    block.nBits = params.GenesisBlock().nBits;
+    block.nDifficulty = params.GenesisBlock().nDifficulty;
     block.nNonce = 0;
+    block.nShift = 20;
+    block.nAdd.SetNull();
 
     {
         LOCK(::cs_main);
@@ -143,7 +145,7 @@ static void WalletCreateTx(benchmark::Bench& bench, const OutputType output_type
 
     CAmount target = 0;
     if (preset_inputs) {
-        // Select inputs, each has 48 BTC
+        // Select inputs, each has 48 FREY
         wallet::CoinFilterParams filter_coins;
         filter_coins.max_count = preset_inputs->num_of_internal_inputs;
         const auto& res = WITH_LOCK(wallet.cs_wallet,

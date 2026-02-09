@@ -1,10 +1,10 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
-# Wallet functionality used by riecoind and riecoin-wallet executables.
-add_library(riecoin_wallet STATIC EXCLUDE_FROM_ALL
+# Wallet functionality used by freycoind and freycoin-wallet executables.
+add_library(freycoin_wallet STATIC EXCLUDE_FROM_ALL
   coincontrol.cpp
   coinselection.cpp
   context.cpp
@@ -34,10 +34,10 @@ add_library(riecoin_wallet STATIC EXCLUDE_FROM_ALL
   walletdb.cpp
   walletutil.cpp
 )
-target_link_libraries(riecoin_wallet
+target_link_libraries(freycoin_wallet
   PRIVATE
     core_interface
-    riecoin_common
+    freycoin_common
     $<TARGET_NAME_IF_EXISTS:unofficial::sqlite3::sqlite3>
     $<TARGET_NAME_IF_EXISTS:SQLite::SQLite3>
     univalue

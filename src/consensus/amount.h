@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-2023 The Riecoin developers
+// Copyright (c) 2013-2023 The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,16 +9,16 @@
 
 #include <cstdint>
 
-/** Amount in satoshis (Can be negative) */
+/** Amount in freys (Can be negative) */
 typedef int64_t CAmount;
 
-/** The amount of riemanns in one RIC. */
+/** The amount of freys in one FREY. */
 static constexpr CAmount COIN = 100000000;
 
-/** No amount larger than this (in riemanns) is valid.
+/** No amount larger than this (in freys) is valid.
  *
- * Note that this constant is *not* the total money supply, which in Riecoin
- * currently happens to be less than 84,000,000 RIC for various reasons, but
+ * Note that this constant is *not* the total money supply, which in Freycoin
+ * currently happens to be less than 84,000,000 FREY for various reasons, but
  * rather a sanity check. As this sanity check is used by consensus-critical
  * validation code, the exact value of the MAX_MONEY constant is consensus
  * critical; in unusual circumstances like an overflow bug that could allow

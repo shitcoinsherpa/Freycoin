@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2020 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -15,8 +15,8 @@
 class ArgsManager;
 
 /**
- * CBaseChainParams defines the base parameters (shared between riecoin-cli and riecoind)
- * of a given instance of the Bitcoin system.
+ * CBaseChainParams defines the base parameters (shared between freycoin-cli and freycoind)
+ * of a given instance of the Freycoin system.
  */
 class CBaseChainParams
 {

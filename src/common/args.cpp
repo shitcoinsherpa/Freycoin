@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -35,7 +35,7 @@
 #include <utility>
 #include <variant>
 
-const char * const BITCOIN_CONF_FILENAME = "riecoin.conf";
+const char * const BITCOIN_CONF_FILENAME = "freycoin.conf";
 const char * const BITCOIN_SETTINGS_FILENAME = "settings.json";
 
 ArgsManager gArgs;
@@ -733,12 +733,12 @@ bool HasTestOption(const ArgsManager& args, const std::string& test_option)
 
 fs::path GetDefaultDataDir()
 {
-    // Windows: C:\Users\Username\AppData\Local\Riecoin
-    // macOS: ~/Library/Application Support/Riecoin
-    // Unix-like: ~/.riecoin
+    // Windows: C:\Users\Username\AppData\Local\Freycoin
+    // macOS: ~/Library/Application Support/Freycoin
+    // Unix-like: ~/.freycoin
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_LOCAL_APPDATA) / "Riecoin";
+    return GetSpecialFolderPath(CSIDL_LOCAL_APPDATA) / "Freycoin";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -748,10 +748,10 @@ fs::path GetDefaultDataDir()
         pathRet = fs::path(pszHome);
 #ifdef __APPLE__
     // macOS
-    return pathRet / "Library/Application Support/Riecoin";
+    return pathRet / "Library/Application Support/Freycoin";
 #else
     // Unix-like
-    return pathRet / ".riecoin";
+    return pathRet / ".freycoin";
 #endif
 #endif
 }

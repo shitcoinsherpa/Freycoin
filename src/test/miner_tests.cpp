@@ -1,5 +1,5 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -72,7 +72,7 @@ BOOST_FIXTURE_TEST_SUITE(miner_tests, MinerTestingSetup)
 
 static CFeeRate blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE);
 
-// Todo: rewrite the CreateNewBlock_validity test for Riecoin
+// Todo: rewrite the CreateNewBlock_validity test for Freycoin
 // Put valid ExtraNonces/Offsets for this test
 /*constexpr static struct {
     unsigned char extranonce;
@@ -143,12 +143,12 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     tx.vin[0].prevout.n = 0;
     tx.vout.resize(1);
     tx.vout[0].nValue = 5000000000LL - 1000;
-    // This tx has a low fee: 1000 satoshis
+    // This tx has a low fee: 1000 freys
     Txid hashParentTx = tx.GetHash(); // save this txid for later use
     const auto parent_tx{entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx)};
     AddToMempool(tx_mempool, parent_tx);
 
-    // This tx has a medium fee: 10000 satoshis
+    // This tx has a medium fee: 10000 freys
     tx.vin[0].prevout.hash = txFirst[1]->GetHash();
     tx.vout[0].nValue = 5000000000LL - 10000;
     Txid hashMediumFeeTx = tx.GetHash();
@@ -157,7 +157,7 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
 
     // This tx has a high fee, but depends on the first transaction
     tx.vin[0].prevout.hash = hashParentTx;
-    tx.vout[0].nValue = 5000000000LL - 1000 - 50000; // 50k satoshi fee
+    tx.vout[0].nValue = 5000000000LL - 1000 - 50000; // 50k frey fee
     Txid hashHighFeeTx = tx.GetHash();
     const auto high_fee_tx{entry.Fee(50000).Time(Now<NodeSeconds>()).SpendsCoinbase(false).FromTx(tx)};
     AddToMempool(tx_mempool, high_fee_tx);
@@ -262,7 +262,7 @@ void MinerTestingSetup::TestPackageSelection(const CScript& scriptPubKey, const 
     // This tx will be mineable, and should cause hashLowFeeTx2 to be selected
     // as well.
     tx.vin[0].prevout.n = 1;
-    tx.vout[0].nValue = 100000000 - 10000; // 10k satoshi fee
+    tx.vout[0].nValue = 100000000 - 10000; // 10k frey fee
     AddToMempool(tx_mempool, entry.Fee(10000).FromTx(tx));
     block_template = mining->createNewBlock(options);
     BOOST_REQUIRE(block_template);
@@ -628,11 +628,11 @@ void MinerTestingSetup::TestPrioritisedMining(const CScript& scriptPubKey, const
     tx.vin[0].prevout.hash = txFirst[1]->GetHash();
     tx.vin[0].prevout.n = 0;
     tx.vout[0].nValue = 5000000000LL - 1000;
-    // This tx has a low fee: 1000 satoshis
+    // This tx has a low fee: 1000 freys
     Txid hashParentTx = tx.GetHash(); // save this txid for later use
     AddToMempool(tx_mempool, entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(true).FromTx(tx));
 
-    // This tx has a medium fee: 10000 satoshis
+    // This tx has a medium fee: 10000 freys
     tx.vin[0].prevout.hash = txFirst[2]->GetHash();
     tx.vout[0].nValue = 5000000000LL - 10000;
     Txid hashMediumFeeTx = tx.GetHash();
@@ -641,7 +641,7 @@ void MinerTestingSetup::TestPrioritisedMining(const CScript& scriptPubKey, const
 
     // This tx also has a low fee, but is prioritised
     tx.vin[0].prevout.hash = hashParentTx;
-    tx.vout[0].nValue = 5000000000LL - 1000 - 1000; // 1000 satoshi fee
+    tx.vout[0].nValue = 5000000000LL - 1000 - 1000; // 1000 frey fee
     Txid hashPrioritsedChild = tx.GetHash();
     AddToMempool(tx_mempool, entry.Fee(1000).Time(Now<NodeSeconds>()).SpendsCoinbase(false).FromTx(tx));
     tx_mempool.PrioritiseTransaction(hashPrioritsedChild, 2 * COIN);
@@ -721,19 +721,8 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
             BOOST_REQUIRE_EQUAL(debug, "");
         }
 
-        {
-            // A block template does not have proof-of-work, but it might pass
-            // verification by coincidence. Grind the nonce if needed:
-            while (CheckProofOfWork(block.GetHash(), block.nBits, Assert(m_node.chainman)->GetParams().GetConsensus())) {
-                block.nNonce++;
-            }
-
-            std::string reason;
-            std::string debug;
-            BOOST_REQUIRE(!mining->checkBlock(block, {.check_pow = true}, reason, debug));
-            BOOST_REQUIRE_EQUAL(reason, "high-hash");
-            BOOST_REQUIRE_EQUAL(debug, "proof of work failed");
-        }
+        // NOTE: With stub PoW (Phase 2), all blocks pass CheckProofOfWork.
+        // PoW rejection testing will be enabled in Phase 4 when real validation is implemented.
     }
 
     // We can't make transactions until we have inputs

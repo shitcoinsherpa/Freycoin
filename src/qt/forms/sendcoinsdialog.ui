@@ -327,7 +327,7 @@
                   <enum>Qt::ActionsContextMenu</enum>
                  </property>
                  <property name="text">
-                  <string notr="true">0.00 RIC</string>
+                  <string notr="true">0.00 FREY</string>
                  </property>
                  <property name="textInteractionFlags">
                   <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
@@ -378,7 +378,7 @@
                   <enum>Qt::ActionsContextMenu</enum>
                  </property>
                  <property name="text">
-                  <string notr="true">0.00 RIC</string>
+                  <string notr="true">0.00 FREY</string>
                  </property>
                  <property name="textInteractionFlags">
                   <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
@@ -461,7 +461,7 @@
                   <enum>Qt::ActionsContextMenu</enum>
                  </property>
                  <property name="text">
-                  <string notr="true">0.00 RIC</string>
+                  <string notr="true">0.00 FREY</string>
                  </property>
                  <property name="textInteractionFlags">
                   <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
@@ -823,17 +823,17 @@
                <item>
                 <layout class="QHBoxLayout" name="horizontalLayoutFee13">
                  <item>
-                  <widget class="RiecoinAmountField" name="customFee"/>
+                  <widget class="FreycoinAmountField" name="customFee"/>
                  </item>
                  <item>
                   <widget class="QLabel" name="labelCustomPerKilobyte">
                    <property name="toolTip">
                     <string>Specify a custom fee per kB (1,000 bytes) of the transaction's virtual size.
 
-Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riemanns per kvB" for a transaction size of 500 virtual bytes (half of 1 kvB) would ultimately yield a fee of only 50 riemanns.</string>
+Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 freys per kvB" for a transaction size of 500 virtual bytes (half of 1 kvB) would ultimately yield a fee of only 50 freys.</string>
                    </property>
                    <property name="text">
-                    <string>RIC/kvB</string>
+                    <string>FREY/kvB</string>
                    </property>
                   </widget>
                  </item>
@@ -1084,7 +1084,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
         <string>S&amp;end</string>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/send</normaloff>:/icons/send</iconset>
        </property>
        <property name="autoDefault">
@@ -1110,7 +1110,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
         <string>Clear &amp;All</string>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/remove</normaloff>:/icons/remove</iconset>
        </property>
        <property name="autoDefault">
@@ -1127,7 +1127,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
         <string>Add &amp;Recipient</string>
        </property>
        <property name="icon">
-        <iconset resource="../riecoin.qrc">
+        <iconset resource="../freycoin.qrc">
          <normaloff>:/icons/add</normaloff>:/icons/add</iconset>
        </property>
        <property name="autoDefault">
@@ -1178,7 +1178,7 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
           <cursorShape>IBeamCursor</cursorShape>
          </property>
          <property name="text">
-          <string notr="true">123.456 RIC</string>
+          <string notr="true">123.456 FREY</string>
          </property>
          <property name="textInteractionFlags">
           <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
@@ -1198,14 +1198,14 @@ Note:  Since the fee is calculated on a per-byte basis, a fee rate of "100 riema
    <header>qt/qvalidatedlineedit.h</header>
   </customwidget>
   <customwidget>
-   <class>RiecoinAmountField</class>
+   <class>FreycoinAmountField</class>
    <extends>QLineEdit</extends>
-   <header>qt/riecoinamountfield.h</header>
+   <header>qt/freycoinamountfield.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="../riecoin.qrc"/>
+  <include location="../freycoin.qrc"/>
  </resources>
  <connections/>
  <buttongroups>

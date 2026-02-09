@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,11 +8,11 @@
 
 #include <util/macros.h>
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 // Check that required client information is defined
 #if !defined(CLIENT_VERSION_MONTH) || !defined(CLIENT_VERSION_REVISION) || !defined(CLIENT_VERSION_IS_RELEASE) || !defined(COPYRIGHT_YEAR)
-#error Client version information missing: version is not defined by riecoin-build-config.h or in any other way
+#error Client version information missing: version is not defined by freycoin-build-config.h or in any other way
 #endif
 
 //! Copyright string used in Windows .rc files

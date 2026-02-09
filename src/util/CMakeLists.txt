@@ -1,9 +1,9 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
-add_library(riecoin_util STATIC EXCLUDE_FROM_ALL
+add_library(freycoin_util STATIC EXCLUDE_FROM_ALL
   asmap.cpp
   batchpriority.cpp
   bip32.cpp
@@ -38,10 +38,10 @@ add_library(riecoin_util STATIC EXCLUDE_FROM_ALL
   ../sync.cpp
 )
 
-target_link_libraries(riecoin_util
+target_link_libraries(freycoin_util
   PRIVATE
     core_interface
-    riecoin_clientversion
+    freycoin_clientversion
     bitcoin_crypto
     $<$<PLATFORM_ID:Windows>:ws2_32>
     $<$<PLATFORM_ID:Windows>:iphlpapi>

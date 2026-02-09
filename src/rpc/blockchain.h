@@ -1,5 +1,5 @@
 // Copyright (c) 2017-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -32,10 +32,10 @@ static constexpr int NUM_GETBLOCKSTATS_PERCENTILES = 5;
 double GetDifficulty(const CBlockIndex& blockindex, const int32_t = 0);
 
 /** Block description to JSON */
-UniValue blockToJSON(node::BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, const uint32_t nBitsMin) LOCKS_EXCLUDED(cs_main);
+UniValue blockToJSON(node::BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity) LOCKS_EXCLUDED(cs_main);
 
 /** Block header to JSON */
-UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex, const uint32_t nBitsMin) LOCKS_EXCLUDED(cs_main);
+UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex) LOCKS_EXCLUDED(cs_main);
 
 /** Used by getblockstats to get feerates at different percentiles by weight  */
 void CalculatePercentilesByWeight(CAmount result[NUM_GETBLOCKSTATS_PERCENTILES], std::vector<std::pair<CAmount, int64_t>>& scores, int64_t total_weight);

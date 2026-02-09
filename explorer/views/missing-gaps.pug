@@ -1,0 +1,109 @@
+extends layout
+
+block headContent
+	title Missing Gaps
+
+block content
+	+pageTitle("Missing Gaps")
+		if (lastUpdated)
+			small.text-muted.ms-3 #{totalMissing.toLocaleString()} missing in range #{minSize.toLocaleString()}&ndash;#{maxSize.toLocaleString()}
+
+	+dismissableInfoAlert("missingGapsNoteDismissed", "About Missing Gaps...")
+		p.mb-2 The #[a(href="https://primegap-list-project.github.io/", target="_blank") Prime Gap List Project] catalogs the first known occurrence of each prime gap size. Many even gap sizes have <strong>never been observed</strong> — discovering one is an automatic first-occurrence record.
+		p.mb-2 This page shows gap sizes in a configurable range that are not yet in the global database. If your miner discovers any of these gap sizes, it will be a genuine mathematical first.
+		if (firstMissingGap)
+			p.mb-0
+				i.bi-info-circle.me-1
+				| All even gaps below <strong>#{firstMissingGap.toLocaleString()}</strong> are already known. Missing gaps start there.
+
+	//- Range selector
+	+contentSection("Search Range")
+		form.d-flex.flex-wrap.gap-3.align-items-end(method="GET", action="./missing-gaps")
+			div
+				label.form-label.small.text-muted Min Gap Size
+				input.form-control.form-control-sm(type="number", name="min", value=minSize, min="2", step="2", style="width: 160px;")
+			div
+				label.form-label.small.text-muted Max Gap Size
+				input.form-control.form-control-sm(type="number", name="max", value=maxSize, min="4", step="2", style="width: 160px;")
+			div
+				button.btn.btn-sm.btn-primary(type="submit")
+					i.bi-search.me-1
+					| Search
+
+	//- Summary stats
+	if (globalDataLoaded)
+		+contentSection("Summary")
+			+summaryRow(3)
+				+summaryItem("Missing Gaps in Range")
+					span.fw-bold.text-warning #{totalMissing.toLocaleString()}
+
+				+summaryItem("Known Gaps in Range")
+					span.fw-bold.text-success #{knownInRange.toLocaleString()}
+
+				+summaryItem("Coverage")
+					if (totalEvenInRange > 0)
+						- var pct = ((knownInRange / totalEvenInRange) * 100).toFixed(1);
+						span #{pct}%
+						small.text-muted.ms-1 of even gap sizes known
+					else
+						span -
+
+		//- Main table
+		+contentSection("Missing Gap Sizes")
+			if (missingGaps.length > 0)
+				.table-responsive
+					table.table.table-striped.table-borderless.mb-0
+						thead
+							tr
+								th.text-end #
+								th.text-end Gap Size
+								th.text-center On Our Chain?
+								th.text-end Nearest Known Below
+								th.text-end Nearest Known Above
+								th.text-end Distance to Nearest
+						tbody
+							each item, index in missingGaps
+								if (index < 500)
+									tr(class=(item.chainFound ? "table-success" : ""))
+										td.text-end.text-muted #{index + 1}
+										td.text-end.fw-bold #{item.gapSize.toLocaleString()}
+										td.text-center
+											if (item.chainFound)
+												span.badge.bg-success Found!
+											else
+												span.text-muted.small -
+										td.text-end
+											if (item.nearestBelow)
+												span #{item.nearestBelow.toLocaleString()}
+											else
+												span.text-muted -
+										td.text-end
+											if (item.nearestAbove)
+												span #{item.nearestAbove.toLocaleString()}
+											else
+												span.text-muted -
+										td.text-end
+											- var distBelow = item.nearestBelow ? item.gapSize - item.nearestBelow : 999999;
+											- var distAbove = item.nearestAbove ? item.nearestAbove - item.gapSize : 999999;
+											- var minDist = Math.min(distBelow, distAbove);
+											if (minDist < 999999)
+												span.text-muted #{minDist.toLocaleString()}
+											else
+												span.text-muted -
+
+				if (missingGaps.length > 500)
+					.mt-3.text-center.text-muted Showing first 500 of #{totalMissing.toLocaleString()} missing gaps. Narrow the range to see more.
+			else if (totalMissing === 0 && globalDataLoaded)
+				.text-center.py-4
+					p.text-success.fw-bold All even gap sizes in this range are already known!
+					if (firstMissingGap)
+						p.text-muted The first missing even gap is #[strong #{firstMissingGap.toLocaleString()}]. Try searching from there.
+						a.btn.btn-sm.btn-primary(href="./missing-gaps?min=" + (firstMissingGap - 100) + "&max=" + (firstMissingGap + 10000)) Jump to First Missing Gap
+					else
+						p.text-muted Try expanding the range to find undiscovered gaps.
+			else
+				p.text-muted No data available.
+	else
+		.text-center.py-4
+			p.text-muted.mb-2 Global gap records are loading...
+			p.text-muted.small Data is fetched from the Prime Gap List Project on startup and refreshed every 6 hours.

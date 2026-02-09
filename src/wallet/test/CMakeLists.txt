@@ -1,11 +1,11 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
 # Do not use generator expressions in test sources because the
 # SOURCES property is processed to gather test suite macros.
-target_sources(test_riecoin
+target_sources(test_freycoin
   PRIVATE
     init_test_fixture.cpp
     wallet_test_fixture.cpp
@@ -26,4 +26,4 @@ target_sources(test_riecoin
     walletdb_tests.cpp
     walletload_tests.cpp
 )
-target_link_libraries(test_riecoin riecoin_wallet)
+target_link_libraries(test_freycoin freycoin_wallet)

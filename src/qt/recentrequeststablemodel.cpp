@@ -30,7 +30,7 @@ RecentRequestsTableModel::RecentRequestsTableModel(WalletModel *parent) :
     }
 
     /* These columns must match the indices in the ColumnIndex enumeration */
-    columns << tr("Date") << tr("Label") << tr("Message") << tr("Requested") + QLatin1String(" (RIC)");
+    columns << tr("Date") << tr("Label") << tr("Message") << tr("Requested") + QLatin1String(" (FREY)");
 }
 
 RecentRequestsTableModel::~RecentRequestsTableModel() = default;

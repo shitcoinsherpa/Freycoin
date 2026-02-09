@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -141,7 +141,7 @@ static const bool DEFAULT_WALLETCROSSCHAIN = false;
 constexpr CAmount DEFAULT_TRANSACTION_MAXFEE{10*COIN};
 //! Discourage users to set fees higher than this amount per kB
 constexpr CAmount HIGH_TX_FEE_PER_KB{COIN};
-//! -maxtxfee will warn if called with a higher fee than this amount (in riemanns)
+//! -maxtxfee will warn if called with a higher fee than this amount (in freys)
 constexpr CAmount HIGH_MAX_TX_FEE{100 * HIGH_TX_FEE_PER_KB};
 //! Pre-calculated constants for input size estimation in *virtual size*
 static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
@@ -741,7 +741,7 @@ public:
      * CWallet::TransactionChangeType for details).
      */
     std::optional<OutputType> m_default_change_type{};
-    /** Absolute maximum transaction fee (in riemanns) used by default for the wallet */
+    /** Absolute maximum transaction fee (in freys) used by default for the wallet */
     CAmount m_default_max_tx_fee{DEFAULT_TRANSACTION_MAXFEE};
 
     /** Number of pre-generated keys/scripts by each spkm (part of the look-ahead process, used to detect payments) */

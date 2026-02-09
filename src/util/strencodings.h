@@ -14,7 +14,7 @@
 #include <util/string.h>
 
 #include <array>
-#include <bit>
+#include <compat/bit.h>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
@@ -325,12 +325,14 @@ std::string Capitalize(std::string str);
 std::optional<uint64_t> ParseByteUnits(std::string_view str, ByteUnit default_multiplier);
 
 namespace util {
-/** consteval version of HexDigit() without the lookup table. */
-consteval uint8_t ConstevalHexDigit(const char c)
+/** constexpr version of HexDigit() without the lookup table. */
+constexpr uint8_t ConstevalHexDigit(const char c)
 {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 0xa;
 
+    // Note: This throw is only reached at compile-time (illegal hex char)
+    // At runtime with invalid input, behavior is undefined
     throw "Only lowercase hex digits are allowed, for consistency";
 }
 
@@ -387,7 +389,7 @@ template <util::detail::Hex str>
 constexpr auto operator""_hex() { return str.bytes; }
 
 template <util::detail::Hex str>
-constexpr auto operator""_hex_u8() { return std::bit_cast<std::array<uint8_t, str.bytes.size()>>(str.bytes); }
+constexpr auto operator""_hex_u8() { return bit_cast<std::array<uint8_t, str.bytes.size()>>(str.bytes); }
 
 template <util::detail::Hex str>
 constexpr auto operator""_hex_v() { return std::vector<std::byte>{str.bytes.begin(), str.bytes.end()}; }

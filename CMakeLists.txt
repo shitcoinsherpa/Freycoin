@@ -1,5 +1,6 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
 # Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2025-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
@@ -27,11 +28,11 @@ get_directory_property(precious_variables CACHE_VARIABLES)
 #=============================
 # Project / Package metadata
 #=============================
-set(CLIENT_NAME "Riecoin Core")
+set(CLIENT_NAME "Freycoin Core")
 set(CLIENT_VERSION_MONTH 2511)
 set(CLIENT_VERSION_REVISION 0)
 set(CLIENT_VERSION_RC 0)
-set(CLIENT_VERSION_IS_RELEASE "false")
+set(CLIENT_VERSION_IS_RELEASE "true")
 set(COPYRIGHT_YEAR "2025")
 
 # During the enabling of the CXX and CXXOBJ languages, we modify
@@ -50,11 +51,11 @@ set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
   CMAKE_CXX_LINK_EXECUTABLE
 )
 
-project(RiecoinCore
+project(FreycoinCore
 #  VERSION ${CLIENT_VERSION_MONTH}.${CLIENT_VERSION_REVISION}
   VERSION ${CLIENT_VERSION_MONTH}
-  DESCRIPTION "Riecoin client software"
-  HOMEPAGE_URL "https://riecoin.xyz/"
+  DESCRIPTION "Freycoin client software"
+  HOMEPAGE_URL "https://freycoin.org/"
   LANGUAGES NONE
 )
 
@@ -67,7 +68,7 @@ endif()
 
 set(COPYRIGHT_HOLDERS "The %s developers")
 set(COPYRIGHT_HOLDERS_FINAL "The ${CLIENT_NAME} developers")
-set(PACKAGE_BUGREPORT "https://riecoin.xyz/Forum/")
+set(PACKAGE_BUGREPORT "https://freycoin.org/")
 
 #=============================
 # Language setup
@@ -97,17 +98,17 @@ endif()
 #=============================
 include(CMakeDependentOption)
 # When adding a new option, end the <help_text> with a full stop for consistency.
-option(BUILD_BITCOIN_BIN "Build riecoin executable." ON)
-option(BUILD_DAEMON "Build riecoind executable." ON)
-option(BUILD_GUI "Build riecoin-qt executable." OFF)
-option(BUILD_CLI "Build riecoin-cli executable." ON)
+option(BUILD_BITCOIN_BIN "Build freycoin executable." ON)
+option(BUILD_DAEMON "Build freycoind executable." ON)
+option(BUILD_GUI "Build freycoin-qt executable." OFF)
+option(BUILD_CLI "Build freycoin-cli executable." ON)
 
-option(BUILD_TESTS "Build test_riecoin and other unit test executables." ON)
-option(BUILD_TX "Build riecoin-tx executable." ${BUILD_TESTS})
+option(BUILD_TESTS "Build test_freycoin and other unit test executables." ON)
+option(BUILD_TX "Build freycoin-tx executable." ${BUILD_TESTS})
 
-option(BUILD_UTIL_CHAINSTATE "Build experimental riecoin-chainstate executable." OFF)
-option(BUILD_KERNEL_LIB "Build experimental riecoinkernel library." ${BUILD_UTIL_CHAINSTATE})
-option(BUILD_KERNEL_TEST "Build tests for the experimental riecoinkernel library." ${BUILD_KERNEL_LIB})
+option(BUILD_UTIL_CHAINSTATE "Build experimental freycoin-chainstate executable." OFF)
+option(BUILD_KERNEL_LIB "Build experimental freycoinkernel library." ${BUILD_UTIL_CHAINSTATE})
+option(BUILD_KERNEL_TEST "Build tests for the experimental freycoinkernel library." ${BUILD_KERNEL_LIB})
 
 option(ENABLE_WALLET "Enable wallet." ON)
 if(ENABLE_WALLET)
@@ -118,13 +119,14 @@ if(ENABLE_WALLET)
     find_package(SQLite3 3.7.17 REQUIRED)
   endif()
 endif()
-cmake_dependent_option(BUILD_WALLET_TOOL "Build riecoin-wallet tool." ${BUILD_TESTS} "ENABLE_WALLET" OFF)
+cmake_dependent_option(BUILD_WALLET_TOOL "Build freycoin-wallet tool." ${BUILD_TESTS} "ENABLE_WALLET" OFF)
 
 option(REDUCE_EXPORTS "Attempt to reduce exported symbols in the resulting executables." OFF)
 option(WERROR "Treat compiler warnings as errors." OFF)
 option(WITH_CCACHE "Attempt to use ccache for compiling." ON)
 
 find_package(GMP MODULE REQUIRED)
+find_package(MPFR MODULE REQUIRED)
 
 option(WITH_ZMQ "Enable ZMQ notifications." OFF)
 if(WITH_ZMQ)
@@ -146,7 +148,7 @@ endif()
 
 cmake_dependent_option(WITH_DBUS "Enable DBus support." ON "NOT CMAKE_SYSTEM_NAME MATCHES \"(Windows|Darwin)\" AND BUILD_GUI" OFF)
 
-cmake_dependent_option(ENABLE_IPC "Build multiprocess riecoin-node and riecoin-gui executables in addition to monolithic riecoind and riecoin-qt executables." ON "NOT WIN32" OFF)
+cmake_dependent_option(ENABLE_IPC "Build multiprocess freycoin-node and freycoin-gui executables in addition to monolithic freycoind and freycoin-qt executables." ON "NOT WIN32" OFF)
 cmake_dependent_option(WITH_EXTERNAL_LIBMULTIPROCESS "Build with external libmultiprocess library instead of with local git subtree when ENABLE_IPC is enabled. This is not normally recommended, but can be useful for developing libmultiprocess itself." OFF "ENABLE_IPC" OFF)
 if(ENABLE_IPC AND WITH_EXTERNAL_LIBMULTIPROCESS)
   find_package(Libmultiprocess REQUIRED COMPONENTS Lib)
@@ -155,7 +157,7 @@ if(ENABLE_IPC AND WITH_EXTERNAL_LIBMULTIPROCESS)
   )
 endif()
 
-cmake_dependent_option(BUILD_GUI_TESTS "Build test_riecoin-qt executable." ON "BUILD_GUI;BUILD_TESTS" OFF)
+cmake_dependent_option(BUILD_GUI_TESTS "Build test_freycoin-qt executable." ON "BUILD_GUI;BUILD_TESTS" OFF)
 if(BUILD_GUI)
   set(qt_components Core Gui Widgets LinguistTools)
   if(ENABLE_WALLET)
@@ -174,7 +176,7 @@ if(BUILD_GUI)
   unset(qt_components)
 endif()
 
-option(BUILD_BENCH "Build bench_riecoin executable." OFF)
+option(BUILD_BENCH "Build bench_freycoin executable." OFF)
 option(BUILD_FUZZ_BINARY "Build fuzz binary." OFF)
 option(BUILD_FOR_FUZZING "Build for fuzzing. Enabling this will disable all other targets and override BUILD_FUZZ_BINARY." OFF)
 
@@ -651,26 +653,26 @@ message("\n")
 message("Configure summary")
 message("=================")
 message("Executables:")
-message("  riecoin ............................. ${BUILD_BITCOIN_BIN}")
-message("  riecoind ............................ ${BUILD_DAEMON}")
+message("  freycoin ............................ ${BUILD_BITCOIN_BIN}")
+message("  freycoind ........................... ${BUILD_DAEMON}")
 if(BUILD_DAEMON AND ENABLE_IPC)
-  set(riecoin_daemon_status ON)
+  set(freycoin_daemon_status ON)
 else()
-  set(riecoin_daemon_status OFF)
+  set(freycoin_daemon_status OFF)
 endif()
-message("  riecoin-node (multiprocess) ......... ${riecoin_daemon_status}")
-message("  riecoin-qt (GUI) .................... ${BUILD_GUI}")
+message("  freycoin-node (multiprocess) ........ ${freycoin_daemon_status}")
+message("  freycoin-qt (GUI) ................... ${BUILD_GUI}")
 if(BUILD_GUI AND ENABLE_IPC)
-  set(riecoin_gui_status ON)
+  set(freycoin_gui_status ON)
 else()
-  set(riecoin_gui_status OFF)
+  set(freycoin_gui_status OFF)
 endif()
-message("  riecoin-gui (GUI, multiprocess) ..... ${riecoin_gui_status}")
-message("  riecoin-cli ......................... ${BUILD_CLI}")
-message("  riecoin-tx .......................... ${BUILD_TX}")
-message("  riecoin-wallet ...................... ${BUILD_WALLET_TOOL}")
-message("  riecoin-chainstate (experimental) ... ${BUILD_UTIL_CHAINSTATE}")
-message("  libriecoinkernel (experimental) ..... ${BUILD_KERNEL_LIB}")
+message("  freycoin-gui (GUI, multiprocess) .... ${freycoin_gui_status}")
+message("  freycoin-cli ........................ ${BUILD_CLI}")
+message("  freycoin-tx ......................... ${BUILD_TX}")
+message("  freycoin-wallet ..................... ${BUILD_WALLET_TOOL}")
+message("  freycoin-chainstate (experimental) .. ${BUILD_UTIL_CHAINSTATE}")
+message("  libfreycoinkernel (experimental) .... ${BUILD_KERNEL_LIB}")
 message("  kernel-test (experimental) .......... ${BUILD_KERNEL_TEST}")
 message("Optional features:")
 message("  wallet support ...................... ${ENABLE_WALLET}")
@@ -690,9 +692,9 @@ message("  USDT tracing ........................ ${WITH_USDT}")
 message("  QR code (GUI) ....................... ${WITH_QRENCODE}")
 message("  DBus (GUI) .......................... ${WITH_DBUS}")
 message("Tests:")
-message("  test_riecoin ........................ ${BUILD_TESTS}")
-message("  test_riecoin-qt ..................... ${BUILD_GUI_TESTS}")
-message("  bench_riecoin ....................... ${BUILD_BENCH}")
+message("  test_freycoin ....................... ${BUILD_TESTS}")
+message("  test_freycoin-qt ................... ${BUILD_GUI_TESTS}")
+message("  bench_freycoin ..................... ${BUILD_BENCH}")
 message("  fuzz binary ......................... ${BUILD_FUZZ_BINARY}")
 message("")
 if(CMAKE_CROSSCOMPILING)

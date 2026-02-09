@@ -1,0 +1,96 @@
+include ./includes/shared-mixins.pug
+
+doctype html
+html(lang="en")
+	head
+		meta(charset="utf-8")
+		base(href=config.baseUrl)
+		base(target="_parent")
+		meta(name="csrf-token", content=csrfToken)
+		meta(name="viewport", content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no")
+
+		meta(name="description" content="Open-source, easy-to-use Freycoin block explorer. Explore prime gap Proof-of-Work blocks, transactions, and addresses.")
+
+		if (!homepage)
+			link(rel="stylesheet", href=assetUrl(`./style/highlight.min.css`), integrity=assetIntegrity("highlight.min.css"), crossorigin="anonymous")
+
+
+		+themeCss
+
+
+		meta(property="og:title" content=(metaTitle != undefined ? metaTitle : "Freycoin Explorer — Prime Gap Proof-of-Work"))
+		meta(property="og:description" content=(metaDesc != undefined ? metaDesc : "Explore prime gap Proof-of-Work blocks, transactions, and addresses on the Freycoin network."))
+
+		meta(property="twitter:card" content="summary_large_image")
+		meta(property="twitter:title" content=(metaTitle != undefined ? metaTitle : "Freycoin Explorer"))
+		meta(property="twitter:description" content=(metaDesc != undefined ? metaDesc : "Explore prime gap Proof-of-Work blocks, transactions, and addresses on the Freycoin network."))
+
+		link(rel="apple-touch-icon", sizes="180x180", href=assetUrl("./img/network-mainnet/apple-touch-icon.png"))
+		link(rel="icon", type="image/png", sizes="32x32", href=assetUrl("./img/network-mainnet/favicon-32x32.png"))
+		link(rel="icon", type="image/png", sizes="16x16", href=assetUrl("./img/network-mainnet/favicon-16x16.png"))
+		link(rel="manifest", href="./img/network-mainnet/site.webmanifest")
+		link(rel="mask-icon", href="./img/network-mainnet/safari-pinned-tab.svg", color="#6B46C1")
+		link(rel="shortcut icon", href="./img/network-mainnet/favicon.ico")
+		meta(name="apple-mobile-web-app-title", content="FREY Explorer")
+		meta(name="application-name", content="FREY Explorer")
+		meta(name="msapplication-TileColor", content="#022e70")
+		meta(name="msapplication-config", content="./img/network-mainnet/browserconfig.xml")
+		meta(name="theme-color" content="#022e70")
+
+		include includes/debug-overrides.pug
+
+		block headContent
+			title Explorer
+	
+	include ./includes/shared-mixins.pug
+
+	body(style="background-color: transparent;")
+		div
+			div.px-2.px-sm-3
+				block content
+
+		
+								
+
+		+sharedScriptTags
+
+
+		script.
+			document.addEventListener("DOMContentLoaded", function(event) {
+				// enable tooltips everywhere
+				var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+				var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+					return new bootstrap.Tooltip(tooltipTriggerEl);
+				});
+
+				// enable popovers everywhere
+				var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+				var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+					return new bootstrap.Popover(popoverTriggerEl);
+				});
+			});
+
+		if (!homepage)
+			script(src=assetUrl(`./js/highlight.min.js`), integrity=assetIntegrity("highlight.min.js"), crossorigin="anonymous")
+			script.
+				document.addEventListener("DOMContentLoaded", function(event) {
+					hljs.highlightAll();
+				});
+
+		
+		if (config.credentials.sentryUrl && config.credentials.sentryUrl.length > 0)
+			script(src=assetUrl("./js/sentry.min.js"), integrity=assetIntegrity("sentry.min.js"), crossorigin="anonymous")
+			script.
+				Sentry.init({ dsn: '#{config.credentials.sentryUrl}' });
+
+		if (config.credentials.googleAnalyticsTrackingId && config.credentials.googleAnalyticsTrackingId.trim().length > 0)
+			script(async, src=("https://www.googletagmanager.com/gtag/js?id=" + config.credentials.googleAnalyticsTrackingId))
+			script.
+				window.dataLayer = window.dataLayer || [];
+				function gtag(){dataLayer.push(arguments);}
+				gtag('js', new Date());
+
+				gtag('config', '#{config.credentials.googleAnalyticsTrackingId}');
+
+		
+		block endOfBody

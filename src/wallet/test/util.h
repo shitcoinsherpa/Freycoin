@@ -1,5 +1,5 @@
 // Copyright (c) 2021-present The Bitcoin Core developers
-// Copyright (c) 2021-present The Riecoin developers
+// Copyright (c) 2021-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,7 +25,7 @@ class CWallet;
 class WalletDatabase;
 struct WalletContext;
 
-const std::string ADDRESS_BCRT1_UNSPENDABLE = "rric1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq46tsvq";
+const std::string ADDRESS_BCRT1_UNSPENDABLE = "rfrey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxk3gnu";
 
 std::unique_ptr<CWallet> CreateSyncedWallet(interfaces::Chain& chain, CChain& cchain, const CKey& key);
 

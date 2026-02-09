@@ -1,12 +1,12 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: Riecoin
-Source: https://github.com/RiecoinTeam/Riecoin
+Upstream-Name: Freycoin
+Source: https://github.com/FreycoinTeam/Freycoin
 
 Files: *
-Copyright: 2009-2025, Bitcoin Core and Riecoin Developers
+Copyright: 2009-2025, Bitcoin Core and Freycoin Developers
 License: Expat
 Comment: The Bitcoin Core Developers encompasses the current developers listed on bitcoin.org,
-         as well as the numerous contributors to the project. The Riecoin Developers are anyone who contributed to improve Riecoin.
+         as well as the numerous contributors to the project. The Freycoin Developers are anyone who contributed to improve Freycoin.
 
 Files: debian/*
 Copyright: 2010-2011, Jonas Smedegaard <dr@jones.dk>
@@ -65,9 +65,9 @@ Copyright: Stephen Hutchings, Jonas Schnelli
 License: Expat
 Comment: Modifications of Stephen Hutchings' Typicons
 
-Files: src/qt/res/icons/Riecoin.*
-       share/pixmaps/Riecoin*
-       src/qt/res/src/Riecoin.svg
+Files: src/qt/res/icons/Freycoin.*
+       share/pixmaps/Freycoin*
+       src/qt/res/src/Freycoin.svg
 Copyright: Mick Bruce, Pttn
 License: public-domain
 Comment: Contest: https://bitcointalk.org/index.php?topic=288065

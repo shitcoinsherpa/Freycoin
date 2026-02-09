@@ -1,5 +1,5 @@
 // Copyright (c) 2018-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,6 +11,7 @@
 #include <node/miner.h>
 #include <pow.h>
 #include <random.h>
+#include <test/util/mining.h>
 #include <test/util/random.h>
 #include <test/util/script.h>
 #include <test/util/setup_common.h>
@@ -98,9 +99,9 @@ std::shared_ptr<CBlock> MinerTestingSetup::FinalizeBlock(std::shared_ptr<CBlock>
 
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 
-    pblock->nNonce = UintToArith256(uint256{"0000000000000000000000000000000000000000000000000000000000000002"});
-    while (!CheckProofOfWork(pblock->GetHashForPoW(), pblock->nBits, ArithToUint256(pblock->nNonce), Params().GetConsensus()))
-        pblock->nNonce += 131072;
+    // Find valid prime gap proof
+    bool found = FindValidPoW(*pblock, m_node.chainman->GetConsensus());
+    BOOST_REQUIRE(found);
 
     // submit block header, so that miner can get the block height from the
     // global state and the node has the topology of the chain

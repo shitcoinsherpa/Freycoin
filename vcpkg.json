@@ -1,39 +1,27 @@
 {
-  "$comment": "The builtin-baseline corresponds to 2025.08.27 Release",
+  "$comment": "The builtin-baseline corresponds to 2025.08.27 Release (Riecoin v2511 baseline)",
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "builtin-baseline": "120deac3062162151622ca4860575a33844ba10b",
   "dependencies": [
     "boost-multi-index",
     "boost-signals2",
+    "mpir",
     "libevent"
   ],
   "default-features": [
     "qt",
     "tests",
-    "wallet",
-    "zeromq"
+    "wallet"
   ],
   "features": {
     "qt": {
-      "description": "Build GUI, Qt 6",
+      "description": "Build GUI - Qt6 provided by system (set QT_DIR env var)",
       "dependencies": [
-        {
-          "name": "qtbase",
-          "default-features": false,
-          "features": [
-            "gui",
-            "network",
-            "png",
-            "testlib",
-            "widgets"
-          ]
-        },
-        "qttools",
         "libqrencode"
       ]
     },
     "tests": {
-      "description": "Build test_riecoin.exe executable",
+      "description": "Build test_freycoin.exe executable",
       "dependencies": [
         "boost-test"
       ]
@@ -53,9 +41,14 @@
   },
   "overrides": [
     {
-      "$comment": "Newer unreleased libevent versions cause https://github.com/bitcoin/bitcoin/issues/30096",
+      "$comment": "libevent 2.2 is not released yet, pin to stable 2.1.12",
       "name": "libevent",
       "version": "2.1.12#7"
+    },
+    {
+      "$comment": "harfbuzz 9.x-11.x cause MSVC 19.44 C1001 ICE in template code, pin to 8.5.0",
+      "name": "harfbuzz",
+      "version": "8.5.0#1"
     }
   ]
 }

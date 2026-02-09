@@ -1,10 +1,10 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
-add_executable(bench_riecoin
-  bench_riecoin.cpp
+add_executable(bench_freycoin
+  bench_freycoin.cpp
   bench.cpp
   nanobench.cpp
 # Benchmarks:
@@ -57,22 +57,22 @@ add_executable(bench_riecoin
   verify_script.cpp
 )
 
-add_windows_application_manifest(bench_bitcoin)
+add_windows_application_manifest(bench_freycoin)
 
 include(TargetDataSources)
-target_raw_data_sources(bench_riecoin NAMESPACE benchmark::data
+target_raw_data_sources(bench_freycoin NAMESPACE benchmark::data
   data/block413567.raw
 )
 
-target_link_libraries(bench_riecoin
+target_link_libraries(bench_freycoin
   core_interface
   test_util
-  riecoin_node
+  freycoin_node
   Boost::headers
 )
 
 if(ENABLE_WALLET)
-  target_sources(bench_riecoin
+  target_sources(bench_freycoin
     PRIVATE
       coin_selection.cpp
       wallet_balance.cpp
@@ -81,11 +81,11 @@ if(ENABLE_WALLET)
       wallet_loading.cpp
       wallet_ismine.cpp
   )
-  target_link_libraries(bench_riecoin riecoin_wallet)
+  target_link_libraries(bench_freycoin freycoin_wallet)
 endif()
 
 add_test(NAME bench_sanity_check
-  COMMAND bench_riecoin -sanity-check
+  COMMAND bench_freycoin -sanity-check
 )
 
-install_binary_component(bench_riecoin INTERNAL)
+install_binary_component(bench_freycoin INTERNAL)

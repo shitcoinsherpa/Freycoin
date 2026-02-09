@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-present The Bitcoin Core developers
-# Copyright (c) 2014-present The Riecoin developers
+# Copyright (c) 2014-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Helpful routines for regression testing."""
@@ -27,7 +27,7 @@ from .descriptors import descsum_create
 from collections.abc import Callable
 from typing import Optional, Union
 
-SATOSHI_PRECISION = Decimal('0.00000001')
+FREY_PRECISION = Decimal('0.00000001')
 
 logger = logging.getLogger("TestFramework.utils")
 
@@ -231,10 +231,10 @@ def assert_array_result(object_array, to_match, expected, should_not_find=False)
 
 
 def check_json_precision():
-    """Make sure json library being used does not lose precision converting BTC values"""
+    """Make sure json library being used does not lose precision converting FREY values"""
     n = Decimal("20000000.00000003")
-    satoshis = int(json.loads(json.dumps(float(n))) * 1.0e8)
-    if satoshis != 2000000000000003:
+    freys = int(json.loads(json.dumps(float(n))) * 1.0e8)
+    if freys != 2000000000000003:
         raise RuntimeError("JSON encode/decode loses precision")
 
 
@@ -254,12 +254,12 @@ class Binaries:
         self.bin_dir = bin_dir
 
     def node_argv(self, **kwargs):
-        "Return argv array that should be used to invoke bitcoind"
-        return self._argv("node", self.paths.bitcoind, **kwargs)
+        "Return argv array that should be used to invoke freycoind"
+        return self._argv("node", self.paths.freycoind, **kwargs)
 
     def rpc_argv(self):
-        "Return argv array that should be used to invoke bitcoin-cli"
-        # Add -nonamed because "bitcoin rpc" enables -named by default, but bitcoin-cli doesn't
+        "Return argv array that should be used to invoke freycoin-cli"
+        # Add -nonamed because "bitcoin rpc" enables -named by default, but freycoin-cli doesn't
         return self._argv("rpc", self.paths.bitcoincli) + ["-nonamed"]
 
     def tx_argv(self):
@@ -281,7 +281,7 @@ class Binaries:
     def _argv(self, command, bin_path, need_ipc=False):
         """Return argv array that should be used to invoke the command. It
         either uses the bitcoin wrapper executable (if BITCOIN_CMD is set or
-        need_ipc is True), or the direct binary path (bitcoind, etc). When
+        need_ipc is True), or the direct binary path (freycoind, etc). When
         bin_dir is set (by tests calling binaries from previous releases) it
         always uses the direct path."""
         if self.bin_dir is not None:
@@ -300,12 +300,12 @@ def get_binary_paths(config):
 
     paths = types.SimpleNamespace()
     binaries = {
-        "riecoin": "BITCOIN_BIN",
-        "riecoind": "BITCOIND",
-        "riecoin-cli": "BITCOINCLI",
-        "riecoin-tx": "BITCOINTX",
-        "riecoin-chainstate": "BITCOINCHAINSTATE",
-        "riecoin-wallet": "BITCOINWALLET",
+        "freycoin": "BITCOIN_BIN",
+        "freycoind": "freycoind",
+        "freycoin-cli": "BITCOINCLI",
+        "freycoin-tx": "BITCOINTX",
+        "freycoin-chainstate": "BITCOINCHAINSTATE",
+        "freycoin-wallet": "BITCOINWALLET",
     }
     # Set paths to bitcoin core binaries allowing overrides with environment
     # variables.
@@ -361,9 +361,9 @@ def get_fee(tx_size, feerate_btc_kvb):
     return target_fee_sat / Decimal(1e8) # Return result in  BTC
 
 
-def satoshi_round(amount: Union[int, float, str], *, rounding: str) -> Decimal:
-    """Rounds a Decimal amount to the nearest satoshi using the specified rounding mode."""
-    return Decimal(amount).quantize(SATOSHI_PRECISION, rounding=rounding)
+def frey_round(amount: Union[int, float, str], *, rounding: str) -> Decimal:
+    """Rounds a Decimal amount to the nearest frey using the specified rounding mode."""
+    return Decimal(amount).quantize(FREY_PRECISION, rounding=rounding)
 
 
 def ensure_for(*, duration, f, check_interval=0.2):
@@ -514,7 +514,7 @@ def initialize_datadir(dirname, n, chain, disable_autoconnect=True):
     datadir = get_datadir_path(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
-    write_config(os.path.join(datadir, "riecoin.conf"), n=n, chain=chain, disable_autoconnect=disable_autoconnect)
+    write_config(os.path.join(datadir, "freycoin.conf"), n=n, chain=chain, disable_autoconnect=disable_autoconnect)
     os.makedirs(os.path.join(datadir, 'stderr'), exist_ok=True)
     os.makedirs(os.path.join(datadir, 'stdout'), exist_ok=True)
     return datadir
@@ -583,18 +583,18 @@ def get_temp_default_datadir(temp_dir: pathlib.Path) -> tuple[dict, pathlib.Path
     temp_dir, as well as the complete path it would return."""
     if platform.system() == "Windows":
         env = dict(APPDATA=str(temp_dir))
-        datadir = temp_dir / "Riecoin"
+        datadir = temp_dir / "Freycoin"
     else:
         env = dict(HOME=str(temp_dir))
         if platform.system() == "Darwin":
-            datadir = temp_dir / "Library/Application Support/Riecoin"
+            datadir = temp_dir / "Library/Application Support/Freycoin"
         else:
-            datadir = temp_dir / ".riecoin"
+            datadir = temp_dir / ".freycoin"
     return env, datadir
 
 
 def append_config(datadir, options):
-    with open(os.path.join(datadir, "riecoin.conf"), 'a', encoding='utf8') as f:
+    with open(os.path.join(datadir, "freycoin.conf"), 'a', encoding='utf8') as f:
         for option in options:
             f.write(option + "\n")
 
@@ -602,8 +602,8 @@ def append_config(datadir, options):
 def get_auth_cookie(datadir, chain):
     user = None
     password = None
-    if os.path.isfile(os.path.join(datadir, "riecoin.conf")):
-        with open(os.path.join(datadir, "riecoin.conf"), 'r', encoding='utf8') as f:
+    if os.path.isfile(os.path.join(datadir, "freycoin.conf")):
+        with open(os.path.join(datadir, "freycoin.conf"), 'r', encoding='utf8') as f:
             for line in f:
                 if line.startswith("rpcuser="):
                     assert user is None  # Ensure that there is only one rpcuser line

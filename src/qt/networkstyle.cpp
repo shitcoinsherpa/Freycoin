@@ -1,5 +1,5 @@
 // Copyright (c) 2014-2021 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,8 +19,8 @@ static const struct {
     const int iconColorSaturationReduction;
 } network_styles[] = {
     {ChainType::MAIN, QAPP_APP_NAME_DEFAULT, 0, 0},
-    {ChainType::TESTNET, QAPP_APP_NAME_TESTNET, 70, 30},
-    {ChainType::REGTEST, QAPP_APP_NAME_REGTEST, 160, 30},
+    {ChainType::TESTNET, QAPP_APP_NAME_TESTNET, 0, 0},   // Keep gold color for testnet
+    {ChainType::REGTEST, QAPP_APP_NAME_REGTEST, 0, 0},   // Keep gold color for regtest
 };
 
 // titleAddText needs to be const char* for tr()
@@ -29,7 +29,7 @@ NetworkStyle::NetworkStyle(const QString &_appName, const int iconColorHueShift,
     titleAddText(qApp->translate("SplashScreen", _titleAddText))
 {
     // load pixmap
-    QPixmap pixmap(":/icons/riecoin");
+    QPixmap pixmap(":/icons/freycoin");
 
     if(iconColorHueShift != 0 && iconColorSaturationReduction != 0)
     {

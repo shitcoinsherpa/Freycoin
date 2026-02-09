@@ -4,7 +4,7 @@
 
 #include <common/settings.h>
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <tinyformat.h>
 #include <univalue.h>

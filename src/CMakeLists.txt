@@ -1,11 +1,12 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
 # Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2025-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
 include(AddWindowsResources)
 
-configure_file(${PROJECT_SOURCE_DIR}/cmake/riecoin-build-config.h.in riecoin-build-config.h USE_SOURCE_PERMISSIONS @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/cmake/freycoin-build-config.h.in freycoin-build-config.h USE_SOURCE_PERMISSIONS @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 #=============================
@@ -39,27 +40,29 @@ if(NOT CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
 endif()
 
 add_custom_target(generate_build_info
-  BYPRODUCTS ${PROJECT_BINARY_DIR}/src/riecoin-build-info.h
-  COMMAND ${CMAKE_COMMAND} -DBUILD_INFO_HEADER_PATH=${PROJECT_BINARY_DIR}/src/riecoin-build-info.h -DSOURCE_DIR=${PROJECT_SOURCE_DIR} -P ${PROJECT_SOURCE_DIR}/cmake/script/GenerateBuildInfo.cmake
-  COMMENT "Generating riecoin-build-info.h"
+  BYPRODUCTS ${PROJECT_BINARY_DIR}/src/freycoin-build-info.h
+  COMMAND ${CMAKE_COMMAND} -DBUILD_INFO_HEADER_PATH=${PROJECT_BINARY_DIR}/src/freycoin-build-info.h -DSOURCE_DIR=${PROJECT_SOURCE_DIR} -P ${PROJECT_SOURCE_DIR}/cmake/script/GenerateBuildInfo.cmake
+  COMMENT "Generating freycoin-build-info.h"
   VERBATIM
 )
-add_library(riecoin_clientversion STATIC EXCLUDE_FROM_ALL
+add_library(freycoin_clientversion STATIC EXCLUDE_FROM_ALL
   clientversion.cpp
 )
-target_link_libraries(riecoin_clientversion
+target_link_libraries(freycoin_clientversion
   PRIVATE
     core_interface
 )
-add_dependencies(riecoin_clientversion generate_build_info)
+add_dependencies(freycoin_clientversion generate_build_info)
 
 add_subdirectory(crypto)
 add_subdirectory(util)
+add_subdirectory(gpu)
+add_subdirectory(pow)
 if(ENABLE_IPC)
   add_subdirectory(ipc)
 endif()
 
-add_library(riecoin_consensus STATIC EXCLUDE_FROM_ALL
+add_library(freycoin_consensus STATIC EXCLUDE_FROM_ALL
   arith_uint256.cpp
   consensus/merkle.cpp
   consensus/tx_check.cpp
@@ -72,7 +75,7 @@ add_library(riecoin_consensus STATIC EXCLUDE_FROM_ALL
   script/script_error.cpp
   uint256.cpp
 )
-target_link_libraries(riecoin_consensus
+target_link_libraries(freycoin_consensus
   PRIVATE
     core_interface
     bitcoin_crypto
@@ -84,8 +87,8 @@ if(WITH_ZMQ)
 endif()
 
 # Home for common functionality shared by different executables and libraries.
-# Similar to `riecoin_util` library, but higher-level.
-add_library(riecoin_common STATIC EXCLUDE_FROM_ALL
+# Similar to `freycoin_util` library, but higher-level.
+add_library(freycoin_common STATIC EXCLUDE_FROM_ALL
   addresstype.cpp
   base58.cpp
   bech32.cpp
@@ -138,15 +141,16 @@ add_library(riecoin_common STATIC EXCLUDE_FROM_ALL
   script/signingprovider.cpp
   script/solver.cpp
 )
-target_link_libraries(riecoin_common
+target_link_libraries(freycoin_common
   PRIVATE
     core_interface
-    riecoin_consensus
-    riecoin_util
+    freycoin_consensus
+    freycoin_util
     univalue
     secp256k1
     Boost::headers
-    $<TARGET_NAME_IF_EXISTS:GMP::GMP>
+    MPFR::MPFR
+    GMP::GMP
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -157,27 +161,27 @@ if(ENABLE_WALLET)
   add_subdirectory(wallet)
 
   if(BUILD_WALLET_TOOL)
-    add_executable(riecoin-wallet
-      riecoin-wallet.cpp
-      init/riecoin-wallet.cpp
+    add_executable(freycoin-wallet
+      freycoin-wallet.cpp
+      init/freycoin-wallet.cpp
       wallet/wallettool.cpp
     )
-    add_windows_resources(riecoin-wallet riecoin-wallet-res.rc)
-    add_windows_application_manifest(riecoin-wallet)
-    target_link_libraries(riecoin-wallet
+    add_windows_resources(freycoin-wallet freycoin-wallet-res.rc)
+    add_windows_application_manifest(freycoin-wallet)
+    target_link_libraries(freycoin-wallet
       core_interface
-      riecoin_wallet
-      riecoin_common
-      riecoin_util
+      freycoin_wallet
+      freycoin_common
+      freycoin_util
       Boost::headers
     )
-    install_binary_component(riecoin-wallet HAS_MANPAGE)
+    install_binary_component(freycoin-wallet HAS_MANPAGE)
   endif()
 endif()
 
 
-# P2P and RPC server functionality used by `riecoind` and `riecoin-qt` executables.
-add_library(riecoin_node STATIC EXCLUDE_FROM_ALL
+# P2P and RPC server functionality used by `freycoind` and `freycoin-qt` executables.
+add_library(freycoin_node STATIC EXCLUDE_FROM_ALL
   addrdb.cpp
   addrman.cpp
   banman.cpp
@@ -268,14 +272,17 @@ add_library(riecoin_node STATIC EXCLUDE_FROM_ALL
   validation.cpp
   validationinterface.cpp
   versionbits.cpp
-  $<$<TARGET_EXISTS:riecoin_wallet>:wallet/init.cpp>
-  $<$<NOT:$<TARGET_EXISTS:riecoin_wallet>>:dummywallet.cpp>
+  $<$<TARGET_EXISTS:freycoin_wallet>:wallet/init.cpp>
+  $<$<NOT:$<TARGET_EXISTS:freycoin_wallet>>:dummywallet.cpp>
 )
-target_link_libraries(riecoin_node
+target_link_libraries(freycoin_node
   PRIVATE
     core_interface
-    riecoin_common
-    riecoin_util
+    freycoin_common
+    freycoin_util
+    freycoin_pow
+    MPFR::MPFR
+    GMP::GMP
     $<TARGET_NAME_IF_EXISTS:bitcoin_zmq>
     leveldb
     minisketch
@@ -284,104 +291,103 @@ target_link_libraries(riecoin_node
     $<TARGET_NAME_IF_EXISTS:libevent::core>
     $<TARGET_NAME_IF_EXISTS:libevent::extra>
     $<TARGET_NAME_IF_EXISTS:libevent::pthreads>
-    $<TARGET_NAME_IF_EXISTS:GMP::GMP>
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
 )
 
-# Riecoin wrapper executable that can call other executables.
+# Freycoin wrapper executable that can call other executables.
 if(BUILD_BITCOIN_BIN)
-  add_executable(riecoin riecoin.cpp)
-  add_windows_resources(riecoin riecoin-res.rc)
-  add_windows_application_manifest(riecoin)
-  target_link_libraries(riecoin core_interface riecoin_common riecoin_util)
-  install_binary_component(riecoin HAS_MANPAGE)
+  add_executable(freycoin freycoin.cpp)
+  add_windows_resources(freycoin freycoin-res.rc)
+  add_windows_application_manifest(freycoin)
+  target_link_libraries(freycoin core_interface freycoin_common freycoin_util)
+  install_binary_component(freycoin HAS_MANPAGE)
 endif()
 
-# Riecoin Core riecoind.
+# Freycoin Core freycoind.
 if(BUILD_DAEMON)
-  add_executable(riecoind
-    riecoind.cpp
-    init/riecoind.cpp
+  add_executable(freycoind
+    freycoind.cpp
+    init/freycoind.cpp
   )
-  add_windows_resources(riecoind riecoind-res.rc)
-  add_windows_application_manifest(riecoind)
-  target_link_libraries(riecoind
+  add_windows_resources(freycoind freycoind-res.rc)
+  add_windows_application_manifest(freycoind)
+  target_link_libraries(freycoind
     core_interface
-    riecoin_node
-    $<TARGET_NAME_IF_EXISTS:riecoin_wallet>
+    freycoin_node
+    $<TARGET_NAME_IF_EXISTS:freycoin_wallet>
   )
-  install_binary_component(riecoind HAS_MANPAGE)
+  install_binary_component(freycoind HAS_MANPAGE)
 endif()
 if(ENABLE_IPC AND BUILD_DAEMON)
-  add_executable(riecoin-node
-    riecoind.cpp
-    init/riecoin-node.cpp
+  add_executable(freycoin-node
+    freycoind.cpp
+    init/freycoin-node.cpp
   )
-  target_link_libraries(riecoin-node
+  target_link_libraries(freycoin-node
     core_interface
-    riecoin_node
-    riecoin_ipc
-    $<TARGET_NAME_IF_EXISTS:riecoin_wallet>
+    freycoin_node
+    freycoin_ipc
+    $<TARGET_NAME_IF_EXISTS:freycoin_wallet>
   )
-  install_binary_component(riecoin-node INTERNAL)
+  install_binary_component(freycoin-node INTERNAL)
 endif()
 
 if(ENABLE_IPC AND BUILD_TESTS)
-    # riecoin_ipc_test library target is defined here in src/CMakeLists.txt
+    # freycoin_ipc_test library target is defined here in src/CMakeLists.txt
     # instead of src/test/CMakeLists.txt so capnp files in src/test/ are able to
     # reference capnp files in src/ipc/capnp/ by relative path. The Cap'n Proto
     # compiler only allows importing by relative path when the importing and
     # imported files are underneath the same compilation source prefix, so the
     # source prefix must be src/, not src/test/
-    add_library(riecoin_ipc_test STATIC EXCLUDE_FROM_ALL
+    add_library(freycoin_ipc_test STATIC EXCLUDE_FROM_ALL
       test/ipc_test.cpp
     )
-    target_capnp_sources(riecoin_ipc_test ${PROJECT_SOURCE_DIR}
+    target_capnp_sources(freycoin_ipc_test ${PROJECT_SOURCE_DIR}
       test/ipc_test.capnp
     )
-    add_dependencies(riecoin_ipc_test riecoin_ipc_headers)
+    add_dependencies(freycoin_ipc_test freycoin_ipc_headers)
 endif()
 
 
-add_library(riecoin_cli STATIC EXCLUDE_FROM_ALL
+add_library(freycoin_cli STATIC EXCLUDE_FROM_ALL
   compat/stdin.cpp
   rpc/client.cpp
 )
-target_link_libraries(riecoin_cli
+target_link_libraries(freycoin_cli
   PUBLIC
     core_interface
     univalue
 )
 
 
-# Riecoin Core RPC client
+# Freycoin Core RPC client
 if(BUILD_CLI)
-  add_executable(riecoin-cli riecoin-cli.cpp)
-  add_windows_resources(riecoin-cli riecoin-cli-res.rc)
-  add_windows_application_manifest(riecoin-cli)
-  target_link_libraries(riecoin-cli
+  add_executable(freycoin-cli freycoin-cli.cpp)
+  add_windows_resources(freycoin-cli freycoin-cli-res.rc)
+  add_windows_application_manifest(freycoin-cli)
+  target_link_libraries(freycoin-cli
     core_interface
-    riecoin_cli
-    riecoin_common
-    riecoin_util
+    freycoin_cli
+    freycoin_common
+    freycoin_util
     libevent::core
     libevent::extra
   )
-  install_binary_component(riecoin-cli HAS_MANPAGE)
+  install_binary_component(freycoin-cli HAS_MANPAGE)
 endif()
 
 
 if(BUILD_TX)
-  add_executable(riecoin-tx riecoin-tx.cpp)
-  add_windows_resources(riecoin-tx riecoin-tx-res.rc)
-  add_windows_application_manifest(riecoin-tx)
-  target_link_libraries(riecoin-tx
+  add_executable(freycoin-tx freycoin-tx.cpp)
+  add_windows_resources(freycoin-tx freycoin-tx-res.rc)
+  add_windows_application_manifest(freycoin-tx)
+  target_link_libraries(freycoin-tx
     core_interface
-    riecoin_common
-    riecoin_util
+    freycoin_common
+    freycoin_util
     univalue
   )
-  install_binary_component(riecoin-tx HAS_MANPAGE)
+  install_binary_component(freycoin-tx HAS_MANPAGE)
 endif()
 
 
@@ -396,25 +402,25 @@ if(BUILD_KERNEL_LIB)
     add_subdirectory(test/kernel)
   endif()
   if(BUILD_UTIL_CHAINSTATE)
-    add_executable(riecoin-chainstate
-      riecoin-chainstate.cpp
+    add_executable(freycoin-chainstate
+      freycoin-chainstate.cpp
     )
-    add_windows_application_manifest(riecoin-chainstate)
+    add_windows_application_manifest(freycoin-chainstate)
     # TODO: The `SKIP_BUILD_RPATH` property setting can be deleted
     #       in the future after reordering Guix script commands to
     #       perform binary checks after the installation step.
     # Relevant discussions:
     # - https://github.com/hebasto/bitcoin/pull/236#issuecomment-2183120953
     # - https://github.com/bitcoin/bitcoin/pull/30312#issuecomment-2191235833
-    set_target_properties(riecoin-chainstate PROPERTIES
+    set_target_properties(freycoin-chainstate PROPERTIES
       SKIP_BUILD_RPATH OFF
     )
-    target_link_libraries(riecoin-chainstate
+    target_link_libraries(freycoin-chainstate
       PRIVATE
         core_interface
-        riecoinkernel
+        freycoinkernel
     )
-    install_binary_component(riecoin-chainstate INTERNAL)
+    install_binary_component(freycoin-chainstate INTERNAL)
   endif()
 endif()
 

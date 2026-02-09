@@ -75,7 +75,7 @@ bool BCLog::Logger::StartLogging()
     // dump buffered messages from before we opened the log
     m_buffering = false;
     if (m_buffer_lines_discarded > 0) {
-        LogPrintStr_(strprintf("Early logging buffer overflowed, %d log lines discarded.\n", m_buffer_lines_discarded), std::source_location::current(), BCLog::ALL, Level::Info, /*should_ratelimit=*/false);
+        LogPrintStr_(strprintf("Early logging buffer overflowed, %d log lines discarded.\n", m_buffer_lines_discarded), compat::source_location::current(), BCLog::ALL, Level::Info, /*should_ratelimit=*/false);
     }
     while (!m_msgs_before_open.empty()) {
         const auto& buflog = m_msgs_before_open.front();
@@ -388,7 +388,7 @@ std::shared_ptr<BCLog::LogRateLimiter> BCLog::LogRateLimiter::Create(
 }
 
 BCLog::LogRateLimiter::Status BCLog::LogRateLimiter::Consume(
-    const std::source_location& source_loc,
+    const compat::source_location& source_loc,
     const std::string& str)
 {
     StdLockGuard scoped_lock(m_mutex);
@@ -403,7 +403,7 @@ BCLog::LogRateLimiter::Status BCLog::LogRateLimiter::Consume(
     return status;
 }
 
-void BCLog::Logger::FormatLogStrInPlace(std::string& str, BCLog::LogFlags category, BCLog::Level level, const std::source_location& source_loc, std::string_view threadname, SystemClock::time_point now, std::chrono::seconds mocktime) const
+void BCLog::Logger::FormatLogStrInPlace(std::string& str, BCLog::LogFlags category, BCLog::Level level, const compat::source_location& source_loc, std::string_view threadname, SystemClock::time_point now, std::chrono::seconds mocktime) const
 {
     if (!str.ends_with('\n')) str.push_back('\n');
 
@@ -420,14 +420,14 @@ void BCLog::Logger::FormatLogStrInPlace(std::string& str, BCLog::LogFlags catego
     str.insert(0, LogTimestampStr(now, mocktime));
 }
 
-void BCLog::Logger::LogPrintStr(std::string_view str, std::source_location&& source_loc, BCLog::LogFlags category, BCLog::Level level, bool should_ratelimit)
+void BCLog::Logger::LogPrintStr(std::string_view str, compat::source_location&& source_loc, BCLog::LogFlags category, BCLog::Level level, bool should_ratelimit)
 {
     StdLockGuard scoped_lock(m_cs);
     return LogPrintStr_(str, std::move(source_loc), category, level, should_ratelimit);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-void BCLog::Logger::LogPrintStr_(std::string_view str, std::source_location&& source_loc, BCLog::LogFlags category, BCLog::Level level, bool should_ratelimit)
+void BCLog::Logger::LogPrintStr_(std::string_view str, compat::source_location&& source_loc, BCLog::LogFlags category, BCLog::Level level, bool should_ratelimit)
 {
     std::string str_prefixed = LogEscapeMessage(str);
 
@@ -473,7 +473,7 @@ void BCLog::Logger::LogPrintStr_(std::string_view str, std::source_location&& so
                              source_loc.file_name(), source_loc.line(), source_loc.function_name(),
                              m_limiter->m_max_bytes,
                              Ticks<std::chrono::seconds>(m_limiter->m_reset_window)),
-                         std::source_location::current(), LogFlags::ALL, Level::Warning, /*should_ratelimit=*/false); // with should_ratelimit=false, this cannot lead to infinite recursion
+                         compat::source_location::current(), LogFlags::ALL, Level::Warning, /*should_ratelimit=*/false); // with should_ratelimit=false, this cannot lead to infinite recursion
         } else if (status == LogRateLimiter::Status::STILL_SUPPRESSED) {
             ratelimit = true;
         }

@@ -41,8 +41,11 @@ static void DuplicateInputs(benchmark::Bench& bench)
     LOCK(cs_main);
     CBlockIndex* pindexPrev = testing_setup->m_node.chainman->ActiveChain().Tip();
     assert(pindexPrev != nullptr);
-    block.nBits = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus());
+    block.nDifficulty = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus());
     block.nNonce = 0;
+    block.nShift = 20;
+    block.nAdd.SetNull();
+    block.nReserved = 0;
     auto nHeight = pindexPrev->nHeight + 1;
 
     // Make a coinbase TX

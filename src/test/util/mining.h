@@ -15,12 +15,22 @@ class CBlock;
 class CChainParams;
 class COutPoint;
 class CScript;
+namespace Consensus {
+struct Params;
+} // namespace Consensus
 namespace node {
 struct NodeContext;
 } // namespace node
 
 /** Create a blockchain, starting from genesis */
 std::vector<std::shared_ptr<CBlock>> CreateBlockChain(size_t total_height, const CChainParams& params);
+
+/**
+ * Find a valid prime gap PoW for a block.
+ * Sets nNonce, nShift, nAdd fields to produce a valid proof.
+ * @return true if valid PoW found
+ */
+bool FindValidPoW(CBlock& block, const Consensus::Params& params);
 
 /** Returns the generated coin */
 COutPoint MineBlock(const node::NodeContext&,

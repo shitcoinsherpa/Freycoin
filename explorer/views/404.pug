@@ -1,0 +1,19 @@
+extends layout
+
+block headContent
+	title Page Not Found — Freycoin Explorer
+
+block content
+	.text-center.py-5
+		.mb-4
+			i.bi-search.display-1.text-muted
+		h1.display-4.fw-light 404
+		h2.fw-light.text-muted Page Not Found
+		p.text-muted.mt-3 The page you're looking for doesn't exist or has been removed.
+		.mt-4.d-flex.justify-content-center.gap-3
+			a.btn.btn-primary(href="./")
+				i.bi-house.me-1
+				| Back to Explorer
+			a.btn.btn-outline-primary(href="./prime-gap-records")
+				i.bi-trophy.me-1
+				| Prime Gap Records

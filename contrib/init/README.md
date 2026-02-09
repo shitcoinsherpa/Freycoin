@@ -1,11 +1,11 @@
 Sample configuration files for:
 ```
-systemd: riecoind.service
-Upstart: riecoind.conf
-OpenRC:  riecoind.openrc
-         riecoind.openrcconf
-CentOS:  riecoind.init
-macOS:   xyz.riecoin.riecoind.plist
+systemd: freycoind.service
+Upstart: freycoind.conf
+OpenRC:  freycoind.openrc
+         freycoind.openrcconf
+CentOS:  freycoind.init
+macOS:   xyz.freycoin.freycoind.plist
 ```
 have been made available to assist packagers in creating node packages here.
 

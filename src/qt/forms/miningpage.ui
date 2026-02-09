@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MiningPage</class>
+ <widget class="QWidget" name="MiningPage">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>800</width><height>600</height></rect>
+  </property>
+  <property name="windowTitle">
+   <string>Mining</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutMain">
+   <item>
+    <widget class="QLabel" name="labelTitle">
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=" font-size:16pt; font-weight:600;"&gt;Prime Gap Mining&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=" font-size:9pt; font-style:italic;"&gt;Contributing to mathematical research through proof-of-work&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutMain">
+     <item>
+      <layout class="QVBoxLayout" name="verticalLayoutLeft">
+       <item>
+        <widget class="QGroupBox" name="groupBoxHardware">
+         <property name="title"><string>Hardware Detection</string></property>
+         <layout class="QVBoxLayout" name="verticalLayoutHardware">
+          <item>
+           <layout class="QGridLayout" name="gridLayoutHardware">
+            <item row="0" column="0">
+             <widget class="QLabel" name="labelCPU">
+              <property name="text"><string>CPU:</string></property>
+              <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLabel" name="labelCPUInfo">
+              <property name="text"><string>Detecting...</string></property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="labelGPU">
+              <property name="text"><string>GPU:</string></property>
+              <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QLabel" name="labelGPUInfo">
+              <property name="text"><string>Detecting...</string></property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="labelCUDA">
+              <property name="text"><string>CUDA:</string></property>
+              <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QLabel" name="labelCUDAInfo">
+              <property name="text"><string>Detecting...</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="buttonRefreshHardware">
+            <property name="text"><string>Refresh Hardware</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBoxCPUMining">
+         <property name="title"><string>CPU Mining</string></property>
+         <property name="checkable"><bool>true</bool></property>
+         <property name="checked"><bool>false</bool></property>
+         <layout class="QVBoxLayout" name="verticalLayoutCPU">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayoutCPUCores">
+            <item>
+             <widget class="QLabel" name="labelCPUCores">
+              <property name="text"><string>CPU Threads:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="sliderCPUCores">
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>32</number></property>
+              <property name="value"><number>4</number></property>
+              <property name="orientation"><enum>Qt::Horizontal</enum></property>
+              <property name="tickPosition"><enum>QSlider::TicksBelow</enum></property>
+              <property name="tickInterval"><number>4</number></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spinCPUCores">
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>32</number></property>
+              <property name="value"><number>4</number></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBoxGPUMining">
+         <property name="title"><string>GPU Mining</string></property>
+         <property name="checkable"><bool>true</bool></property>
+         <property name="checked"><bool>false</bool></property>
+         <property name="enabled"><bool>false</bool></property>
+         <layout class="QVBoxLayout" name="verticalLayoutGPU">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayoutGPUDevice">
+            <item>
+             <widget class="QLabel" name="labelGPUDevice">
+              <property name="text"><string>GPU Device:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboGPUDevice">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>0</horstretch><verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayoutGPUIntensity">
+            <item>
+             <widget class="QLabel" name="labelGPUIntensity">
+              <property name="text"><string>Intensity:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="sliderGPUIntensity">
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>10</number></property>
+              <property name="value"><number>5</number></property>
+              <property name="orientation"><enum>Qt::Horizontal</enum></property>
+              <property name="tickPosition"><enum>QSlider::TicksBelow</enum></property>
+              <property name="tickInterval"><number>1</number></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="labelGPUIntensityValue">
+              <property name="text"><string>5 (Medium)</string></property>
+              <property name="minimumSize"><size><width>90</width><height>0</height></size></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacerLeft">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="verticalLayoutRight">
+       <item>
+        <widget class="QGroupBox" name="groupBoxStats">
+         <property name="title"><string>Mining Statistics</string></property>
+         <layout class="QGridLayout" name="gridLayoutStats">
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelHashrateTitle">
+            <property name="text"><string>Rate:</string></property>
+            <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLabel" name="labelHashrate">
+            <property name="text"><string>0 primes/s</string></property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelPrimesFoundTitle">
+            <property name="text"><string>Primes Found:</string></property>
+            <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLabel" name="labelPrimesFound">
+            <property name="text"><string>0</string></property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="labelNoncesTestedTitle">
+            <property name="text"><string>Nonces Tested:</string></property>
+            <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLabel" name="labelNoncesTested">
+            <property name="text"><string>0</string></property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="labelBlocksFoundTitle">
+            <property name="text"><string>Blocks Found:</string></property>
+            <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLabel" name="labelBlocksFound">
+            <property name="text"><string>0</string></property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="labelBestGapTitle">
+            <property name="text"><string>Best Gap:</string></property>
+            <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLabel" name="labelBestGap">
+            <property name="text"><string>- (merit: -)</string></property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="labelUptimeTitle">
+            <property name="text"><string>Mining Time:</string></property>
+            <property name="font"><font><weight>75</weight><bold>true</bold></font></property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLabel" name="labelUptime">
+            <property name="text"><string>00:00:00</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBoxLog">
+         <property name="title"><string>Mining Log</string></property>
+         <layout class="QVBoxLayout" name="verticalLayoutLog">
+          <item>
+           <widget class="QTextEdit" name="textEditLog">
+            <property name="readOnly"><bool>true</bool></property>
+            <property name="maximumHeight"><number>150</number></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacerRight">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutButtons">
+     <item>
+      <spacer name="horizontalSpacerLeft">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonStartMining">
+       <property name="text"><string>Start Mining</string></property>
+       <property name="minimumSize"><size><width>150</width><height>40</height></size></property>
+       <property name="font"><font><pointsize>12</pointsize><weight>75</weight><bold>true</bold></font></property>
+       <property name="styleSheet"><string>QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; } QPushButton:hover { background-color: #45a049; } QPushButton:disabled { background-color: #cccccc; }</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonStopMining">
+       <property name="text"><string>Stop Mining</string></property>
+       <property name="minimumSize"><size><width>150</width><height>40</height></size></property>
+       <property name="font"><font><pointsize>12</pointsize><weight>75</weight><bold>true</bold></font></property>
+       <property name="enabled"><bool>false</bool></property>
+       <property name="styleSheet"><string>QPushButton { background-color: #f44336; color: white; border-radius: 5px; } QPushButton:hover { background-color: #da190b; } QPushButton:disabled { background-color: #cccccc; }</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacerRight">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

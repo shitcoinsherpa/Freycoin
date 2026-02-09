@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2016-present The Bitcoin Core developers
-# Copyright (c) 2016-present The Riecoin developers
+# Copyright (c) 2016-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the bumpfee RPC.
@@ -77,7 +77,7 @@ class BumpFeeTest(BitcoinTestFramework):
         peer_node, rbf_node = self.nodes
         rbf_node_address = rbf_node.getnewaddress()
 
-        # fund rbf node with 10 coins of 0.001 btc (100,000 satoshis)
+        # fund rbf node with 10 coins of 0.001 FREY (100,000 freys)
         self.log.info("Mining blocks...")
         self.generate(peer_node, 110)
         for _ in range(25):

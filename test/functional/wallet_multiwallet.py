@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Copyright (c) 2017-2022 The Bitcoin Core developers
-# Copyright (c) 2013-present The Riecoin developers
+# Copyright (c) 2013-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test multiwallet.
 
-Verify that a bitcoind node can load multiple wallet files
+Verify that a freycoind node can load multiple wallet files
 """
 from decimal import Decimal
 from threading import Thread

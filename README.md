@@ -1,121 +1,132 @@
-# Riecoin Core
+# Freycoin Core
 
-![Riecoin Logo](https://riecoin.xyz/Logos/Riecoin128.png)
+**Proof-of-Work that advances mathematics.**
 
-This repository hosts the Riecoin Core source code. Riecoin Core connects to the Bitcoin peer-to-peer network to download and fully validate blocks and transactions. It also includes a wallet and graphical user interface, which can be optionally built.
+Freycoin is a cryptocurrency whose mining algorithm discovers [prime gaps](https://en.wikipedia.org/wiki/Prime_gap) — unusually large distances between consecutive prime numbers. Every block mined contributes to the mathematical frontier of prime gap research. Record-worthy gaps earn places in the [Top-20 Prime Gaps](https://www.trnicely.net/gaps/gaplist.html) lists maintained by number theorists worldwide.
 
-Guides and release notes are available on the [project's page on Riecoin.xyz](https://riecoin.xyz/Core/).
+Built on Bitcoin Core 30.0. SegWit, Taproot, descriptor wallets — all the modern infrastructure, with useful work instead of meaningless hash collisions.
 
-## Riecoin Introduction
+**Website:** [freycoin.tech](https://freycoin.tech)
+**Mainnet Explorer:** [explorer.freycoin.tech](https://explorer.freycoin.tech)
+**Testnet Explorer:** [testnet.freycoin.tech](https://testnet.freycoin.tech)
 
-Riecoin is a currency based on Bitcoin, and follows in its footsteps into becoming a world currency. The Project supports and concretizes the idea that the gigantic mining resources can also serve scientific research, thus power a world currency of greater value for the society.
+## How Mining Works
 
-Riecoin miners are not looking for useless hashes, but doing actual scientific number crunching, like in Folding@Home or the GIMPS (currently, they are looking for prime constellations).
-
-The project broke and holds several number theory world records, and demonstrated that scientific computations can be done using the PoW concept, and at the same time power a secure and practical international currency. It effectively solves the Bitcoin's power consumption issue without resorting to ideas like PoS that enrich the richer by design and makes value out of thin air.
-
-Visit [Riecoin.xyz](https://riecoin.xyz/) to learn more about Riecoin.
-
-## Build Riecoin Core
-
-### Recent Debian/Ubuntu
-
-Here are basic build instructions to generate the Riecoin Core binaries, including the Riecoin-Qt GUI wallet.
-
-First, get the build tools and dependencies, which can be done by running as root the following commands.
-
-```bash
-apt install build-essential cmake pkg-config bsdmainutils python3
-apt install libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-wayland libgmp-dev libsqlite3-dev libqrencode-dev
+```
+1. Construct a large number from the block header: start = SHA256d(header) * 2^shift + adder
+2. Prove "start" is prime (BPSW primality test)
+3. Find the next prime after "start"
+4. The gap between them is the miner's proof-of-work
+5. Merit = gap_size / ln(start) — larger gaps relative to the number size score higher
+6. Block accepted if merit meets the network difficulty target
 ```
 
-Get the source code.
+Miners compete to find the largest prime gaps they can. The bigger the gap relative to the size of the prime, the more "meritorious" the discovery — and the more likely it satisfies the difficulty target.
+
+## Chain Parameters
+
+| Parameter | Mainnet | Testnet |
+|-----------|---------|---------|
+| Block time | 150 seconds | 150 seconds |
+| Initial reward | 50 FREY | 50 FREY |
+| Halving interval | 840,000 blocks (~4 years) | 840,000 blocks |
+| Tail emission | 0.1 FREY perpetual | 0.1 FREY perpetual |
+| Coinbase maturity | 100 blocks | 100 blocks |
+| P2P port | 31470 | 31473 |
+| RPC port | 31469 | 31472 |
+| Address prefix | `F` (base58) | `tfrey` (bech32) |
+
+## Building from Source
+
+### Requirements
+
+- C++20 compiler (GCC 13+, Clang 17+, or MSVC 2022 17.6+)
+- CMake 3.22+
+- GMP (arbitrary precision arithmetic)
+- MPFR (arbitrary precision floating-point)
+- Libevent 2.1.8+
+- SQLite3 3.7.17+
+- Qt 6.2+ (optional, for GUI wallet)
+
+### Linux (Ubuntu 24.04)
 
 ```bash
-git clone https://github.com/RiecoinTeam/Riecoin.git
-```
+# Install dependencies
+sudo apt install build-essential cmake pkg-config \
+  libgmp-dev libmpfr-dev libevent-dev libsqlite3-dev libboost-dev \
+  qt6-base-dev qt6-tools-dev qt6-l10n-tools libqrencode-dev
 
-Then,
-
-```bash
-cd Riecoin
+# Build
+git clone https://github.com/shitcoinsherpa/Freycoin.git
+cd Freycoin
 cmake -B build -DBUILD_GUI=ON
-cmake --build build
+cmake --build build -j$(nproc)
 ```
 
-The Riecoin-Qt binary is located in `build/bin`. You can run `strip riecoin-qt` to reduce its size a lot, or build without the Qt Gui with
+Binaries are in `build/bin/`. Run `strip build/bin/freycoin-qt` to reduce size.
+
+### Windows Cross-Compilation (from Ubuntu 24.04)
+
+This is the recommended method for Windows binaries with Qt6 GUI.
 
 ```bash
-cd Riecoin
-cmake -B build
-cmake --build build
+# Install cross-compile toolchain
+sudo apt install g++-mingw-w64-x86-64-posix mingw-w64-tools
+
+# Build dependencies (30-60 minutes)
+cd depends
+make HOST=x86_64-w64-mingw32 -j4
+
+# Build Freycoin
+cd ..
+cmake -B build-win --toolchain depends/x86_64-w64-mingw32/toolchain.cmake
+cmake --build build-win -j$(nproc)
 ```
 
-The build can be speed up by appending `-j N` to the last command, which runs N parallel jobs.
+### Build Targets
 
-#### Guix Build
+| Binary | Description |
+|--------|-------------|
+| `freycoin-qt` | GUI wallet |
+| `freycoind` | Headless daemon |
+| `freycoin-cli` | RPC command-line client |
+| `freycoin-tx` | Transaction utility |
+| `freycoin-wallet` | Offline wallet utility |
 
-Riecoin can be built using Guix. The process is longer, but also deterministic: everyone building this way should obtain the exact same binaries. Distributed binaries are produced this way, so anyone can ensure that they were not created with an altered source code by building themselves using Guix. Read the [Guix Guide](contrib/guix/README.md) for more details and options.
-
-You should have a lot of free disk space (at least 40 GB), and 16 GB of RAM or more is recommended.
-
-Install Guix on your system, on Debian 12 this can be done as root with
+## Running
 
 ```bash
-apt install guix
+# Start the daemon
+freycoind -daemon
+
+# Mine with 4 threads
+freycoind -gen -genproclimit=4
+
+# Check status
+freycoin-cli getmininginfo
+freycoin-cli getblockchaininfo
+
+# GUI wallet
+freycoin-qt
 ```
-
-Still as root, start the daemon,
-
-```bash
-guix-daemon
-```
-
-Now, get the Riecoin Core source code.
-
-```bash
-git clone https://github.com/RiecoinTeam/Riecoin.git
-```
-
-Start the Guix build. The environment variable will set which binaries to build (here, Linux x64, Linux Arm64, and Windows x64, but it is possible to add other architectures or Mac with an SDK).
-
-```bash
-export HOSTS="x86_64-linux-gnu aarch64-linux-gnu x86_64-w64-mingw32"
-cd Riecoin
-./contrib/guix/guix-build
-```
-
-It will be very long, do not be surprised if it takes an hour or more, even with a powerful machine. The binaries will be generated in a `guix-build-.../output` folder.
-
-### Other OSes
-
-Either build using Guix as explained above in a spare physical or virtual machine, or refer to the [Bitcoin's Documentation (build-... files)](https://github.com/bitcoin/bitcoin/tree/master/doc) and adapt the instructions for Riecoin if needed.
 
 ## Testing
 
-Most Boost and Python Bitcoin Tests were ported for Riecoin. These should all pass after every code change, unless it is precised in the `test_runner.py` file that a particular Test may fail. In order to run them,
-
 ```bash
-build/bin/test_riecoin # Boost Test Suite
-build/test/functional/test_runner.py # Python Functional Tests, use -j N for N jobs
+# Unit tests
+cmake --build build --target test_freycoin
+build/bin/test_freycoin
 
-build/bin/test_riecoin-qt # Riecoin-Qt Tests
+# Functional tests
+python3 test/functional/test_runner.py
 ```
 
-Here are examples in order to run a particular test (check the Source Code regarding the names of the Boost Tests),
+## In Memory of Jonnie Frey
 
-```bash
-build/src/test/test_riecoin --run_test=getarg_tests
-build/src/test/test_riecoin --run_test=getarg_tests/doubledash
-build/src/test/test_riecoin --log_level=all --run_test=getarg_tests/doubledash
-
-build/test/functional/mining_basic.py
-```
-
-Currently, the Cirrus Ci was not ported, and Fuzz Tests are not checked beyond being able to compile. Given the current very limited development resources, successfully running the Tests above and not encountering major issues in normal use of Riecoin Core is deemed sufficient.
+Jonnie Frey (1989-2017) created [Gapcoin](https://github.com/nicehash/gapcoin), the first cryptocurrency to use prime gap discovery as proof-of-work. He proved that computational work securing a blockchain can simultaneously advance human knowledge. Freycoin carries his vision forward.
 
 ## License
 
-The Riecoin Core code is published under the terms of the MIT license. See [COPYING](COPYING) for more information or see https://opensource.org/licenses/MIT.
+Freycoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for details.
 
-However, releases are under the terms of the Gnu General Public License Version 3 (GPLv3) since Riecoin Core uses some GPL licensed software.
+Releases are distributed under GPLv3 due to GMP and MPFR dependencies.

@@ -1,9 +1,9 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <qt/splashscreen.h>
 
@@ -69,7 +69,7 @@ SplashScreen::SplashScreen(const NetworkStyle* networkStyle)
     QRect rGradient(QPoint(0,0), splashSize);
     pixPaint.fillRect(rGradient, gradient);
 
-    // draw the Riecoin icon, expected size of PNG: 1024x1024
+    // draw the Freycoin icon, expected size of PNG: 1024x1024
     QRect rectIcon(QPoint(-120 ,-120), QSize(420, 420));
 
     const QSize requiredSize(1024,1024);

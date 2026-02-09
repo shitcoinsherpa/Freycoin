@@ -3,7 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <node/warnings.h>
 
@@ -23,7 +23,7 @@ Warnings::Warnings()
     if (!CLIENT_VERSION_IS_RELEASE) {
         m_warnings.insert(
             {Warning::PRE_RELEASE_TEST_BUILD,
-             _("This is a development version, be sure to regularly follow the latest Riecoin news to be aware of possible bugs and updates!")});
+             _("This is a development version, be sure to regularly follow the latest Freycoin news to be aware of possible bugs and updates!")});
     }
 }
 bool Warnings::Set(warning_type id, bilingual_str message)

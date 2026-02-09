@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -254,7 +254,7 @@ TransactionTableModel::TransactionTableModel(const PlatformStyle *_platformStyle
 {
     subscribeToCoreSignals();
 
-    columns << QString() << tr("Date") << tr("Type") << tr("Label") << tr("Amount (RIC)");
+    columns << QString() << tr("Date") << tr("Type") << tr("Label") << tr("Amount (FREY)");
     priv->refreshWallet(walletModel->wallet());
 }
 

@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -16,50 +16,50 @@
 #include <string>
 #include <type_traits>
 
-const std::string CURRENCY_UNIT = "RIC"; // One formatted unit
-const std::string CURRENCY_ATOM = "rie"; // One indivisible minimum value unit
+const std::string CURRENCY_UNIT = "FREY"; // One formatted unit
+const std::string CURRENCY_ATOM = "frey"; // One indivisible minimum value unit
 
 /* Used to determine type of fee estimation requested */
 enum class FeeEstimateMode {
     UNSET,        //!< Use default settings based on other criteria
     ECONOMICAL,   //!< Force estimateSmartFee to use non-conservative estimates
     CONSERVATIVE, //!< Force estimateSmartFee to use conservative estimates
-    BTC_KVB,      //!< Use BTC/kvB fee rate unit
-    SAT_VB,       //!< Use sat/vB fee rate unit
+    BTC_KVB,      //!< Use FREY/kvB fee rate unit
+    SAT_VB,       //!< Use frey/vB fee rate unit
 };
 
 /**
- * Fee rate in satoshis per virtualbyte: CAmount / vB
+ * Fee rate in freys per virtualbyte: CAmount / vB
  * the feerate is represented internally as FeeFrac
  */
 class CFeeRate
 {
 private:
-    /** Fee rate in sats/vB (satoshis per N virtualbytes) */
+    /** Fee rate in sats/vB (freys per N virtualbytes) */
     FeePerVSize m_feerate;
 
 public:
-    /** Fee rate of 0 satoshis per 0 vB */
+    /** Fee rate of 0 freys per 0 vB */
     CFeeRate() = default;
     template<std::integral I> // Disallow silent float -> int conversion
     explicit CFeeRate(const I m_feerate_kvb) : m_feerate(FeePerVSize(m_feerate_kvb, 1000)) {}
 
     /**
-     * Construct a fee rate from a fee in satoshis and a vsize in vB.
+     * Construct a fee rate from a fee in freys and a vsize in vB.
      *
      * Passing any virtual_bytes less than or equal to 0 will result in 0 fee rate per 0 size.
      */
     CFeeRate(const CAmount& nFeePaid, int32_t virtual_bytes);
 
     /**
-     * Return the fee in satoshis for the given vsize in vbytes.
-     * If the calculated fee would have fractional satoshis, then the
-     * returned fee will always be rounded up to the nearest satoshi.
+     * Return the fee in freys for the given vsize in vbytes.
+     * If the calculated fee would have fractional freys, then the
+     * returned fee will always be rounded up to the nearest frey.
      */
     CAmount GetFee(int32_t virtual_bytes) const;
 
     /**
-     * Return the fee in satoshis for a vsize of 1000 vbytes
+     * Return the fee in freys for a vsize of 1000 vbytes
      */
     CAmount GetFeePerK() const { return CAmount(m_feerate.EvaluateFeeDown(1000)); }
     friend std::weak_ordering operator<=>(const CFeeRate& a, const CFeeRate& b) noexcept

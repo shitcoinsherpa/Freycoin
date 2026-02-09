@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2016-present The Bitcoin Core developers
-# Copyright (c) 2016-present The Riecoin developers
+# Copyright (c) 2016-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Encode and decode Riecoin addresses.
+"""Encode and decode Freycoin addresses.
 
 - base58 P2PKH and P2SH addresses.
 - bech32 segwit v0 P2WPKH and P2WSH addresses.
@@ -32,10 +32,10 @@ from test_framework.segwit_addr import (
     encode_segwit_address,
 )
 
-ADDRESS_BCRT1_UNSPENDABLE = 'rric1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxmufz'
-ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR = 'addr(rric1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxmufz)#wznpdauv'
+ADDRESS_BCRT1_UNSPENDABLE = 'rfrey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxk3gnu'
+ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR = 'addr(rfrey1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqxk3gnu)#wznpdauv'
 # Coins sent to this address can be spent with a witness stack of just OP_TRUE
-ADDRESS_BCRT1_P2WSH_OP_TRUE = 'rric1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqpe6a2y'
+ADDRESS_BCRT1_P2WSH_OP_TRUE = 'rfrey1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsq8fsfs6'
 
 
 class AddressType(enum.Enum):
@@ -59,7 +59,7 @@ def create_deterministic_address_bcrt1_p2tr_op_true(explicit_internal_key=None):
     taproot_info = taproot_construct(internal_key, [("only-path", CScript([OP_TRUE]))])
     address = output_key_to_p2tr(taproot_info.output_pubkey)
     if explicit_internal_key is None:
-        assert_equal(address, 'rric1p9yfmy5h72durp7zrhlw9lf7jpwjgvwdg0jr0lqmmjtgg83266lqsa22f70')
+        assert_equal(address, 'rfrey1p9yfmy5h72durp7zrhlw9lf7jpwjgvwdg0jr0lqmmjtgg83266lqsm6qay3')
     return (address, taproot_info)
 
 

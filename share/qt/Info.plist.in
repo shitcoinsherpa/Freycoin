@@ -11,7 +11,7 @@
   </array>
 
   <key>CFBundleIconFile</key>
-  <string>Riecoin.icns</string>
+  <string>Freycoin.icns</string>
 
   <key>CFBundlePackageType</key>
   <string>APPL</string>
@@ -34,16 +34,16 @@
   <string>????</string>
 
   <key>CFBundleExecutable</key>
-  <string>Riecoin-Qt</string>
+  <string>Freycoin-Qt</string>
 
   <key>CFBundleName</key>
-  <string>Riecoin-Qt</string>
+  <string>Freycoin-Qt</string>
 
   <key>LSHasLocalizedDisplayName</key>
   <true/>
 
   <key>CFBundleIdentifier</key>
-  <string>xyz.riecoin.Riecoin-Qt</string>
+  <string>xyz.freycoin.Freycoin-Qt</string>
 
   <key>CFBundleURLTypes</key>
   <array>
@@ -51,10 +51,10 @@
       <key>CFBundleTypeRole</key>
       <string>Editor</string>
       <key>CFBundleURLName</key>
-      <string>xyz.riecoin.RiecoinPayment</string>
+      <string>xyz.freycoin.FreycoinPayment</string>
       <key>CFBundleURLSchemes</key>
       <array>
-        <string>riecoin</string>
+        <string>freycoin</string>
       </array>
     </dict>
   </array>

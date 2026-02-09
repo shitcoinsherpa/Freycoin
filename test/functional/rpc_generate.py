@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-present The Bitcoin Core developers
-# Copyright (c) 2020-present The Riecoin developers
+# Copyright (c) 2020-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test generate* RPCs."""
@@ -25,8 +25,8 @@ class RPCGenerateTest(BitcoinTestFramework):
         self.test_generateblock()
 
     def test_generatetoaddress(self):
-        self.generatetoaddress(self.nodes[0], 1, 'rric1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrs8rqekw')
-        assert_raises_rpc_error(-5, "Invalid address", self.generatetoaddress, self.nodes[0], 1, 'ric1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrsk4clvn')
+        self.generatetoaddress(self.nodes[0], 1, 'rfrey1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrspn2dvs')
+        assert_raises_rpc_error(-5, "Invalid address", self.generatetoaddress, self.nodes[0], 1, 'frey1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrsl7tumc')
 
     def test_generateblock(self):
         node = self.nodes[0]
@@ -52,7 +52,7 @@ class RPCGenerateTest(BitcoinTestFramework):
 
         self.log.info('Generate an empty block to a combo descriptor with compressed pubkey')
         combo_key = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
-        combo_address = 'rric1qw508d6qejxtdg4y5r3zarvary0c5xw7kpt4dsz'
+        combo_address = 'rfrey1qw508d6qejxtdg4y5r3zarvary0c5xw7kl77jmc'
         hash = self.generateblock(node, 'combo(' + combo_key + ')', [])['hash']
         block = node.getblock(hash, 2)
         assert_equal(len(block['tx']), 1)

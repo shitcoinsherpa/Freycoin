@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2020-present The Bitcoin Core developers
-# Copyright (c) 2020-present The Riecoin developers
+# Copyright (c) 2020-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test error messages for 'getaddressinfo' and 'validateaddress' RPC commands."""
@@ -12,24 +12,24 @@ from test_framework.util import (
     assert_raises_rpc_error,
 )
 
-BECH32_VALID = 'rric1qtmp74ayg7p24uslctssvjm06q5phz4yrrlx2yp'
-BECH32_VALID_UNKNOWN_WITNESS = 'rric1p424q0sfn4y'
+BECH32_VALID = 'rfrey1qtmp74ayg7p24uslctssvjm06q5phz4yra2d40m'
+BECH32_VALID_UNKNOWN_WITNESS = 'rfrey1p424q5jsdjr'
 BECH32_VALID_CAPITALS = 'RRIC1QPLMTZKC2XHARPPZDLNPAQL78RSHJ68U35QR4FW'
-BECH32_VALID_MULTISIG = 'rric1qdg3myrgvzw7ml9q0ejxhlkyxm7vl9r56yzkfgvzclrf4hkpx9yfqxphemq'
+BECH32_VALID_MULTISIG = 'rfrey1qdg3myrgvzw7ml9q0ejxhlkyxm7vl9r56yzkfgvzclrf4hkpx9yfqq3adp7'
 
-BECH32_INVALID_BECH32 = 'rric1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqf807s2'
-BECH32_INVALID_VERSION = 'rric130xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqq09sqy'
-BECH32_INVALID_SIZE = 'rric1s0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav25lfmgrc'
-BECH32_INVALID_V0_SIZE = 'rric1qw508d6qejxtdg4y5r3zarvary0c5xw7kqqhlfgqk'
-BECH32_INVALID_PREFIX = 'ric1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7ke8662q'
-BECH32_TOO_LONG = 'rric1q049edschfnwystcqnsvyfpj23mpsg3jcedq9xv049edschfnwystcqnsvyfpj23mpsg3jcedq9xv049edschfnwystcqnsvy6pdukm'
-BECH32_ONE_ERROR = 'rric1q049edschfnwystcqnsvyfpj23mpsg3jcuw783p'
+BECH32_INVALID_BECH32 = 'rfrey1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqf807s2'
+BECH32_INVALID_VERSION = 'rfrey130xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqxl0y66'
+BECH32_INVALID_SIZE = 'rfrey1s0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav25c7ahak'
+BECH32_INVALID_V0_SIZE = 'rfrey1qw508d6qejxtdg4y5r3zarvary0c5xw7kqq42jx2m'
+BECH32_INVALID_PREFIX = 'frey1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7ke8662q'
+BECH32_TOO_LONG = 'rfrey1q049edschfnwystcqnsvyfpj23mpsg3jcedq9xv049edschfnwystcqnsvyfpj23mpsg3jcedq9xv049edschfnwystcqnsvy6pdukm'
+BECH32_ONE_ERROR = 'rfrey1q049edschfnwystcqnsvyfpj23mpsg3jcuw783p'
 BECH32_ONE_ERROR_CAPITALS = 'RRIC1QPLMTZKC2XHARPPZDLNPAQL78RSHJ68U36QR4FW'
-BECH32_TWO_ERRORS = 'rric1qax9suht3qv95sw33xavx8crpxduefdrsgtw5gt' # should be rric1qax9suht3qv95sw33wavx8crpxduefdrsuh7cdf
+BECH32_TWO_ERRORS = 'rfrey1qax9suht3qv95sw33xavx8crpxduefdrsgtw5gt' # should be rfrey1qax9suht3qv95sw33wavx8crpxduefdrsuh7cdf
 BECH32_NO_SEPARATOR = 'rricq049ldschfnwystcqnsvyfpj23mpsg3jcfjwt5r'
-BECH32_INVALID_CHAR = 'rric1q04oldschfnwystcqnsvyfpj23mpsg3jcfjwt5r'
-BECH32_MULTISIG_TWO_ERRORS = 'rric1qdg3myrgvzw7ml8q0ejxhlkyxn7vl9r56yzkfgvzclrf4hkpx9yfqxphemq'
-BECH32_WRONG_VERSION = 'rric1ptmp74ayg7p24uslctssvjm06q5phz4yrkrkxpr'
+BECH32_INVALID_CHAR = 'rfrey1q04oldschfnwystcqnsvyfpj23mpsg3jcfjwt5r'
+BECH32_MULTISIG_TWO_ERRORS = 'rfrey1qdg3myrgvzw7ml8q0ejxhlkyxn7vl9r56yzkfgvzclrf4hkpx9yfqxphemq'
+BECH32_WRONG_VERSION = 'rfrey1ptmp74ayg7p24uslctssvjm06q5phz4yrkrkxpr'
 
 INVALID_ADDRESS = 'asfah14i8fajz0123f'
 INVALID_ADDRESS_2 = '1q049ldschfnwystcqnsvyfpj23mpsg3jcedq9xv'
@@ -86,7 +86,7 @@ class InvalidAddressErrorMessageTest(BitcoinTestFramework):
 
         if not self.options.usecli:
             # Missing arg returns the help text
-            assert_raises_rpc_error(-1, "Return information about the given Riecoin address.", node.validateaddress)
+            assert_raises_rpc_error(-1, "Return information about the given Freycoin address.", node.validateaddress)
             # Explicit None is not allowed for required parameters
             assert_raises_rpc_error(-3, "JSON value of type null is not of expected type string", node.validateaddress, None)
 

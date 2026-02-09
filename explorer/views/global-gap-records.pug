@@ -1,0 +1,268 @@
+extends layout
+
+block headContent
+	title Global Prime Gap Records
+
+block content
+	+pageTitle("Global Prime Gap Records")
+		if (lastUpdated)
+			if (filter === "freycoin")
+				small.text-muted.ms-3 Freycoin Discoveries
+			else
+				small.text-muted.ms-3 #{totalCount.toLocaleString()} records
+				small.text-muted.ms-2 (updated #{lastUpdated.toISOString().substring(0, 19).replace('T', ' ')} UTC)
+
+	if (filter !== "freycoin")
+		+dismissableInfoAlert("globalGapRecordsNoteDismissed", "About Global Gap Records...")
+			p.mb-2 This page mirrors the #[a(href="https://primegap-list-project.github.io/", target="_blank") Prime Gap List Project] database, the definitive record of first known occurrence prime gaps maintained by mathematicians worldwide.
+			p.mb-0 Freycoin's proof-of-work algorithm discovers prime gaps. Use the <strong>Freycoin Discoveries</strong> filter to see our chain's gaps that qualify as world records.
+
+	//- Freycoin chain discovery summary (shown on all views when we have matches)
+	if (chainMatchCount > 0 && filter !== "freycoin")
+		.alert.alert-success.shadow-sm.mb-4(role="alert")
+			.d-flex.flex-wrap.gap-4.align-items-center
+				div
+					i.bi-star-fill.me-2
+					strong Freycoin Chain Discoveries
+				div
+					span.fw-bold #{chainMatchCount}
+					span.text-muted.ms-1 gap sizes found
+				if (chainHigherMeritCount > 0)
+					div
+						span.badge.bg-success #{chainHigherMeritCount} beat global record
+				if (chainNewGapCount > 0)
+					div
+						span.badge.bg-warning.text-dark #{chainNewGapCount} first occurrence
+				div.ms-auto
+					a.btn.btn-sm.btn-success(href="./global-gap-records?filter=freycoin&sort=" + sort)
+						i.bi-funnel.me-1
+						| Show Record-Worthy Discoveries
+
+	//- Filter bar
+	+contentSection("Filters")
+		.d-flex.flex-wrap.gap-2
+			a.btn.btn-sm(href="./global-gap-records?sort=" + sort, class=(filter === "all" ? "btn-primary" : "btn-outline-primary")) All Global Records
+			a.btn.btn-sm(href="./global-gap-records?filter=freycoin&sort=" + sort, class=(filter === "freycoin" ? "btn-success" : "btn-outline-success"))
+				i.bi-star-fill.me-1
+				| Freycoin Discoveries
+				- var recordCount = chainRecordWorthy ? chainRecordWorthy.length : 0;
+				if (recordCount > 0)
+					span.badge.bg-light.text-dark.ms-1 #{recordCount}
+			a.btn.btn-sm(href="./global-gap-records?filter=maximal&sort=" + sort, class=(filter === "maximal" ? "btn-primary" : "btn-outline-primary")) Maximal Gaps
+			a.btn.btn-sm(href="./global-gap-records?filter=merit10&sort=" + sort, class=(filter === "merit10" ? "btn-primary" : "btn-outline-primary")) Merit &gt; 10
+			a.btn.btn-sm(href="./global-gap-records?filter=merit20&sort=" + sort, class=(filter === "merit20" ? "btn-primary" : "btn-outline-primary")) Merit &gt; 20
+			a.btn.btn-sm(href="./global-gap-records?filter=merit30&sort=" + sort, class=(filter === "merit30" ? "btn-primary" : "btn-outline-primary")) Merit &gt; 30
+
+			if (filter !== "freycoin")
+				span.ms-3.text-muted.align-self-center Sort:
+				a.btn.btn-sm(href="./global-gap-records?filter=" + filter + "&sort=gapsize", class=(sort === "gapsize" ? "btn-secondary" : "btn-outline-secondary")) Gap Size
+				a.btn.btn-sm(href="./global-gap-records?filter=" + filter + "&sort=merit", class=(sort === "merit" ? "btn-secondary" : "btn-outline-secondary")) Merit
+				a.btn.btn-sm(href="./global-gap-records?filter=" + filter + "&sort=year", class=(sort === "year" ? "btn-secondary" : "btn-outline-secondary")) Year
+				a.btn.btn-sm(href="./global-gap-records?filter=" + filter + "&sort=digits", class=(sort === "digits" ? "btn-secondary" : "btn-outline-secondary")) Digits
+
+	if (filter === "freycoin")
+		//- ===== FREYCOIN DISCOVERIES VIEW =====
+		//- Shows our chain's record-worthy gaps with their global comparison
+
+		if (chainRecordWorthy && chainRecordWorthy.length > 0)
+			+contentSection("Record-Worthy Discoveries")
+				p.text-muted.mb-3 These gaps from our chain qualify as potential world records in the #[a(href="https://primegap-list-project.github.io/", target="_blank") Prime Gap List Project]. Each has been cross-referenced against all #{chainMatchCount > 0 ? chainMatchCount.toLocaleString() + " chain gaps" : "chain gaps"} and the global database.
+
+				.table-responsive
+					table.table.table-striped.table-borderless.mb-0
+						thead
+							tr
+								th.text-end Block
+								th.text-end Gap Size
+								th.text-end Our Merit
+								th.text-end Global Merit
+								th.text-center Record Status
+								th.text-end Prime Size
+								th Start Prime
+						tbody
+							each record in chainRecordWorthy
+								- var recordBadges = record.badges || [];
+								tr
+									td.text-end
+										a(href="./block/" + record.hash) ##{record.height.toLocaleString()}
+									td.text-end.fw-bold.text-success #{record.gap.toLocaleString()}
+									td.text-end.fw-bold #{record.merit.toFixed(10)}
+									td.text-end
+										if (record.globalRecord)
+											span #{record.globalRecord.merit.toFixed(10)}
+										else
+											span.text-success.fw-bold NEW
+									td.text-center
+										each badge in recordBadges
+											if (badge.type === "FIRST_OCCURRENCE")
+												span.badge.bg-success.me-1 #{badge.label}
+											else if (badge.type === "MERIT_RECORD")
+												span.badge.bg-warning.text-dark.me-1 #{badge.label}
+											else if (badge.type === "CERTIFIED_UPGRADE")
+												span.badge.bg-info.me-1 #{badge.label}
+											else if (badge.type === "MAXIMAL")
+												span.badge.bg-danger.me-1 #{badge.label}
+									td.text-end
+										span #{record.primeBits}
+										small.text-muted.ms-1 bits
+									td
+										if (record.startPrime)
+											- var sp = record.startPrime;
+											- var displayPrime = sp.length > 16 ? sp.substring(0, 8) + "..." + sp.substring(sp.length - 8) : sp;
+											span.text-muted.font-monospace.small #{displayPrime}
+										else
+											span.text-muted -
+
+								//- Submission data row
+								- var hasFirstOcc = false;
+								- var hasMeritRec = false;
+								- var hasMaximal = false;
+								each b in recordBadges
+									- if (b.type === "FIRST_OCCURRENCE") hasFirstOcc = true;
+									- if (b.type === "MERIT_RECORD") hasMeritRec = true;
+									- if (b.type === "MAXIMAL") hasMaximal = true;
+								if (hasFirstOcc || hasMeritRec || hasMaximal)
+									tr.table-active
+										td(colspan="7")
+											details
+												summary.text-primary.small.fw-bold
+													i.bi-file-earmark-text.me-1
+													| Submission Data
+												.mt-2.p-3.bg-dark.rounded.font-monospace.small
+													.row
+														.col-md-6
+															div.mb-1
+																span.text-muted Gap Size:
+																span.text-white #{record.gap}
+															div.mb-1
+																span.text-muted Merit:
+																span.text-white #{record.merit.toFixed(10)}
+															div.mb-1
+																span.text-muted Prime Digits:
+																- var hexLen = record.startPrime ? record.startPrime.replace(/^0x/, "").length : 0;
+																- var decDigits = Math.floor(hexLen * 0.30103);
+																span.text-white ~#{decDigits}
+															div.mb-1
+																span.text-muted Certification:
+																span.text-white C (BPSW proven)
+														.col-md-6
+															div.mb-1
+																span.text-muted Block Height:
+																span.text-white #{record.height.toLocaleString()}
+															div.mb-1
+																span.text-muted Block Hash:
+																span.text-white.text-break #{record.hash}
+															div.mb-1
+																span.text-muted Discoverer:
+																span.text-white Freycoin Miner
+															if (record.globalRecord)
+																div.mb-1
+																	span.text-muted Current Record Holder:
+																	span.text-white #{record.globalRecord.discoverer} (#{record.globalRecord.year})
+													.mt-2
+														div.mb-1
+															span.text-muted Start Prime (hex):
+															div.text-white.text-break.user-select-all #{record.startPrime || "-"}
+													if (record.endPrime)
+														div.mb-1
+															span.text-muted End Prime (hex):
+															div.text-white.text-break.user-select-all #{record.endPrime}
+
+			+contentSection("Record Categories Explained")
+				.row
+					.col-md-6
+						.mb-3
+							span.badge.bg-success.me-2 First Known Occurrence
+							| This gap size has never been recorded in the global database. Discovering it is an automatic world record.
+						.mb-3
+							span.badge.bg-warning.text-dark.me-2 Merit Record
+							| Our merit for this gap size exceeds the current global record holder. Submittable as a new best.
+					.col-md-6
+						.mb-3
+							span.badge.bg-danger.me-2 Maximal
+							| This gap exceeds all previously known gaps for primes of this magnitude or smaller. The rarest type of record.
+						.mb-3
+							span.badge.bg-info.me-2 Certified
+							| The existing global record uses only probable-prime testing. Our BPSW-certified proof upgrades the certification level.
+
+		else
+			+contentSection("Freycoin Discoveries")
+				.text-center.py-4
+					if (chainMatchCount > 0)
+						p.text-muted No record-worthy discoveries yet. Our chain has found #{chainMatchCount} gap sizes, but none currently beat the global records.
+						p.text-muted Keep mining — higher merit discoveries or new gap sizes will appear here.
+					else
+						p.text-muted No chain data available yet. Mine some blocks to start discovering prime gaps.
+
+	else
+		//- ===== STANDARD GLOBAL RECORDS VIEW =====
+
+		//- Stats summary
+		+contentSection("Summary")
+			+summaryRow(4)
+				+summaryItem("Total Records")
+					span.fw-bold #{totalCount.toLocaleString()}
+
+				+summaryItem("Largest Gap")
+					span.fw-bold.text-success #{largestGap.toLocaleString()}
+
+				+summaryItem("Highest Merit")
+					span.fw-bold #{highestMerit.toFixed(10)}
+
+				+summaryItem("Newest Discovery")
+					span.fw-bold #{newestYear}
+
+		//- Main table
+		+contentSection("Records")
+			if (gaps.length > 0)
+				.table-responsive
+					table.table.table-striped.table-borderless.mb-0
+						thead
+							tr
+								th.text-end Gap Size
+								th.text-center Max?
+								th.text-end Merit
+								th.text-end Digits
+								th Discoverer
+								th.text-end Year
+								th.text-center Cert
+								th.text-center Freycoin Match
+						tbody
+							each gap, index in gaps
+								- var chainMatch = chainGapMap.get(gap.gapsize);
+								tr(class=(chainMatch ? "table-active" : ""))
+									td.text-end.fw-bold #{gap.gapsize.toLocaleString()}
+									td.text-center
+										if (gap.ismax === 1)
+											span.badge.bg-info M
+									td.text-end #{gap.merit.toFixed(10)}
+									td.text-end #{gap.primedigits.toLocaleString()}
+									td
+										- var fullName = credits.get(gap.discoverer);
+										span(title=(fullName ? fullName : gap.discoverer)) #{gap.discoverer}
+									td.text-end #{gap.year}
+									td.text-center
+										span.text-muted #{gap.gapcert}
+									td.text-center
+										if (chainMatch)
+											if (chainMatch.merit > gap.merit)
+												- var higherTooltip = "Freycoin block #" + chainMatch.height + " achieved merit " + chainMatch.merit.toFixed(10) + " vs record " + gap.merit.toFixed(10);
+												span.badge.bg-success(title=higherTooltip) HIGHER MERIT
+												br
+												span.text-muted.small Block ##{chainMatch.height}
+											else
+												- var matchTooltip = "Freycoin block #" + chainMatch.height + " found this gap size (merit " + chainMatch.merit.toFixed(10) + ")";
+												span.badge.bg-primary(title=matchTooltip) MATCHED
+												br
+												span.text-muted.small Block ##{chainMatch.height}
+
+				//- Pagination
+				if (totalCount > limit)
+					.mt-4
+						+pagination(limit, offset, sort + "&filter=" + filter, totalCount, "./global-gap-records", "center", true)
+			else if (totalCount === 0 && !lastUpdated)
+				.text-center.py-4
+					p.text-muted.mb-2 Global gap records are loading...
+					p.text-muted.small Data is fetched from the Prime Gap List Project on startup and refreshed every 6 hours.
+			else
+				p.text-muted No records match the current filter.

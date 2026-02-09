@@ -1,4 +1,4 @@
-# Copyright (c) 2024-present The Riecoin developers
+# Copyright (c) 2024-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
@@ -8,8 +8,11 @@ find_path(GMP_INCLUDE_DIR
 )
 
 find_library(GMP_LIBRARY
-  NAMES gmp
-  NAMES gmpxx
+  NAMES gmp mpir
+)
+
+find_library(GMPXX_LIBRARY
+  NAMES gmpxx mpirxx
 )
 
 include(FindPackageHandleStandardArgs)

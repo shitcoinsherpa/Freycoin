@@ -2,12 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 
 #include <common/args.h>
 #include <init.h>
 #include <qt/guiutil.h>
-#include <qt/riecoin.h>
+#include <qt/freycoin.h>
 #include <qt/test/optiontests.h>
 #include <test/util/setup_common.h>
 
@@ -107,8 +107,8 @@ void OptionTests::parametersInteraction()
 {
     // Test that the bug https://github.com/bitcoin-core/gui/issues/567 does not resurface.
     // It was fixed via https://github.com/bitcoin-core/gui/pull/568.
-    // With fListen=false in ~/.config/Bitcoin/Bitcoin-Qt.conf and all else left as default,
-    // bitcoin-qt should set both -listen and -listenonion to false and start successfully.
+    // With fListen=false in ~/.config/Freycoin/Freycoin-Qt.conf and all else left as default,
+    // freycoin-qt should set both -listen and -listenonion to false and start successfully.
     gArgs.LockSettings([&](common::Settings& s) {
         s.forced_settings.erase("listen");
         s.forced_settings.erase("listenonion");

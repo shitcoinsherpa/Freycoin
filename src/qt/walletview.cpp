@@ -1,5 +1,5 @@
 // Copyright (c) 2011-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,6 +10,7 @@
 #include <qt/clientmodel.h>
 #include <qt/generatecodedialog.h>
 #include <qt/guiutil.h>
+#include <qt/miningpage.h>
 #include <qt/optionsmodel.h>
 #include <qt/overviewpage.h>
 #include <qt/platformstyle.h>
@@ -47,6 +48,9 @@ WalletView::WalletView(WalletModel* wallet_model, const PlatformStyle* _platform
     sendCoinsPage = new SendCoinsDialog(platformStyle);
     sendCoinsPage->setModel(walletModel);
 
+    miningPage = new MiningPage(this);
+    miningPage->setWalletModel(walletModel);
+
     usedSendingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::SendingTab, this);
     usedSendingAddressesPage->setModel(walletModel->getAddressTableModel());
 
@@ -56,6 +60,7 @@ WalletView::WalletView(WalletModel* wallet_model, const PlatformStyle* _platform
     addWidget(overviewPage);
     addWidget(receiveCoinsPage);
     addWidget(sendCoinsPage);
+    addWidget(miningPage);
 
     connect(sendCoinsPage, &SendCoinsDialog::coinsSent, this, &WalletView::coinsSent);
 
@@ -88,6 +93,7 @@ void WalletView::setClientModel(ClientModel *_clientModel)
 
     overviewPage->setClientModel(_clientModel);
     sendCoinsPage->setClientModel(_clientModel);
+    miningPage->setClientModel(_clientModel);
     walletModel->setClientModel(_clientModel);
 }
 
@@ -128,6 +134,11 @@ void WalletView::gotoSendCoinsPage(QString addr)
 
     if (!addr.isEmpty())
         sendCoinsPage->setAddress(addr);
+}
+
+void WalletView::gotoMiningPage()
+{
+    setCurrentWidget(miningPage);
 }
 
 void WalletView::generateCode()

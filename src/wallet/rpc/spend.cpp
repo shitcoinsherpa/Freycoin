@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -187,7 +187,7 @@ UniValue SendMoney(CWallet& wallet, const CCoinControl &coin_control, std::vecto
  * @param[in,out] cc                Coin control to be updated
  * @param[in]     conf_target       UniValue integer; confirmation target in blocks, values between 1 and 1008 are valid per policy/fees.h;
  * @param[in]     estimate_mode     UniValue string; fee estimation mode, valid values are "unset", "economical" or "conservative";
- * @param[in]     fee_rate          UniValue real; fee rate in sat/vB;
+ * @param[in]     fee_rate          UniValue real; fee rate in frey/vB;
  *                                      if present, both conf_target and estimate_mode must either be null, or "unset"
  * @param[in]     override_min_fee  bool; whether to set fOverrideFeeRate to true to disable minimum fee rate checks and instead
  *                                      verify only that fee_rate is greater than 0
@@ -202,7 +202,7 @@ static void SetFeeEstimateMode(const CWallet& wallet, CCoinControl& cc, const Un
         if (!estimate_mode.isNull() && estimate_mode.get_str() != "unset") {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot specify both estimate_mode and fee_rate");
         }
-        // Fee rates in sat/vB cannot represent more than 3 significant digits.
+        // Fee rates in frey/vB cannot represent more than 3 significant digits.
         cc.m_feerate = CFeeRate{AmountFromValue(fee_rate, /*decimals=*/3)};
         if (override_min_fee) cc.fOverrideFeeRate = true;
         // Default RBF to true for explicit fee_rate, if unset.
@@ -224,7 +224,7 @@ RPCHelpMan sendtoaddress()
         "Send an amount to a given address." +
         HELP_REQUIRING_PASSPHRASE,
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Riecoin address to send to."},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The Freycoin address to send to."},
                     {"amount", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "The amount in " + CURRENCY_UNIT + " to send. eg 0.1"},
                     {"comment", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A comment used to store what the transaction is for.\n"
                                          "This is not part of the transaction, just kept in your wallet."},
@@ -232,7 +232,7 @@ RPCHelpMan sendtoaddress()
                                          "to which you're sending the transaction. This is not part of the \n"
                                          "transaction, just kept in your wallet."},
                     {"subtractfeefromamount", RPCArg::Type::BOOL, RPCArg::Default{false}, "The fee will be deducted from the amount being sent.\n"
-                                         "The recipient will receive less Riecoins than you enter in the amount field."},
+                                         "The recipient will receive less Freycoins than you enter in the amount field."},
                     {"replaceable", RPCArg::Type::BOOL, RPCArg::DefaultHint{"wallet default"}, "Signal that this transaction can be replaced by a transaction (BIP 125)"},
                     {"conf_target", RPCArg::Type::NUM, RPCArg::DefaultHint{"wallet -txconfirmtarget"}, "Confirmation target in blocks"},
                     {"estimate_mode", RPCArg::Type::STR, RPCArg::Default{"unset"}, "The fee estimate mode, must be one of (case insensitive):\n"
@@ -255,15 +255,15 @@ RPCHelpMan sendtoaddress()
                     },
                 },
                 RPCExamples{
-                    "\nSend 0.1 RIC\n"
+                    "\nSend 0.1 FREY\n"
                     + HelpExampleCli("sendtoaddress", "\"" + EXAMPLE_ADDRESS[0] + "\" 0.1") +
-                    "\nSend 0.1 RIC with a confirmation target of 6 blocks in economical fee estimate mode using positional arguments\n"
+                    "\nSend 0.1 FREY with a confirmation target of 6 blocks in economical fee estimate mode using positional arguments\n"
                     + HelpExampleCli("sendtoaddress", "\"" + EXAMPLE_ADDRESS[0] + "\" 0.1 \"donation\" \"sean's outpost\" false true 6 economical") +
-                    "\nSend 0.1 RIC with a fee rate of 1.1 " + CURRENCY_ATOM + "/vB, subtract fee from amount, BIP125-replaceable, using positional arguments\n"
+                    "\nSend 0.1 FREY with a fee rate of 1.1 " + CURRENCY_ATOM + "/vB, subtract fee from amount, BIP125-replaceable, using positional arguments\n"
                     + HelpExampleCli("sendtoaddress", "\"" + EXAMPLE_ADDRESS[0] + "\" 0.1 \"drinks\" \"room77\" true true null \"unset\" null 1.1") +
-                    "\nSend 0.2 RIC with a confirmation target of 6 blocks in economical fee estimate mode using named arguments\n"
+                    "\nSend 0.2 FREY with a confirmation target of 6 blocks in economical fee estimate mode using named arguments\n"
                     + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.2 conf_target=6 estimate_mode=\"economical\"") +
-                    "\nSend 0.5 RIC with a fee rate of 25 " + CURRENCY_ATOM + "/vB using named arguments\n"
+                    "\nSend 0.5 FREY with a fee rate of 25 " + CURRENCY_ATOM + "/vB using named arguments\n"
                     + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.5 fee_rate=25")
                     + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.5 fee_rate=25 subtractfeefromamount=false replaceable=true avoid_reuse=true comment=\"2 pizzas\" comment_to=\"jeremy\" verbose=true")
                 },
@@ -323,13 +323,13 @@ RPCHelpMan sendmany()
                 {
                     {"amounts", RPCArg::Type::OBJ_USER_KEYS, RPCArg::Optional::NO, "The addresses and amounts",
                         {
-                            {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "The Riecoin address is the key, the numeric amount (can be string) in " + CURRENCY_UNIT + " is the value"},
+                            {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "The Freycoin address is the key, the numeric amount (can be string) in " + CURRENCY_UNIT + " is the value"},
                         },
                     },
                     {"comment", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A comment"},
                     {"subtractfeefrom", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "The addresses.\n"
                                        "The fee will be equally deducted from the amount of each selected address.\n"
-                                       "Those recipients will receive less Riecoins than you enter in their corresponding amount field.\n"
+                                       "Those recipients will receive less Freycoins than you enter in their corresponding amount field.\n"
                                        "If no addresses are specified here, the sender pays the fee.",
                         {
                             {"address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Subtract fee from this address"},
@@ -534,7 +534,7 @@ CreatedTransactionResult FundTransaction(CWallet& wallet, const CMutableTransact
             CTxDestination dest = DecodeDestination(change_address_str);
 
             if (!IsValidDestination(dest)) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Change address must be a valid Riecoin address");
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Change address must be a valid Freycoin address");
             }
 
             coinControl.destChange = dest;
@@ -727,14 +727,14 @@ RPCHelpMan fundrawtransaction()
                                                           "If that happens, you will need to fund the transaction with different inputs and republish it."},
                             {"minconf", RPCArg::Type::NUM, RPCArg::Default{0}, "If add_inputs is specified, require inputs with at least this many confirmations."},
                             {"maxconf", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "If add_inputs is specified, require inputs with at most this many confirmations."},
-                            {"changeAddress", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The Riecoin address to receive the change"},
+                            {"changeAddress", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The Freycoin address to receive the change"},
                             {"changePosition", RPCArg::Type::NUM, RPCArg::DefaultHint{"random"}, "The index of the change output"},
                             {"change_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The output type to use. Only valid if changeAddress is not specified. Options are " + FormatAllOutputTypes() + "."},
                             {"lockUnspents", RPCArg::Type::BOOL, RPCArg::Default{false}, "Lock selected unspent outputs"},
                             {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB."},
                             {"subtractFeeFromOutputs", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "The integers.\n"
                                                           "The fee will be equally deducted from the amount of each specified output.\n"
-                                                          "Those recipients will receive less Riecoins than you enter in their corresponding amount field.\n"
+                                                          "Those recipients will receive less Freycoins than you enter in their corresponding amount field.\n"
                                                           "If no outputs are specified here, the sender pays the fee.",
                                 {
                                     {"vout_index", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "The zero-based output index, before a change output is added."},
@@ -938,7 +938,7 @@ static std::vector<RPCArg> OutputsDoc()
     {
         {"", RPCArg::Type::OBJ_USER_KEYS, RPCArg::Optional::OMITTED, "",
             {
-                {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the Riecoin address,\n"
+                {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the Freycoin address,\n"
                          "the value (float or string) is the amount in " + CURRENCY_UNIT + ""},
             },
         },
@@ -1179,7 +1179,7 @@ RPCHelpMan send()
                     {"minconf", RPCArg::Type::NUM, RPCArg::Default{0}, "If add_inputs is specified, require inputs with at least this many confirmations."},
                     {"maxconf", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "If add_inputs is specified, require inputs with at most this many confirmations."},
                     {"add_to_wallet", RPCArg::Type::BOOL, RPCArg::Default{true}, "When false, returns a serialized transaction which will not be added to the wallet or broadcast"},
-                    {"change_address", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The Riecoin address to receive the change"},
+                    {"change_address", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The Freycoin address to receive the change"},
                     {"change_position", RPCArg::Type::NUM, RPCArg::DefaultHint{"random"}, "The index of the change output"},
                     {"change_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The output type to use. Only valid if change_address is not specified. Options are " + FormatAllOutputTypes() + "."},
                     {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB.", RPCArgOptions{.also_positional = true}},
@@ -1202,7 +1202,7 @@ RPCHelpMan send()
                     {"psbt", RPCArg::Type::BOOL,  RPCArg::DefaultHint{"automatic"}, "Always return a PSBT, implies add_to_wallet=false."},
                     {"subtract_fee_from_outputs", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "Outputs to subtract the fee from, specified as integer indices.\n"
                     "The fee will be equally deducted from the amount of each specified output.\n"
-                    "Those recipients will receive less Riecoins than you enter in their corresponding amount field.\n"
+                    "Those recipients will receive less Freycoins than you enter in their corresponding amount field.\n"
                     "If no outputs are specified here, the sender pays the fee.",
                         {
                             {"vout_index", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "The zero-based output index, before a change output is added."},
@@ -1225,13 +1225,13 @@ RPCHelpMan send()
                 }
         },
         RPCExamples{""
-        "\nSend 0.1 RIC with a confirmation target of 6 blocks in economical fee estimate mode\n"
+        "\nSend 0.1 FREY with a confirmation target of 6 blocks in economical fee estimate mode\n"
         + HelpExampleCli("send", "'{\"" + EXAMPLE_ADDRESS[0] + "\": 0.1}' 6 economical\n") +
-        "Send 0.2 RIC with a fee rate of 1.1 " + CURRENCY_ATOM + "/vB using positional arguments\n"
+        "Send 0.2 FREY with a fee rate of 1.1 " + CURRENCY_ATOM + "/vB using positional arguments\n"
         + HelpExampleCli("send", "'{\"" + EXAMPLE_ADDRESS[0] + "\": 0.2}' null \"unset\" 1.1\n") +
-        "Send 0.2 RIC with a fee rate of 1 " + CURRENCY_ATOM + "/vB using the options argument\n"
+        "Send 0.2 FREY with a fee rate of 1 " + CURRENCY_ATOM + "/vB using the options argument\n"
         + HelpExampleCli("send", "'{\"" + EXAMPLE_ADDRESS[0] + "\": 0.2}' null \"unset\" null '{\"fee_rate\": 1}'\n") +
-        "Send 0.3 RIC with a fee rate of 25 " + CURRENCY_ATOM + "/vB using named arguments\n"
+        "Send 0.3 FREY with a fee rate of 25 " + CURRENCY_ATOM + "/vB using named arguments\n"
         + HelpExampleCli("-named send", "outputs='{\"" + EXAMPLE_ADDRESS[0] + "\": 0.3}' fee_rate=25\n") +
         "Create a transaction that should confirm the next block, with a specific input, and return result without adding to wallet or broadcasting to the network\n"
         + HelpExampleCli("send", "'{\"" + EXAMPLE_ADDRESS[0] + "\": 0.1}' 1 economical '{\"add_to_wallet\": false, \"inputs\": [{\"txid\":\"a08e6907dbbd3d809776dbfc5d82e371b764ed838b5655e72f463568df1aadf0\", \"vout\":1}]}'")
@@ -1285,10 +1285,10 @@ RPCHelpMan sendall()
             {"recipients", RPCArg::Type::ARR, RPCArg::Optional::NO, "The sendall destinations. Each address may only appear once.\n"
                 "Optionally some recipients can be specified with an amount to perform payments, but at least one address must appear without a specified amount.\n",
                 {
-                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "A Riecoin address which receives an equal share of the unspecified amount."},
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "A Freycoin address which receives an equal share of the unspecified amount."},
                     {"", RPCArg::Type::OBJ_USER_KEYS, RPCArg::Optional::OMITTED, "",
                         {
-                            {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the Riecoin address, the value (float or string) is the amount in " + CURRENCY_UNIT + ""},
+                            {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the Freycoin address, the value (float or string) is the amount in " + CURRENCY_UNIT + ""},
                         },
                     },
                 },
@@ -1678,14 +1678,14 @@ RPCHelpMan walletcreatefundedpsbt()
                                                           "If that happens, you will need to fund the transaction with different inputs and republish it."},
                             {"minconf", RPCArg::Type::NUM, RPCArg::Default{0}, "If add_inputs is specified, require inputs with at least this many confirmations."},
                             {"maxconf", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "If add_inputs is specified, require inputs with at most this many confirmations."},
-                            {"changeAddress", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The Riecoin address to receive the change"},
+                            {"changeAddress", RPCArg::Type::STR, RPCArg::DefaultHint{"automatic"}, "The Freycoin address to receive the change"},
                             {"changePosition", RPCArg::Type::NUM, RPCArg::DefaultHint{"random"}, "The index of the change output"},
                             {"change_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -changetype"}, "The output type to use. Only valid if changeAddress is not specified. Options are " + FormatAllOutputTypes() + "."},
                             {"lockUnspents", RPCArg::Type::BOOL, RPCArg::Default{false}, "Lock selected unspent outputs"},
                             {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB."},
                             {"subtractFeeFromOutputs", RPCArg::Type::ARR, RPCArg::Default{UniValue::VARR}, "The outputs to subtract the fee from.\n"
                                                           "The fee will be equally deducted from the amount of each specified output.\n"
-                                                          "Those recipients will receive less Riecoins than you enter in their corresponding amount field.\n"
+                                                          "Those recipients will receive less Freycoins than you enter in their corresponding amount field.\n"
                                                           "If no outputs are specified here, the sender pays the fee.",
                                 {
                                     {"vout_index", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "The zero-based output index, before a change output is added."},
@@ -1708,7 +1708,7 @@ RPCHelpMan walletcreatefundedpsbt()
                     }
                                 },
                                 RPCExamples{
-                            "\nCreate a PSBT with automatically picked inputs that sends 0.5 BTC to an address and has a fee rate of 2 sat/vB:\n"
+                            "\nCreate a PSBT with automatically picked inputs that sends 0.5 FREY to an address and has a fee rate of 2 frey/vB:\n"
                             + HelpExampleCli("walletcreatefundedpsbt", "\"[]\" \"[{\\\"" + EXAMPLE_ADDRESS[0] + "\\\":0.5}]\" 0 \"{\\\"add_inputs\\\":true,\\\"fee_rate\\\":2}\"")
                             + "\nCreate the same PSBT as the above one instead using named arguments:\n"
                             + HelpExampleCli("-named walletcreatefundedpsbt", "outputs=\"[{\\\"" + EXAMPLE_ADDRESS[0] + "\\\":0.5}]\" add_inputs=true fee_rate=2")

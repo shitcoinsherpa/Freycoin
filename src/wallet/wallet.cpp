@@ -1,12 +1,12 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/wallet.h>
 
-#include <riecoin-build-config.h> // IWYU pragma: keep
+#include <freycoin-build-config.h> // IWYU pragma: keep
 #include <addresstype.h>
 #include <blockfilter.h>
 #include <chain.h>
@@ -3062,7 +3062,7 @@ bool CWallet::AttachChain(const std::shared_ptr<CWallet>& walletInstance, interf
             // Wallet is assumed to be from another chain, if genesis block in the active
             // chain differs from the genesis block known to the wallet.
             if (chain.getBlockHash(0) != locator.vHave.back()) {
-                error = Untranslated("Wallet files should not be reused across chains. Restart bitcoind with -walletcrosschain to override.");
+                error = Untranslated("Wallet files should not be reused across chains. Restart freycoind with -walletcrosschain to override.");
                 return false;
             }
         }

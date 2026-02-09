@@ -1,3 +1,2 @@
-195.15.240.165:28333
-[2001:1600:10:101::116]:28333
-[2001:1600:10:100::680]:28333
+# Freycoin mainnet seed nodes
+# Add seed node IPs here after mainnet launch

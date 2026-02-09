@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -31,16 +31,15 @@ const CBaseChainParams& BaseParams()
 }
 
 /**
- * Port numbers for incoming Tor connections (28334, 38334, 18445) have
- * been chosen arbitrarily to keep ranges of used ports tight.
+ * Port numbers: Mainnet RPC 31469, P2P 31470; Testnet RPC 31472, P2P 31473.
  */
 std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ChainType chain)
 {
     switch (chain) {
     case ChainType::MAIN:
-        return std::make_unique<CBaseChainParams>("", 28332);
+        return std::make_unique<CBaseChainParams>("", 31469);
     case ChainType::TESTNET:
-        return std::make_unique<CBaseChainParams>("testnet2404", 38332);
+        return std::make_unique<CBaseChainParams>("testnet2404", 31472);
     case ChainType::REGTEST:
         return std::make_unique<CBaseChainParams>("regtest", 18443);
     }

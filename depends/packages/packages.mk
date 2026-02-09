@@ -1,4 +1,4 @@
-packages:=gmp
+packages:=gmp mpfr
 
 boost_packages = boost
 

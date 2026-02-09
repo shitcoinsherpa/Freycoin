@@ -1,5 +1,5 @@
 // Copyright (c) 2021-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -239,7 +239,7 @@ ChainstateLoadResult VerifyLoadedChainstate(ChainstateManager& chainman, const C
         if (!is_coinsview_empty(chainstate)) {
             const CBlockIndex* tip = chainstate->m_chain.Tip();
             int64_t maxFutureBlockTime(MAX_FUTURE_BLOCK_TIME);
-            if (chainman.GetParams().GetChainType() == ChainType::REGTEST) // Fix Functional Tests for Riecoin
+            if (chainman.GetParams().GetChainType() == ChainType::REGTEST) // Fix Functional Tests for Freycoin
                 maxFutureBlockTime = 7200;
             if (tip && tip->nTime > GetTime() + maxFutureBlockTime) {
                 return {ChainstateLoadStatus::FAILURE, _("The block database contains a block which appears to be from the future. "

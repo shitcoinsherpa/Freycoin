@@ -1,5 +1,5 @@
 // Copyright (c) 2009-present The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -433,7 +433,7 @@ RPCHelpMan importdescriptors()
                             GetImportTimestamp(request, now), scanned_time - TIMESTAMP_WINDOW - 1, TIMESTAMP_WINDOW)};
                     if (pwallet->chain().havePruned()) {
                         error_msg += strprintf(" This error could be caused by pruning or data corruption "
-                                "(see riecoind log for details) and could be dealt with by downloading and "
+                                "(see freycoind log for details) and could be dealt with by downloading and "
                                 "rescanning the relevant blocks (see -reindex option and rescanblockchain RPC).");
                     } else if (pwallet->chain().hasAssumedValidChain()) {
                         error_msg += strprintf(" This error is likely caused by an in-progress assumeutxo "

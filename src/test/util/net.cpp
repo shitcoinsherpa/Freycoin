@@ -1,5 +1,5 @@
 // Copyright (c) 2020-present The Bitcoin Core developers
-// Copyright (c) 2020-present The Riecoin developers
+// Copyright (c) 2020-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -39,7 +39,7 @@ void ConnmanTestMsg::Handshake(CNode& node,
         NetMsg::Make(NetMsgType::VERSION,
                 version,                                        //
                 Using<CustomUintFormatter<8>>(remote_services), //
-                int64_t{GetTime()},                             // now (cannot simply be dummy for Riecoin Tests)
+                int64_t{GetTime()},                             // now (cannot simply be dummy for Freycoin Tests)
                 int64_t{},                                      // ignored service bits
                 CNetAddr::V1(CService{}),                       // dummy
                 int64_t{},                                      // ignored service bits

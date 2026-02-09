@@ -1,0 +1,17 @@
+<svg aria-hidden="true" focusable="false" role="img" xmlns="http://www.w3.org/2000/svg" width="512" height="512">
+	<defs>
+		<linearGradient id="backgroundGradient" x1="0" x2="0" y1="0" y2="1">
+			<stop offset="0%" stop-color="#1a0a3e"/>
+			<stop offset="100%" stop-color="#0d0520"/>
+		</linearGradient>
+	</defs>
+
+	<rect x="0" y="0" width="100%" height="100%" fill="url(#backgroundGradient)"/>
+
+	<g transform="translate(83, 20)">
+		<g transform="scale(0.9, 0.9)">
+			<path fill="#6B46C1" d="M172.268 501.67C26.97 291.031 0 269.413 0 192 0 85.961 85.961 0 192 0s192 85.961 192 192c0 77.413-26.97 99.031-172.268 309.67-9.535 13.774-29.93 13.773-39.464 0z"></path>
+			<text x="192" y="240" text-anchor="middle" font-family="Georgia, serif" font-size="220" font-weight="bold" fill="#FFF">F</text>
+		</g>
+	</g>
+</svg>

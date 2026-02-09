@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2015-present The Bitcoin Core developers
-# Copyright (c) 2015-present The Riecoin developers
+# Copyright (c) 2015-present The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test transaction signing using the signrawtransactionwithwallet RPC."""
@@ -85,7 +85,7 @@ class SignRawTransactionWithWalletTest(BitcoinTestFramework):
              'scriptPubKey': 'badbadbadbad'}
         ]
 
-        outputs = {'rric1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrs8rqekw': 0.1}
+        outputs = {'rfrey1pstellap55ue6keg3ta2qwlxr0h58g66fd7y4ea78hzkj3r4lstrspn2dvs': 0.1}
 
         rawTx = self.nodes[0].createrawtransaction(inputs, outputs)
 

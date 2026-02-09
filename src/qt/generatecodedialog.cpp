@@ -1,4 +1,4 @@
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -121,6 +121,6 @@ void GenerateCodeDialog::refresh()
     }
     else {
         ui->code->setText(QString::fromStdString(signature));
-        ui->codeQr->setQR(QString::fromStdString(signature), "Riecoin Authentication Code");
+        ui->codeQr->setQR(QString::fromStdString(signature), "Freycoin Authentication Code");
     }
 }

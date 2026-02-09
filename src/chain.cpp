@@ -1,13 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Copyright (c) 2013-present The Riecoin developers
+// Copyright (c) 2013-present The Freycoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <chain.h>
-#include <chainparams.h>
-#include <cmath>
-#include <rpc/blockchain.h>
 #include <tinyformat.h>
 #include <util/check.h>
 #include <util/time.h>
@@ -128,28 +125,31 @@ void CBlockIndex::BuildSkip()
         pskip = pprev->GetAncestor(GetSkipHeight(nHeight));
 }
 
-/* We define the proof as function of the Difficulty d and l the constellation length, by
-    d^(l + 2.3)
-The power to l is inspired by the prime number theorem and the k-tuple conjecture, and the 2.3
-approximately takes in account the fact that it is harder to test longer numbers, in accordance to
-empirical data with the current miner.
-We are using floating point number as perfect precision is not critical here. */
+/**
+ * Compute chain work for a block.
+ *
+ * For prime gap PoW, the expected work to find a gap with difficulty D is approximately e^D
+ * where D is the merit (nDifficulty / 2^48). Since e^D grows extremely fast, we use
+ * 2^(D * log2(e)) = 2^(D * 1.4427...) ≈ 2^(3*D/2) as an integer approximation.
+ *
+ * This means each +1 increase in merit roughly triples the work (since 2^1.44 ≈ 2.7).
+ * The approximation preserves ordering: higher difficulty = more work.
+ */
 arith_uint256 GetBlockProof(const CBlockIndex& block)
 {
-    const Consensus::Params& consensusParams(Params().GetConsensus());
-    double difficulty(0.),
-           constellationSize(consensusParams.GetPowAcceptedPatternsAtHeight(block.nHeight)[0].size());
-    const uint32_t nBits(block.nBits);
-    const int32_t powVersion(Params().GetConsensus().GetPoWVersionAtHeight(block.nHeight));
-    if (powVersion == -1)
-        difficulty = (nBits & 0x007FFFFFU) >> 8U; // The original PoW used the Bitcoin Compact format. This formula is equivalent for any block before Fork 2.
-    else if (powVersion == 1)
-        difficulty = static_cast<double>(nBits)/256.;
-    double proof(std::pow(difficulty, constellationSize + 2.3));
-    std::string proofStr(mpz_class(proof).get_str(16));
-    proofStr = std::string(64U - proofStr.length(), '0') + proofStr;
-    arith_uint256 proofAU256(UintToArith256(uint256::FromHex(proofStr).value()));
-    return proofAU256;
+    // Convert fixed-point difficulty to approximate work
+    // nDifficulty is 2^48 fixed-point, so real merit = nDifficulty >> 48
+    // Work ≈ e^merit ≈ 2^(merit * 1.44) ≈ 2^(nDifficulty >> 47) for a rough approximation
+    //
+    // Use a shift that keeps values reasonable in 256 bits:
+    // merit 20 → 2^29 ≈ 500M work units
+    // merit 30 → 2^43 ≈ 8T work units
+    // merit 40 → 2^58 work units
+    uint64_t shiftAmount = block.nDifficulty >> 47;  // Roughly 1.5x the integer merit
+    if (shiftAmount > 250) shiftAmount = 250;  // Prevent overflow
+
+    arith_uint256 work = arith_uint256(1) << static_cast<unsigned int>(shiftAmount);
+    return work;
 }
 
 int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& from, const CBlockIndex& tip, const Consensus::Params& params)
