@@ -26,7 +26,7 @@ First, get the build tools and dependencies, which can be done by running as roo
 
 ```bash
 apt install build-essential cmake pkg-config bsdmainutils python3
-apt install libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-wayland libgmp-dev libsqlite3-dev libqrencode-dev
+apt install libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-wayland libgmp-dev libsqlite3-dev libqrencode-dev capnproto libcapnp-dev
 ```
 
 Get the source code.
