@@ -21,6 +21,7 @@
 #include <common/system.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
+#include <consensus/merkle.h>
 #include <deploymentstatus.h>
 #include <hash.h>
 #include <httprpc.h>
@@ -57,6 +58,10 @@
 #include <node/mempool_persist.h>
 #include <node/mempool_persist_args.h>
 #include <node/miner.h>
+#include <pow/mining_engine.h>
+#include <pow.h>
+#include <key_io.h>
+#include <addresstype.h>
 #include <node/peerman_args.h>
 #include <policy/feerate.h>
 #include <policy/fees/block_policy_estimator.h>
@@ -317,6 +322,10 @@ void Shutdown(NodeContext& node)
 
     StopTorControl();
 
+    if (node.mining_thread.joinable()) {
+        LogPrintf("Waiting for mining thread to stop...\n");
+        node.mining_thread.join();
+    }
     if (node.background_init_thread.joinable()) node.background_init_thread.join();
     // After everything has been shut down, but before things get flushed, stop the
     // the scheduler. After this point, SyncWithValidationInterfaceQueue() should not be called anymore
@@ -520,6 +529,10 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-startupnotify=<cmd>", "Execute command on startup.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-shutdownnotify=<cmd>", "Execute command immediately before beginning shutdown. The need for shutdown may be urgent, so be careful not to delay it long (if the command doesn't require interaction with the server, consider having it fork into the background).", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #endif
+    argsman.AddArg("-gen", "Enable mining (default: false). Requires -minetoaddress for headless daemon.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-genproclimit=<n>", strprintf("Set the number of CPU threads for mining (-1 = all cores, default: 1)"), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-gpuintensity=<n>", "GPU mining intensity from 1 (minimal) to 10 (maximum). Controls sieve range per nonce (default: 5)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-minetoaddress=<addr>", "Mine to this address instead of the default wallet address", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blockfilterindex=<type>",
                  strprintf("Maintain an index of compact filters by block (default: %s, values: %s).", DEFAULT_BLOCKFILTERINDEX, ListBlockFilterTypes()) +
@@ -1362,6 +1375,150 @@ static ChainstateLoadResult InitAndLoadChainstate(
     return {status, error};
 };
 
+/**
+ * Background mining thread for -gen config option.
+ * Continuously mines blocks using the MiningEngine, creating new block
+ * templates after each successful block or when the tip changes.
+ */
+static void MiningThread(NodeContext& node, const CScript& coinbase_script, int num_threads, int gpu_intensity)
+{
+    util::ThreadRename("miner");
+    LogPrintf("Mining: Starting background miner with %d thread(s)\n", num_threads);
+
+    ChainstateManager& chainman = *Assert(node.chainman);
+
+    // Create persistent engine reused across block templates (like Qt miner).
+    // Auto-detects GPU hardware. GPU thread starts on first mine_parallel
+    // and persists across blocks — no init/teardown per block.
+    MiningEngine engine(static_cast<unsigned int>(num_threads));
+    engine.set_gpu_intensity(gpu_intensity);
+    LogPrintf("Mining: Hardware tier: %s\n", engine.get_hardware_info());
+
+    while (!chainman.m_interrupt) {
+        // Create a new block template
+        CTxMemPool* mempool = node.mempool.get();
+        if (!mempool) {
+            LogPrintf("Mining: No mempool available, waiting...\n");
+            UninterruptibleSleep(std::chrono::seconds{5});
+            continue;
+        }
+
+        CBlockIndex* tip;
+        {
+            LOCK(cs_main);
+            tip = chainman.ActiveChain().Tip();
+        }
+        if (!tip) {
+            UninterruptibleSleep(std::chrono::seconds{1});
+            continue;
+        }
+
+        node::BlockAssembler::Options assemble_options;
+        node::ApplyArgsManOptions(*node.args, assemble_options);
+        assemble_options.coinbase_output_script = coinbase_script;
+
+        auto block_template = node::BlockAssembler(chainman.ActiveChainstate(), mempool, assemble_options).CreateNewBlock();
+        if (!block_template) {
+            LogPrintf("Mining: Failed to create block template, retrying...\n");
+            UninterruptibleSleep(std::chrono::seconds{5});
+            continue;
+        }
+
+        CBlock& block = block_template->block;
+        block.hashMerkleRoot = BlockMerkleRoot(block);
+
+        // Set up mining parameters — shift computed from intensity to allow full sieve range
+        const uint16_t shift = MiningEngine::compute_shift(gpu_intensity);
+        block.nShift = shift;
+        block.nAdd.SetNull();
+        block.nReserved = 0;
+
+        // Serialize the consensus header for mining engine
+        std::vector<uint8_t> header_template;
+        header_template.reserve(84);
+
+        uint32_t version = static_cast<uint32_t>(block.nVersion);
+        header_template.insert(header_template.end(),
+            reinterpret_cast<uint8_t*>(&version),
+            reinterpret_cast<uint8_t*>(&version) + 4);
+        header_template.insert(header_template.end(),
+            block.hashPrevBlock.begin(), block.hashPrevBlock.end());
+        header_template.insert(header_template.end(),
+            block.hashMerkleRoot.begin(), block.hashMerkleRoot.end());
+        uint32_t time = block.nTime;
+        header_template.insert(header_template.end(),
+            reinterpret_cast<uint8_t*>(&time),
+            reinterpret_cast<uint8_t*>(&time) + 4);
+        uint64_t difficulty = block.nDifficulty;
+        header_template.insert(header_template.end(),
+            reinterpret_cast<uint8_t*>(&difficulty),
+            reinterpret_cast<uint8_t*>(&difficulty) + 8);
+        uint32_t nonce_placeholder = 0;
+        header_template.insert(header_template.end(),
+            reinterpret_cast<uint8_t*>(&nonce_placeholder),
+            reinterpret_cast<uint8_t*>(&nonce_placeholder) + 4);
+
+        constexpr size_t NONCE_OFFSET = 4 + 32 + 32 + 4 + 8;
+
+        // Processor to capture valid proofs
+        struct DaemonMiningProcessor : public PoWProcessor {
+            CBlock* block;
+            bool found = false;
+
+            explicit DaemonMiningProcessor(CBlock* b) : block(b) {}
+
+            bool process(PoW* pow) override {
+                block->nNonce = pow->get_nonce();
+                block->nShift = pow->get_shift();
+
+                mpz_t mpz_adder;
+                mpz_init(mpz_adder);
+                pow->get_adder(mpz_adder);
+                std::vector<uint8_t> adder_bytes(32, 0);
+                size_t count = 0;
+                mpz_export(adder_bytes.data(), &count, -1, 1, -1, 0, mpz_adder);
+                mpz_clear(mpz_adder);
+
+                block->nAdd.SetNull();
+                size_t copy_len = std::min(adder_bytes.size(), size_t(32));
+                std::memcpy(block->nAdd.begin(), adder_bytes.data(), copy_len);
+
+                found = true;
+                return false;  // Stop mining
+            }
+        };
+
+        DaemonMiningProcessor processor(&block);
+
+        LogPrintf("Mining: Block template at height=%d difficulty=%016llx\n",
+                  tip->nHeight + 1, static_cast<long long>(block.nDifficulty));
+
+        // Mine with the persistent engine (GPU stays initialized across blocks)
+        engine.mine_parallel(header_template, NONCE_OFFSET, shift,
+                            block.nDifficulty, 0, &processor);
+
+        if (chainman.m_interrupt) break;
+
+        if (!processor.found) continue;
+
+        // Verify and submit
+        if (!CheckProofOfWork(block, chainman.GetConsensus())) {
+            LogPrintf("Mining: ERROR - mined block failed CheckProofOfWork!\n");
+            continue;
+        }
+
+        auto block_ptr = std::make_shared<const CBlock>(std::move(block));
+        if (chainman.ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {
+            LogPrintf("Mining: Found block! hash=%s height=%d\n",
+                      block_ptr->GetHash().GetHex(), tip->nHeight + 1);
+        } else {
+            LogPrintf("Mining: Block rejected by ProcessNewBlock\n");
+        }
+    }
+
+    LogPrintf("Mining: Background miner stopped\n");
+}
+
 bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 {
     const ArgsManager& args = *Assert(node.args);
@@ -2182,6 +2339,33 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 #if HAVE_SYSTEM
     StartupNotify(args);
 #endif
+
+    // ********************************************************* Step 14: start miner
+    if (args.GetBoolArg("-gen", false)) {
+        int num_threads = args.GetIntArg("-genproclimit", 1);
+        if (num_threads == 0 || num_threads == -1) {
+            num_threads = std::thread::hardware_concurrency();
+            if (num_threads == 0) num_threads = 1;
+        }
+        int gpu_intensity = args.GetIntArg("-gpuintensity", 5);
+        gpu_intensity = std::clamp(gpu_intensity, 1, 10);
+
+        // -minetoaddress is required for headless mining
+        std::string mine_to = args.GetArg("-minetoaddress", "");
+        if (mine_to.empty()) {
+            return InitError(_("-gen requires -minetoaddress=<addr> to specify the mining payout address."));
+        }
+
+        CTxDestination dest = DecodeDestination(mine_to);
+        if (!IsValidDestination(dest)) {
+            return InitError(strprintf(_("Invalid -minetoaddress: '%s'"), mine_to));
+        }
+        CScript coinbase_script = GetScriptForDestination(dest);
+
+        LogPrintf("Mining: Launching background miner (%d threads, gpu_intensity=%d) to %s\n",
+                  num_threads, gpu_intensity, mine_to);
+        node.mining_thread = std::thread(MiningThread, std::ref(node), coinbase_script, num_threads, gpu_intensity);
+    }
 
     return true;
 }

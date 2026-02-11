@@ -61,13 +61,26 @@ class PrimalityTester;
 class MiningPipeline;
 
 /**
+ * GPU batch request: submitted by CPU sieve threads, processed by GPU worker.
+ * Each request carries a candidate batch and a result buffer. The submitting
+ * thread blocks on the condition variable until the GPU thread sets done=true.
+ */
+struct GPURequest {
+    CandidateBatch batch;
+    std::vector<uint8_t> results;
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::atomic<bool> done{false};
+};
+
+/**
  * SegmentedSieve: L1 cache-optimized segmented sieve
  *
  * Key features:
  * - Processes sieve in L1-cache-sized segments (32KB)
  * - Uses bucket algorithm for large primes (Oliveira e Silva)
  * - Pre-sieve with small primes using SIMD when available
- * - Wheel-30 bit packing
+ * - Odd-only indexing (bit k = odd number at offset 2k+1 from base)
  */
 class SegmentedSieve {
 public:
@@ -102,7 +115,6 @@ public:
 private:
     uint64_t n_primes;
     uint32_t* primes;
-    uint32_t* primes2;
 
     uint64_t* segment;
     uint64_t segment_words;
@@ -113,9 +125,7 @@ private:
     uint32_t small_prime_limit;
     std::vector<Bucket> buckets;
     uint32_t* large_prime_starts;
-
-    uint64_t* presieve_pattern;
-    uint32_t presieve_period;
+    uint32_t* small_starts;  // Cached starting bit for each small prime in next segment
 
     mpz_t mpz_start;
     bool hash_initialized;
@@ -235,8 +245,14 @@ public:
     /** Create mining engine with auto-detected tier */
     MiningEngine();
 
+    /** Create mining engine with auto-detected tier and specific thread count */
+    explicit MiningEngine(unsigned int num_threads);
+
     /** Create mining engine with specific tier */
     explicit MiningEngine(MiningTier tier);
+
+    /** Create mining engine with specific tier and thread count */
+    MiningEngine(MiningTier tier, unsigned int num_threads);
 
     ~MiningEngine();
 
@@ -275,8 +291,19 @@ public:
                        uint32_t start_nonce,
                        PoWProcessor* processor);
 
-    /** Stop any ongoing mining operation */
+    /** Set GPU intensity (1-10). Controls sieve range per nonce.
+     *  Higher = more work per nonce, better GPU utilization. Default: 5. */
+    void set_gpu_intensity(int intensity);
+
+    /** Compute minimum shift needed for a given intensity level.
+     *  Ensures 2^shift / 2 >= sieve_cap so the sieve can use its full range. */
+    static uint16_t compute_shift(int intensity);
+
+    /** Stop any ongoing mining operation (blocks until workers finish) */
     void stop();
+
+    /** Signal workers to stop without waiting (non-blocking, GUI-safe) */
+    void request_stop();
 
     /** Check if mining is active */
     bool is_mining() const;
@@ -287,12 +314,41 @@ public:
 private:
     MiningTier tier;
     uint32_t n_threads;
+    int m_gpu_intensity{5};
     char hardware_info[256];
     std::unique_ptr<MiningPipeline> pipeline;
 
     std::atomic<bool> parallel_mining_active{false};
     std::atomic<bool> stop_requested{false};
     std::vector<std::thread> mining_threads;
+
+    // Shared stats for parallel mining (updated by worker threads)
+    std::atomic<uint64_t> par_primes{0};
+    std::atomic<uint64_t> par_gaps{0};
+    std::atomic<uint64_t> par_tests{0};
+    std::atomic<uint64_t> par_nonces{0};
+
+    // GPU worker threads — one per device, persist across mine_parallel calls.
+    // Initialized on first mine_parallel, destroyed with the engine.
+    struct GPUWorker {
+        int device_id;
+        std::thread thread;
+        std::queue<std::shared_ptr<GPURequest>> queue;
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::atomic<bool> initialized{false};
+    };
+    std::vector<std::unique_ptr<GPUWorker>> gpu_workers;
+    std::atomic<bool> gpu_initialized{false};  // True when at least one GPU is ready
+    std::atomic<bool> gpu_shutdown{false};
+    std::atomic<int> gpu_round_robin{0};  // For distributing work across GPUs
+    int num_gpu_devices{0};
+
+    void ensure_gpu_running();
+    void gpu_worker_func(GPUWorker* worker);
+
+    /** Submit a GPU request to the least-loaded GPU worker */
+    void submit_gpu_request(std::shared_ptr<GPURequest> request);
 
     MiningTier detect_tier();
     void parallel_worker(uint32_t thread_id,
