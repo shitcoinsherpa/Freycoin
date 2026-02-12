@@ -26,29 +26,3 @@ target/
 /guix-build-*
 
 /ci/scratch/
-
-# Claude Code / AI tooling
-CLAUDE.md
-.claude/
-IMPLEMENTATION_PLAN.md
-
-# Deployment configs (keep separate from source)
-deploy/
-
-# Internal dev scripts and tools
-check_merit.ps1
-freycoin-testnet.bat
-tools/embed_ptx.py
-tools/validate_chain.py
-
-# Draft documents
-ANN_THREAD.md
-
-# Python version
-.python-version
-
-# Local dev artifacts
-*.tar.gz
-nul
-aqtinstall.log
-tmp_*

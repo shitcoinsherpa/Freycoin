@@ -1387,11 +1387,12 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
 
     ChainstateManager& chainman = *Assert(node.chainman);
 
-    // Determine mining tier (auto-detect GPU)
-    MiningTier tier = MiningTier::CPU_ONLY;
-    MiningEngine probe;
-    tier = probe.get_tier();
-    LogPrintf("Mining: Hardware tier: %s\n", probe.get_hardware_info());
+    // Create persistent engine reused across block templates (like Qt miner).
+    // Auto-detects GPU hardware. GPU thread starts on first mine_parallel
+    // and persists across blocks — no init/teardown per block.
+    MiningEngine engine(static_cast<unsigned int>(num_threads));
+    engine.set_gpu_intensity(gpu_intensity);
+    LogPrintf("Mining: Hardware tier: %s\n", engine.get_hardware_info());
 
     while (!chainman.m_interrupt) {
         // Create a new block template
@@ -1492,9 +1493,7 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
         LogPrintf("Mining: Block template at height=%d difficulty=%016llx\n",
                   tip->nHeight + 1, static_cast<long long>(block.nDifficulty));
 
-        // Mine with configured thread count, GPU intensity, and auto-detected GPU
-        MiningEngine engine(tier, num_threads);
-        engine.set_gpu_intensity(gpu_intensity);
+        // Mine with the persistent engine (GPU stays initialized across blocks)
         engine.mine_parallel(header_template, NONCE_OFFSET, shift,
                             block.nDifficulty, 0, &processor);
 

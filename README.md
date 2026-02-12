@@ -1,92 +1,121 @@
 # Freycoin Core
 
-Freycoin is a cryptocurrency whose Proof-of-Work discovers prime gaps — distances between consecutive prime numbers that contribute to number theory research. Every block mined is a genuine mathematical computation, not a meaningless hash collision.
+![Freycoin Logo](https://freycoin.xyz/Logos/Freycoin128.png)
 
-*In memory of Jonnie Frey (1989-2017), creator of Gapcoin, who proved that PoW can advance human knowledge.*
+This repository hosts the Freycoin Core source code. Freycoin Core connects to the Bitcoin peer-to-peer network to download and fully validate blocks and transactions. It also includes a wallet and graphical user interface, which can be optionally built.
 
-## Overview
+Guides and release notes are available on the [project's page on Freycoin.xyz](https://freycoin.xyz/Core/).
 
-- **Proof-of-Work:** Miners search for large gaps between consecutive primes. Difficulty is measured by merit = gap_size / ln(start_prime).
-- **Base:** Bitcoin Core 30.0 (SegWit, Taproot, descriptor wallets)
-- **Block time:** 150 seconds
-- **Initial reward:** 50 FREY, halving every 840,000 blocks (~4 years)
-- **Tail emission:** 0.1 FREY perpetual floor
-- **GPU acceleration:** OpenCL Fermat primality pre-filter
+## Freycoin Introduction
 
-## Build
+Freycoin is a currency based on Bitcoin, and follows in its footsteps into becoming a world currency. The Project supports and concretizes the idea that the gigantic mining resources can also serve scientific research, thus power a world currency of greater value for the society.
 
-### Linux (Ubuntu 24.04)
+Freycoin miners are not looking for useless hashes, but doing actual scientific number crunching, like in Folding@Home or the GIMPS (currently, they are looking for prime constellations).
+
+The project broke and holds several number theory world records, and demonstrated that scientific computations can be done using the PoW concept, and at the same time power a secure and practical international currency. It effectively solves the Bitcoin's power consumption issue without resorting to ideas like PoS that enrich the richer by design and makes value out of thin air.
+
+Visit [Freycoin.xyz](https://freycoin.xyz/) to learn more about Freycoin.
+
+## Build Freycoin Core
+
+### Recent Debian/Ubuntu
+
+Here are basic build instructions to generate the Freycoin Core binaries, including the Freycoin-Qt GUI wallet.
+
+First, get the build tools and dependencies, which can be done by running as root the following commands.
 
 ```bash
-sudo apt install build-essential cmake pkg-config \
-  libgmp-dev libmpfr-dev libevent-dev libsqlite3-dev \
-  qt6-base-dev qt6-tools-dev qt6-l10n-tools libqrencode-dev
+apt install build-essential cmake pkg-config bsdmainutils python3
+apt install libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-wayland libgmp-dev libsqlite3-dev libqrencode-dev
+```
 
-git clone https://github.com/shitcoinsherpa/Freycoin.git
+Get the source code.
+
+```bash
+git clone https://github.com/FreycoinTeam/Freycoin.git
+```
+
+Then,
+
+```bash
 cd Freycoin
-cmake -B build -DBUILD_GUI=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+cmake -B build -DBUILD_GUI=ON
+cmake --build build
 ```
 
-Binaries are in `build/bin/`.
-
-### Linux (Ubuntu 22.04)
-
-Ubuntu 22.04 requires Clang 17 with libc++ (GCC 11 lacks C++20 support). GUI cannot be built on 22.04.
+The Freycoin-Qt binary is located in `build/bin`. You can run `strip freycoin-qt` to reduce its size a lot, or build without the Qt Gui with
 
 ```bash
-sudo apt install build-essential cmake pkg-config \
-  libgmp-dev libmpfr-dev libevent-dev libsqlite3-dev
-
-# Install Clang 17
-wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
-sudo apt update && sudo apt install clang-17 lld-17 libc++-17-dev libc++abi-17-dev
-
-CC=clang-17 CXX=clang++-17 cmake -B build \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_FLAGS='-stdlib=libc++' \
-  -DCMAKE_EXE_LINKER_FLAGS='-stdlib=libc++ -lc++abi' \
-  -DBUILD_GUI=OFF
-cmake --build build -j$(nproc)
+cd Freycoin
+cmake -B build
+cmake --build build
 ```
 
-### Windows Cross-Compilation (from Ubuntu 24.04)
+The build can be speed up by appending `-j N` to the last command, which runs N parallel jobs.
+
+#### Guix Build
+
+Freycoin can be built using Guix. The process is longer, but also deterministic: everyone building this way should obtain the exact same binaries. Distributed binaries are produced this way, so anyone can ensure that they were not created with an altered source code by building themselves using Guix. Read the [Guix Guide](contrib/guix/README.md) for more details and options.
+
+You should have a lot of free disk space (at least 40 GB), and 16 GB of RAM or more is recommended.
+
+Install Guix on your system, on Debian 12 this can be done as root with
 
 ```bash
-sudo apt install g++-mingw-w64-x86-64-posix mingw-w64-tools
-
-cd Freycoin/depends
-make HOST=x86_64-w64-mingw32 -j4
-
-cd ..
-cmake -B build-win --toolchain depends/x86_64-w64-mingw32/toolchain.cmake
-cmake --build build-win -j$(nproc)
+apt install guix
 ```
 
-### Dependencies
+Still as root, start the daemon,
 
-| Dependency | Purpose |
-|-----------|---------|
-| GMP | Arbitrary precision integer arithmetic |
-| MPFR | Arbitrary precision floating point (merit calculation) |
-| libevent | Networking |
-| SQLite3 | Descriptor wallet storage |
-| Qt 6.2+ | GUI wallet (optional) |
+```bash
+guix-daemon
+```
+
+Now, get the Freycoin Core source code.
+
+```bash
+git clone https://github.com/FreycoinTeam/Freycoin.git
+```
+
+Start the Guix build. The environment variable will set which binaries to build (here, Linux x64, Linux Arm64, and Windows x64, but it is possible to add other architectures or Mac with an SDK).
+
+```bash
+export HOSTS="x86_64-linux-gnu aarch64-linux-gnu x86_64-w64-mingw32"
+cd Freycoin
+./contrib/guix/guix-build
+```
+
+It will be very long, do not be surprised if it takes an hour or more, even with a powerful machine. The binaries will be generated in a `guix-build-.../output` folder.
+
+### Other OSes
+
+Either build using Guix as explained above in a spare physical or virtual machine, or refer to the [Bitcoin's Documentation (build-... files)](https://github.com/bitcoin/bitcoin/tree/master/doc) and adapt the instructions for Freycoin if needed.
 
 ## Testing
 
+Most Boost and Python Bitcoin Tests were ported for Freycoin. These should all pass after every code change, unless it is precised in the `test_runner.py` file that a particular Test may fail. In order to run them,
+
 ```bash
-build/bin/test_freycoin
-python3 test/functional/test_runner.py
+build/bin/test_freycoin # Boost Test Suite
+build/test/functional/test_runner.py # Python Functional Tests, use -j N for N jobs
+
+build/bin/test_freycoin-qt # Freycoin-Qt Tests
 ```
 
-## Links
+Here are examples in order to run a particular test (check the Source Code regarding the names of the Boost Tests),
 
-- Website: https://freycoin.tech
-- Explorer: https://explorer.freycoin.tech
-- Testnet Explorer: https://testnet.freycoin.tech
+```bash
+build/src/test/test_freycoin --run_test=getarg_tests
+build/src/test/test_freycoin --run_test=getarg_tests/doubledash
+build/src/test/test_freycoin --log_level=all --run_test=getarg_tests/doubledash
+
+build/test/functional/mining_basic.py
+```
+
+Currently, the Cirrus Ci was not ported, and Fuzz Tests are not checked beyond being able to compile. Given the current very limited development resources, successfully running the Tests above and not encountering major issues in normal use of Freycoin Core is deemed sufficient.
 
 ## License
 
-Freycoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for more information.
+The Freycoin Core code is published under the terms of the MIT license. See [COPYING](COPYING) for more information or see https://opensource.org/licenses/MIT.
+
+However, releases are under the terms of the Gnu General Public License Version 3 (GPLv3) since Freycoin Core uses some GPL licensed software.

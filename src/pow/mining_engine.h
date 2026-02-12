@@ -245,6 +245,9 @@ public:
     /** Create mining engine with auto-detected tier */
     MiningEngine();
 
+    /** Create mining engine with auto-detected tier and specific thread count */
+    explicit MiningEngine(unsigned int num_threads);
+
     /** Create mining engine with specific tier */
     explicit MiningEngine(MiningTier tier);
 
@@ -325,12 +328,27 @@ private:
     std::atomic<uint64_t> par_tests{0};
     std::atomic<uint64_t> par_nonces{0};
 
-    // GPU worker infrastructure for mine_parallel()
-    std::thread gpu_thread;
-    std::queue<std::shared_ptr<GPURequest>> gpu_request_queue;
-    std::mutex gpu_queue_mutex;
-    std::condition_variable gpu_queue_cv;
-    bool gpu_initialized{false};
+    // GPU worker threads — one per device, persist across mine_parallel calls.
+    // Initialized on first mine_parallel, destroyed with the engine.
+    struct GPUWorker {
+        int device_id;
+        std::thread thread;
+        std::queue<std::shared_ptr<GPURequest>> queue;
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::atomic<bool> initialized{false};
+    };
+    std::vector<std::unique_ptr<GPUWorker>> gpu_workers;
+    std::atomic<bool> gpu_initialized{false};  // True when at least one GPU is ready
+    std::atomic<bool> gpu_shutdown{false};
+    std::atomic<int> gpu_round_robin{0};  // For distributing work across GPUs
+    int num_gpu_devices{0};
+
+    void ensure_gpu_running();
+    void gpu_worker_func(GPUWorker* worker);
+
+    /** Submit a GPU request to the least-loaded GPU worker */
+    void submit_gpu_request(std::shared_ptr<GPURequest> request);
 
     MiningTier detect_tier();
     void parallel_worker(uint32_t thread_id,
@@ -340,7 +358,6 @@ private:
                          uint64_t target_difficulty,
                          uint32_t start_nonce,
                          PoWProcessor* processor);
-    void gpu_worker_func();
 };
 
 #endif // FREYCOIN_POW_MINING_ENGINE_H

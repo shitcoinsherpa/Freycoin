@@ -994,6 +994,13 @@ MiningEngine::MiningEngine()
     pipeline = std::make_unique<MiningPipeline>(tier, 1);
 }
 
+MiningEngine::MiningEngine(unsigned int num_threads)
+    : pipeline(nullptr) {
+    n_threads = (num_threads > 0) ? num_threads : std::thread::hardware_concurrency();
+    tier = detect_tier();
+    pipeline = std::make_unique<MiningPipeline>(tier, 1);
+}
+
 MiningEngine::MiningEngine(MiningTier tier)
     : tier(tier), pipeline(nullptr) {
     n_threads = std::thread::hardware_concurrency();
@@ -1009,7 +1016,23 @@ MiningEngine::MiningEngine(MiningTier tier, unsigned int num_threads)
 }
 
 MiningEngine::~MiningEngine() {
-    stop();
+    stop();  // Stop sieve threads
+
+    // Shut down all persistent GPU worker threads
+    gpu_shutdown = true;
+    for (auto& w : gpu_workers) {
+        w->cv.notify_all();
+    }
+    for (auto& w : gpu_workers) {
+        if (w->thread.joinable()) w->thread.join();
+    }
+    gpu_workers.clear();
+    gpu_initialized = false;
+
+    // Release all OpenCL devices
+    if (tier == MiningTier::CPU_OPENCL) {
+        opencl_fermat_cleanup_all();
+    }
 }
 
 MiningTier MiningEngine::detect_tier() {
@@ -1077,35 +1100,38 @@ void MiningEngine::run_sieve(PoW* pow, PoWProcessor* processor,
     pipeline->wait_for_completion();
 }
 
-void MiningEngine::gpu_worker_func() {
-    // Initialize OpenCL GPU backend
-    if (tier == MiningTier::CPU_OPENCL) {
-        if (opencl_fermat_init(0) != 0) {
-            LogPrintf("Mining: GPU worker failed to init OpenCL, falling back to CPU\n");
-            gpu_initialized = false;
-            return;
-        }
-        gpu_initialized = true;
-        LogPrintf("Mining: GPU worker initialized (OpenCL)\n");
-    }
+void MiningEngine::gpu_worker_func(GPUWorker* worker) {
+    int dev = worker->device_id;
 
-    while (!stop_requested) {
+    // Initialize this GPU device (once for the lifetime of the engine)
+    if (opencl_fermat_init_device(dev) != 0) {
+        LogPrintf("Mining: GPU worker %d failed to init OpenCL\n", dev);
+        worker->initialized = false;
+        return;
+    }
+    worker->initialized = true;
+    gpu_initialized = true;  // At least one GPU is ready
+    LogPrintf("Mining: GPU worker %d initialized (%s)\n", dev, opencl_get_device_name(dev));
+
+    // Process batches until the engine is destroyed (gpu_shutdown).
+    // Between mine_parallel calls the thread idles on the condition variable.
+    while (!gpu_shutdown) {
         std::shared_ptr<GPURequest> request;
         {
-            std::unique_lock<std::mutex> lock(gpu_queue_mutex);
-            gpu_queue_cv.wait(lock, [this] {
-                return !gpu_request_queue.empty() || stop_requested;
+            std::unique_lock<std::mutex> lock(worker->mutex);
+            worker->cv.wait(lock, [&] {
+                return !worker->queue.empty() || gpu_shutdown.load();
             });
-            if (stop_requested && gpu_request_queue.empty()) break;
-            if (gpu_request_queue.empty()) continue;
-            request = gpu_request_queue.front();
-            gpu_request_queue.pop();
+            if (gpu_shutdown && worker->queue.empty()) break;
+            if (worker->queue.empty()) continue;
+            request = worker->queue.front();
+            worker->queue.pop();
         }
 
-        // Run OpenCL Fermat primality pre-filter
-        opencl_fermat_batch(request->results.data(),
-                            request->batch.candidates.data(),
-                            request->batch.count, request->batch.bits);
+        // Run OpenCL Fermat primality pre-filter on THIS device
+        opencl_fermat_batch_device(dev, request->results.data(),
+                                   request->batch.candidates.data(),
+                                   request->batch.count, request->batch.bits);
 
         // Signal the submitting CPU thread that results are ready
         {
@@ -1115,10 +1141,61 @@ void MiningEngine::gpu_worker_func() {
         request->cv.notify_one();
     }
 
-    // Cleanup GPU
-    if (tier == MiningTier::CPU_OPENCL) opencl_fermat_cleanup();
+    LogPrintf("Mining: GPU worker %d stopped\n", dev);
+}
 
-    LogPrintf("Mining: GPU worker stopped\n");
+void MiningEngine::submit_gpu_request(std::shared_ptr<GPURequest> request) {
+    if (gpu_workers.empty()) return;
+
+    // Round-robin across GPU workers
+    int idx = gpu_round_robin.fetch_add(1, std::memory_order_relaxed) % (int)gpu_workers.size();
+    GPUWorker* w = gpu_workers[idx].get();
+
+    {
+        std::lock_guard<std::mutex> lock(w->mutex);
+        w->queue.push(request);
+    }
+    w->cv.notify_one();
+}
+
+void MiningEngine::ensure_gpu_running() {
+    if (tier == MiningTier::CPU_ONLY) return;
+    if (gpu_initialized.load()) return;  // Already running
+    if (!gpu_workers.empty()) return;    // Workers exist, still initializing
+
+    gpu_shutdown = false;
+    num_gpu_devices = opencl_get_device_count();
+    if (num_gpu_devices <= 0) {
+        LogPrintf("Mining: No OpenCL devices found\n");
+        return;
+    }
+
+    LogPrintf("Mining: Starting %d GPU worker thread(s)\n", num_gpu_devices);
+
+    // Create one worker thread per GPU device
+    for (int i = 0; i < num_gpu_devices; i++) {
+        auto w = std::make_unique<GPUWorker>();
+        w->device_id = i;
+        w->thread = std::thread(&MiningEngine::gpu_worker_func, this, w.get());
+        gpu_workers.push_back(std::move(w));
+    }
+
+    // Wait for at least one GPU to initialize (up to 30s)
+    for (int i = 0; i < 300 && !gpu_initialized.load() && !gpu_shutdown.load(); i++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // Count how many actually initialized
+    int ready = 0;
+    for (auto& w : gpu_workers) {
+        if (w->initialized.load()) ready++;
+    }
+
+    if (ready > 0) {
+        LogPrintf("Mining: %d/%d GPU device(s) ready\n", ready, num_gpu_devices);
+    } else {
+        LogPrintf("Mining: WARNING - No GPU devices initialized, falling back to CPU\n");
+    }
 }
 
 void MiningEngine::mine_parallel(const std::vector<uint8_t>& header_template,
@@ -1128,15 +1205,21 @@ void MiningEngine::mine_parallel(const std::vector<uint8_t>& header_template,
                                   uint32_t start_nonce,
                                   PoWProcessor* processor) {
     if (parallel_mining_active) {
-        stop();
+        // Stop previous sieve threads (GPU thread persists)
+        stop_requested = true;
+        for (auto& t : mining_threads) {
+            if (t.joinable()) t.join();
+        }
+        mining_threads.clear();
+        parallel_mining_active = false;
     }
 
     parallel_mining_active = true;
     stop_requested = false;
-    gpu_initialized = false;
     par_primes = 0;
     par_gaps = 0;
     par_tests = 0;
+    par_nonces = 0;
     mining_threads.clear();
 
     // Ensure shift allows full sieve range for the configured intensity
@@ -1148,12 +1231,8 @@ void MiningEngine::mine_parallel(const std::vector<uint8_t>& header_template,
         shift = min_shift;
     }
 
-    // Start GPU worker thread if we have a GPU
-    if (tier != MiningTier::CPU_ONLY) {
-        gpu_thread = std::thread(&MiningEngine::gpu_worker_func, this);
-        // Brief pause to let GPU init complete before sieve threads start submitting
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+    // Ensure GPU thread is running (no-op if already initialized)
+    ensure_gpu_running();
 
     // Launch CPU sieve worker threads
     for (uint32_t i = 0; i < n_threads; i++) {
@@ -1163,21 +1242,11 @@ void MiningEngine::mine_parallel(const std::vector<uint8_t>& header_template,
                                      processor);
     }
 
-    // Wait for all CPU threads to complete
+    // Wait for all CPU sieve threads to complete
     for (auto& t : mining_threads) {
         if (t.joinable()) t.join();
     }
     mining_threads.clear();
-
-    // Stop GPU worker
-    if (gpu_thread.joinable()) {
-        {
-            std::lock_guard<std::mutex> lock(gpu_queue_mutex);
-            stop_requested = true;
-        }
-        gpu_queue_cv.notify_all();
-        gpu_thread.join();
-    }
 
     parallel_mining_active = false;
 }
@@ -1305,12 +1374,8 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                     request->batch = std::move(batch);
                     request->results.resize(request->batch.count, 0);
 
-                    // Submit to GPU worker queue
-                    {
-                        std::lock_guard<std::mutex> lock(gpu_queue_mutex);
-                        gpu_request_queue.push(request);
-                    }
-                    gpu_queue_cv.notify_one();
+                    // Submit to a GPU worker (round-robin across devices)
+                    submit_gpu_request(request);
 
                     // Wait for GPU to finish this batch
                     {
@@ -1498,7 +1563,6 @@ cleanup:
 
 void MiningEngine::request_stop() {
     stop_requested = true;
-    gpu_queue_cv.notify_all();  // Wake GPU thread so it can exit
     if (pipeline) {
         pipeline->stop_mining();
     }
@@ -1510,10 +1574,9 @@ void MiningEngine::stop() {
         if (t.joinable()) t.join();
     }
     mining_threads.clear();
-    if (gpu_thread.joinable()) gpu_thread.join();
     parallel_mining_active = false;
     stop_requested = false;
-    gpu_initialized = false;
+    // GPU thread stays alive — it persists across mine_parallel calls
 }
 
 bool MiningEngine::is_mining() const {
