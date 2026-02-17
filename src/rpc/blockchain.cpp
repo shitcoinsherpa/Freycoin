@@ -15,6 +15,7 @@
 #include <common/args.h>
 #include <consensus/amount.h>
 #include <consensus/params.h>
+#include <pow/fast_nextprime.h>
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <deploymentinfo.h>
@@ -33,6 +34,7 @@
 #include <node/transaction.h>
 #include <node/utxo_snapshot.h>
 #include <pow.h>
+#include <pow/pow_common.h>
 #include <node/warnings.h>
 #include <primitives/transaction.h>
 #include <rpc/server.h>
@@ -57,6 +59,8 @@
 #include <versionbits.h>
 
 #include <cstdint>
+#include <gmp.h>
+#include <mpfr.h>
 
 #include <condition_variable>
 #include <iterator>
@@ -93,16 +97,58 @@ UniValue WriteUTXOSnapshot(
     const fs::path& temppath,
     const std::function<void()>& interruption_point = {});
 
-/* Calculate the difficulty for a given block index.
- * Returns difficulty as a floating-point value.
- * For prime gap PoW, this is the merit (gap_size / ln(start_prime)).
- * The nDifficulty field stores this as 2^48 fixed-point.
+/* Return the difficulty TARGET as a float (nDifficulty / 2^48).
+ * This is NOT the gap merit — use ComputeRealMerit() for gap/ln(start).
  */
 double GetDifficulty(const CBlockIndex& blockindex, const int32_t /*powVersionOverride*/)
 {
-    // Convert from 2^48 fixed-point to floating-point
-    // nDifficulty = merit * 2^48
     return static_cast<double>(blockindex.nDifficulty) / (1ULL << 48);
+}
+
+/* Compute the real mathematical merit = gap / ln(start_prime) using MPFR.
+ * start_prime = SHA256d(header) * 2^shift + adder.
+ * Returns 0.0 for genesis block or on error.
+ */
+double ComputeRealMerit(const CBlockIndex& blockindex)
+{
+    if (blockindex.nHeight == 0) return 0.0;
+
+    mpz_t mpz_hash, mpz_start, mpz_adder, mpz_end, mpz_gap;
+    mpz_init(mpz_hash);
+    mpz_init(mpz_start);
+    mpz_init(mpz_adder);
+    mpz_init(mpz_end);
+    mpz_init(mpz_gap);
+
+    uint256 hash = blockindex.GetBlockHash();
+    mpz_import(mpz_hash, 32, -1, 1, -1, 0, hash.data());
+    mpz_mul_2exp(mpz_start, mpz_hash, blockindex.nShift);
+    mpz_import(mpz_adder, 32, -1, 1, -1, 0, blockindex.nAdd.data());
+    mpz_add(mpz_start, mpz_start, mpz_adder);
+    fast_nextprime(mpz_end, mpz_start);
+    mpz_sub(mpz_gap, mpz_end, mpz_start);
+    uint64_t gap_size = mpz_get_ui64(mpz_gap);
+
+    double merit = 0.0;
+    if (gap_size > 0 && mpz_sgn(mpz_start) > 0) {
+        mpfr_t mpfr_start, mpfr_ln;
+        mpfr_init2(mpfr_start, 256);
+        mpfr_init2(mpfr_ln, 256);
+        mpfr_set_z(mpfr_start, mpz_start, MPFR_RNDN);
+        mpfr_log(mpfr_ln, mpfr_start, MPFR_RNDN);
+        double ln_start = mpfr_get_d(mpfr_ln, MPFR_RNDN);
+        if (ln_start > 0.0) merit = static_cast<double>(gap_size) / ln_start;
+        mpfr_clear(mpfr_start);
+        mpfr_clear(mpfr_ln);
+    }
+
+    mpz_clear(mpz_hash);
+    mpz_clear(mpz_start);
+    mpz_clear(mpz_adder);
+    mpz_clear(mpz_end);
+    mpz_clear(mpz_gap);
+
+    return merit;
 }
 
 static int ComputeNextBlockAndDepth(const CBlockIndex& tip, const CBlockIndex& blockindex, const CBlockIndex*& next)
@@ -143,6 +189,78 @@ static const CBlockIndex* ParseHashOrHeight(const UniValue& param, ChainstateMan
     }
 }
 
+/** Convert mpz_t to hex string */
+static std::string MpzToHex(const mpz_t n)
+{
+    char* str = mpz_get_str(nullptr, 16, n);
+    std::string result(str);
+    free(str);
+    return result;
+}
+
+/** Compute prime gap data for a block (start prime, end prime, gap) */
+static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
+{
+    // Skip genesis block (no real PoW)
+    if (blockindex.nHeight == 0) {
+        result.pushKV("start_prime", "0");
+        result.pushKV("end_prime", "0");
+        result.pushKV("gap", 0);
+        return;
+    }
+
+    mpz_t mpz_hash, mpz_start, mpz_adder, mpz_end, mpz_gap;
+    mpz_init(mpz_hash);
+    mpz_init(mpz_start);
+    mpz_init(mpz_adder);
+    mpz_init(mpz_end);
+    mpz_init(mpz_gap);
+
+    // Get block hash and convert to mpz
+    uint256 hash = blockindex.GetBlockHash();
+    mpz_import(mpz_hash, 32, -1, 1, -1, 0, hash.data());
+
+    // Compute start = hash * 2^shift + adder
+    mpz_mul_2exp(mpz_start, mpz_hash, blockindex.nShift);
+    mpz_import(mpz_adder, 32, -1, 1, -1, 0, blockindex.nAdd.data());
+    mpz_add(mpz_start, mpz_start, mpz_adder);
+
+    // Find next prime after start
+    fast_nextprime(mpz_end, mpz_start);
+
+    // Compute gap = end - start
+    mpz_sub(mpz_gap, mpz_end, mpz_start);
+    uint64_t gap_size = mpz_get_ui64(mpz_gap);
+
+    // Compute real merit = gap / ln(start_prime) using MPFR for accuracy
+    double real_merit = 0.0;
+    if (gap_size > 0 && mpz_sgn(mpz_start) > 0) {
+        mpfr_t mpfr_start, mpfr_ln;
+        mpfr_init2(mpfr_start, 256);
+        mpfr_init2(mpfr_ln, 256);
+        mpfr_set_z(mpfr_start, mpz_start, MPFR_RNDN);
+        mpfr_log(mpfr_ln, mpfr_start, MPFR_RNDN);
+        double ln_start = mpfr_get_d(mpfr_ln, MPFR_RNDN);
+        if (ln_start > 0.0) {
+            real_merit = static_cast<double>(gap_size) / ln_start;
+        }
+        mpfr_clear(mpfr_start);
+        mpfr_clear(mpfr_ln);
+    }
+
+    // Add to result
+    result.pushKV("start_prime", MpzToHex(mpz_start));
+    result.pushKV("end_prime", MpzToHex(mpz_end));
+    result.pushKV("gap", gap_size);
+    result.pushKV("merit", real_merit);
+
+    mpz_clear(mpz_hash);
+    mpz_clear(mpz_start);
+    mpz_clear(mpz_adder);
+    mpz_clear(mpz_end);
+    mpz_clear(mpz_gap);
+}
+
 UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex)
 {
     // Serialize passed information without accessing chain state of the active chain!
@@ -163,7 +281,7 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     result.pushKV("difficulty", strprintf("%016llx", blockindex.nDifficulty));
     result.pushKV("shift", blockindex.nShift);
     result.pushKV("adder", blockindex.nAdd.GetHex());
-    result.pushKV("merit", GetDifficulty(blockindex));
+    ComputePrimeGapData(blockindex, result);  // Adds gap, start_prime, end_prime, merit (real gap/ln(start))
     result.pushKV("chainwork", blockindex.nChainWork.GetHex());
     result.pushKV("nTx", blockindex.nTx);
 
@@ -264,7 +382,7 @@ static RPCHelpMan waitfornewblock()
         "waitfornewblock",
         "Waits for any new block and returns useful info about it.\n"
                 "\nReturns the current block on timeout or exit.\n"
-                "\nMake sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+                "\nMake sure to use no RPC timeout (freycoin-cli -rpcclienttimeout=0)",
                 {
                     {"timeout", RPCArg::Type::NUM, RPCArg::Default{0}, "Time in milliseconds to wait for a response. 0 indicates no timeout."},
                     {"current_tip", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Method waits for the chain tip to differ from this."},
@@ -323,7 +441,7 @@ static RPCHelpMan waitforblock()
         "waitforblock",
         "Waits for a specific new block and returns useful info about it.\n"
                 "\nReturns the current block on timeout or exit.\n"
-                "\nMake sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+                "\nMake sure to use no RPC timeout (freycoin-cli -rpcclienttimeout=0)",
                 {
                     {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "Block hash to wait for."},
                     {"timeout", RPCArg::Type::NUM, RPCArg::Default{0}, "Time in milliseconds to wait for a response. 0 indicates no timeout."},
@@ -385,7 +503,7 @@ static RPCHelpMan waitforblockheight()
         "Waits for (at least) block height and returns the height and hash\n"
                 "of the current tip.\n"
                 "\nReturns the current block on timeout or exit.\n"
-                "\nMake sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+                "\nMake sure to use no RPC timeout (freycoin-cli -rpcclienttimeout=0)",
                 {
                     {"height", RPCArg::Type::NUM, RPCArg::Optional::NO, "Block height to wait for."},
                     {"timeout", RPCArg::Type::NUM, RPCArg::Default{0}, "Time in milliseconds to wait for a response. 0 indicates no timeout."},
@@ -1303,8 +1421,7 @@ static RPCHelpMan getresult()
         block = GetBlockChecked(chainman.m_blockman, *pblockindex);
     }
 
-    // Calculate merit from difficulty (2^48 fixed-point)
-    double merit = static_cast<double>(block.nDifficulty) / (1ULL << 48);
+    double merit = ComputeRealMerit(*pblockindex);
 
     bool detailed(false);
     if (!request.params[1].isNull())
@@ -1314,12 +1431,31 @@ static RPCHelpMan getresult()
         return strprintf("%.6f", merit);
     }
 
+    // Compute gap size for detailed output
+    uint64_t gap_size = 0;
+    if (pblockindex->nHeight > 0) {
+        mpz_t mpz_hash, mpz_start, mpz_adder, mpz_end, mpz_gap;
+        mpz_init(mpz_hash); mpz_init(mpz_start); mpz_init(mpz_adder);
+        mpz_init(mpz_end); mpz_init(mpz_gap);
+        uint256 bhash = pblockindex->GetBlockHash();
+        mpz_import(mpz_hash, 32, -1, 1, -1, 0, bhash.data());
+        mpz_mul_2exp(mpz_start, mpz_hash, pblockindex->nShift);
+        mpz_import(mpz_adder, 32, -1, 1, -1, 0, pblockindex->nAdd.data());
+        mpz_add(mpz_start, mpz_start, mpz_adder);
+        fast_nextprime(mpz_end, mpz_start);
+        mpz_sub(mpz_gap, mpz_end, mpz_start);
+        gap_size = mpz_get_ui64(mpz_gap);
+        mpz_clear(mpz_hash); mpz_clear(mpz_start); mpz_clear(mpz_adder);
+        mpz_clear(mpz_end); mpz_clear(mpz_gap);
+    }
+
     UniValue rv(UniValue::VOBJ);
     rv.pushKV("type", "prime gap");
     rv.pushKV("difficulty", strprintf("%016llx", block.nDifficulty));
     rv.pushKV("shift", block.nShift);
     rv.pushKV("adder", block.nAdd.GetHex());
     rv.pushKV("nonce", static_cast<uint64_t>(block.nNonce));
+    rv.pushKV("gap", gap_size);
     rv.pushKV("merit", merit);
     return rv;
 },
@@ -1429,7 +1565,7 @@ RPCHelpMan getblockchaininfo()
     obj.pushKV("headers", chainman.m_best_header ? chainman.m_best_header->nHeight : -1);
     obj.pushKV("bestblockhash", tip.GetBlockHash().GetHex());
     obj.pushKV("difficulty", strprintf("%016llx", tip.nDifficulty));
-    obj.pushKV("merit", GetDifficulty(tip));
+    obj.pushKV("merit", ComputeRealMerit(tip));
     obj.pushKV("time", tip.GetBlockTime());
     obj.pushKV("mediantime", tip.GetMedianTimePast());
     obj.pushKV("verificationprogress", chainman.GuessVerificationProgress(&tip));
@@ -1939,7 +2075,7 @@ static RPCHelpMan getblockstats()
 {
     return RPCHelpMan{
         "getblockstats",
-        "Compute per block statistics for a given window. All amounts are in satoshis.\n"
+        "Compute per block statistics for a given window. All amounts are in freys.\n"
                 "It won't work for some heights with pruning.\n",
                 {
                     {"hash_or_height", RPCArg::Type::NUM, RPCArg::Optional::NO, "The block hash or height of the target block",
@@ -1958,10 +2094,10 @@ static RPCHelpMan getblockstats()
             RPCResult::Type::OBJ, "", "",
             {
                 {RPCResult::Type::NUM, "avgfee", /*optional=*/true, "Average fee in the block"},
-                {RPCResult::Type::NUM, "avgfeerate", /*optional=*/true, "Average feerate (in satoshis per virtual byte)"},
+                {RPCResult::Type::NUM, "avgfeerate", /*optional=*/true, "Average feerate (in freys per virtual byte)"},
                 {RPCResult::Type::NUM, "avgtxsize", /*optional=*/true, "Average transaction size"},
                 {RPCResult::Type::STR_HEX, "blockhash", /*optional=*/true, "The block hash (to check for potential reorgs)"},
-                {RPCResult::Type::ARR_FIXED, "feerate_percentiles", /*optional=*/true, "Feerates at the 10th, 25th, 50th, 75th, and 90th percentile weight unit (in satoshis per virtual byte)",
+                {RPCResult::Type::ARR_FIXED, "feerate_percentiles", /*optional=*/true, "Feerates at the 10th, 25th, 50th, 75th, and 90th percentile weight unit (in freys per virtual byte)",
                 {
                     {RPCResult::Type::NUM, "10th_percentile_feerate", "The 10th percentile feerate"},
                     {RPCResult::Type::NUM, "25th_percentile_feerate", "The 25th percentile feerate"},
@@ -1972,13 +2108,13 @@ static RPCHelpMan getblockstats()
                 {RPCResult::Type::NUM, "height", /*optional=*/true, "The height of the block"},
                 {RPCResult::Type::NUM, "ins", /*optional=*/true, "The number of inputs (excluding coinbase)"},
                 {RPCResult::Type::NUM, "maxfee", /*optional=*/true, "Maximum fee in the block"},
-                {RPCResult::Type::NUM, "maxfeerate", /*optional=*/true, "Maximum feerate (in satoshis per virtual byte)"},
+                {RPCResult::Type::NUM, "maxfeerate", /*optional=*/true, "Maximum feerate (in freys per virtual byte)"},
                 {RPCResult::Type::NUM, "maxtxsize", /*optional=*/true, "Maximum transaction size"},
                 {RPCResult::Type::NUM, "medianfee", /*optional=*/true, "Truncated median fee in the block"},
                 {RPCResult::Type::NUM, "mediantime", /*optional=*/true, "The block median time past"},
                 {RPCResult::Type::NUM, "mediantxsize", /*optional=*/true, "Truncated median transaction size"},
                 {RPCResult::Type::NUM, "minfee", /*optional=*/true, "Minimum fee in the block"},
-                {RPCResult::Type::NUM, "minfeerate", /*optional=*/true, "Minimum feerate (in satoshis per virtual byte)"},
+                {RPCResult::Type::NUM, "minfeerate", /*optional=*/true, "Minimum feerate (in freys per virtual byte)"},
                 {RPCResult::Type::NUM, "mintxsize", /*optional=*/true, "Minimum transaction size"},
                 {RPCResult::Type::NUM, "outs", /*optional=*/true, "The number of outputs"},
                 {RPCResult::Type::NUM, "subsidy", /*optional=*/true, "The block subsidy"},
@@ -2128,7 +2264,7 @@ static RPCHelpMan getblockstats()
             minfee = std::min(minfee, txfee);
             totalfee += txfee;
 
-            // New feerate uses satoshis per virtual byte instead of per serialized byte
+            // New feerate uses freys per virtual byte instead of per serialized byte
             CAmount feerate = weight ? (txfee * WITNESS_SCALE_FACTOR) / weight : 0;
             if (do_feerate_percentiles) {
                 feerate_array.emplace_back(feerate, weight);
@@ -2515,7 +2651,7 @@ static RPCHelpMan scanblocks()
     return RPCHelpMan{
         "scanblocks",
         "Return relevant blockhashes for given descriptors (requires blockfilterindex).\n"
-        "This call may take several minutes. Make sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+        "This call may take several minutes. Make sure to use no RPC timeout (freycoin-cli -rpcclienttimeout=0)",
         {
             scan_action_arg_desc,
             scan_objects_arg_desc,
@@ -2705,7 +2841,7 @@ static RPCHelpMan getdescriptoractivity()
         "getdescriptoractivity",
         "Get spend and receive activity associated with a set of descriptors for a set of blocks. "
         "This command pairs well with the `relevant_blocks` output of `scanblocks()`.\n"
-        "This call may take several minutes. If you encounter timeouts, try specifying no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+        "This call may take several minutes. If you encounter timeouts, try specifying no RPC timeout (freycoin-cli -rpcclienttimeout=0)",
         {
             RPCArg{"blockhashes", RPCArg::Type::ARR, RPCArg::Optional::NO, "The list of blockhashes to examine for activity. Order doesn't matter. Must be along main chain or an error is thrown.\n", {
                 {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "A valid blockhash"},
@@ -3060,7 +3196,7 @@ static RPCHelpMan dumptxoutset()
         "Write the serialized UTXO set to a file. This can be used in loadtxoutset afterwards if this snapshot height is supported in the chainparams as well.\n\n"
         "Unless the \"latest\" type is requested, the node will roll back to the requested height and network activity will be suspended during this process. "
         "Because of this it is discouraged to interact with the node in any other way during the execution of this call to avoid inconsistent results and race conditions, particularly RPCs that interact with blockstorage.\n\n"
-        "This call may take several minutes. Make sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+        "This call may take several minutes. Make sure to use no RPC timeout (freycoin-cli -rpcclienttimeout=0)",
         {
             {"path", RPCArg::Type::STR, RPCArg::Optional::NO, "Path to the output file. If relative, will be prefixed by datadir."},
             {"type", RPCArg::Type::STR, RPCArg::Default(""), "The type of snapshot to create. Can be \"latest\" to create a snapshot of the current UTXO set or \"rollback\" to temporarily roll back the state of the node to a historical block before creating the snapshot of a historical UTXO set. This parameter can be omitted if a separate \"rollback\" named parameter is specified indicating the height or hash of a specific historical block. If \"rollback\" is specified and separate \"rollback\" named parameter is not specified, this will roll back to the latest valid snapshot block that can currently be loaded with loadtxoutset."},
@@ -3355,7 +3491,7 @@ static RPCHelpMan loadtxoutset()
         "Meanwhile, the original chainstate will complete the initial block download process in "
         "the background, eventually validating up to the block that the snapshot is based upon.\n\n"
 
-        "The result is a usable bitcoind instance that is current with the network tip in a "
+        "The result is a usable freycoind instance that is current with the network tip in a "
         "matter of minutes rather than hours. UTXO snapshot are typically obtained from "
         "third-party sources (HTTP, torrent, etc.) which is reasonable since their "
         "contents are always checked by hash.\n\n"
@@ -3472,7 +3608,7 @@ return RPCHelpMan{
         data.pushKV("blocks",                (int)chain.Height());
         data.pushKV("bestblockhash",         tip->GetBlockHash().GetHex());
         data.pushKV("difficulty", strprintf("%016llx", tip->nDifficulty));
-        data.pushKV("merit", GetDifficulty(*tip));
+        data.pushKV("merit", ComputeRealMerit(*tip));
         data.pushKV("verificationprogress", chainman.GuessVerificationProgress(tip));
         data.pushKV("coins_db_cache_bytes",  cs.m_coinsdb_cache_size_bytes);
         data.pushKV("coins_tip_cache_bytes", cs.m_coinstip_cache_size_bytes);

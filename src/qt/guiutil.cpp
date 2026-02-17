@@ -262,7 +262,7 @@ QString formatAmount(const CAmount& nIn, bool fPlus, SeparatorStyle separators, 
 
 QString formatAmountWithUnit(const CAmount& amount, bool plussign, SeparatorStyle separators)
 {
-    return formatAmount(amount, plussign, separators) + QString(" RIC");
+    return formatAmount(amount, plussign, separators) + QString(" FREY");
 }
 
 QString formatAmountHtmlWithUnit(const CAmount& amount, bool plussign, SeparatorStyle separators)
@@ -280,7 +280,7 @@ QString formatAmountWithPrivacy(const CAmount& amount, SeparatorStyle separators
         value = formatAmount(0, false, separators, true).replace('0', '#');
     else
         value = formatAmount(amount, false, separators, true);
-    return value + QString(" RIC");
+    return value + QString(" FREY");
 }
 
 bool parse(const QString& value, CAmount* val_out)

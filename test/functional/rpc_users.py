@@ -40,7 +40,7 @@ class HTTPBasicsTest(BitcoinTestFramework):
         self.supports_cli = False
 
     def conf_setup(self):
-        #Append rpcauth to bitcoin.conf before initialization
+        #Append rpcauth to freycoin.conf before initialization
         self.rtpassword = "cA773lm788buwYe4g4WT+05pKyNruVKjQ25x3n0DQcM="
         rpcauth = "rpcauth=rt:93648e835a54c573682c2eb19f882535$7681e9c5b74bdd85e78166031d2058e1069b3ed7ed967c93fc63abba06f31144"
 

@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
             args.emplace_back(UseMultiprocess(cmd) ? "freycoin-node" : "freycoind");
         } else if (cmd.command == "rpc") {
             args.emplace_back("freycoin-cli");
-            // Since "bitcoin rpc" is a new interface that doesn't need to be
+            // Since "freycoin rpc" is a new interface that doesn't need to be
             // backward compatible, enable -named by default so it is convenient
             // for callers to use a mix of named and unnamed parameters. Callers
             // can override this by specifying -nonamed, but should not need to

@@ -94,6 +94,17 @@ public:
         consensus.nPowTargetSpacing = 150; // 2.5 minutes
         consensus.fPowNoRetargeting = false;
 
+        // Big Gaps hard fork — shift 12000 (3690-digit primes) for record-worthy gaps
+        consensus.nBigGapsForkHeight = 5500;
+        consensus.nMinShiftPostFork = 12000;
+        consensus.nMaxShiftPostFork = 16384;
+        consensus.nDifficultyMinPostFork = 2ULL << 48;   // Merit 2
+        consensus.nPowTargetSpacingPostFork = 600;        // 10 minutes
+        consensus.nSubsidyHalvingIntervalPostFork = 210000;
+        // Stage 2 same as stage 1 on mainnet (single-stage fork)
+        consensus.nShiftUpgradeForkHeight = 5500;
+        consensus.nMinShiftPostUpgrade = 12000;
+
         // BIP9 deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -114,44 +125,35 @@ public:
         m_assumed_blockchain_size = 1;
         m_assumed_chain_state_size = 1;
 
-        // Genesis block - In memory of Jonnie Frey
-        const char* pszTimestamp = "In memory of Jonnie Frey (1989-2017) - Prime gaps advance human knowledge";
+        // Genesis block — Jonnie Frey proved PoW can advance human knowledge
+        const char* pszTimestamp = "Jonnie Frey (1989-2017) proved PoW can advance human knowledge";
         const CScript genesisOutputScript = CScript() << OP_RETURN; // Unspendable
-
-        // Genesis parameters from Gapcoin-Revival mining
-        // nonce=2039, adder={247,35,12}, shift=20, difficulty=min, merit ~20.2
-        uint256 genesisAdd;
-        genesisAdd.SetNull();
-        // adder = 0x0C23F7 in little-endian
-        unsigned char* add_data = genesisAdd.data();
-        add_data[0] = 0xF7;
-        add_data[1] = 0x23;
-        add_data[2] = 0x0C;
 
         genesis = CreateGenesisBlock(
             pszTimestamp,
             genesisOutputScript,
-            1736427984,       // 2026-01-09 13:06:24 UTC
+            1770668772,       // 2026-02-10: Freycoin mainnet genesis
             MIN_DIFFICULTY,   // Initial difficulty
-            2039,             // nNonce (mined)
-            20,               // nShift
-            genesisAdd,       // nAdd
+            0,                // nNonce (will be mined)
+            14,               // nShift (minimum)
+            uint256{},        // nAdd (empty for fresh genesis)
             1,                // nVersion
             0                 // No coinbase reward for genesis
         );
 
         consensus.hashGenesisBlock = genesis.GetHash();
-
-        // TODO: Calculate and verify these hashes after finalization
-        // assert(consensus.hashGenesisBlock == uint256{"..."});
-        // assert(genesis.hashMerkleRoot == uint256{"..."});
+        assert(consensus.hashGenesisBlock == uint256{"4475b999b591b660d891ca240451bfd6519e716ac2547133d464ab749a6c27fe"});
+        assert(genesis.hashMerkleRoot == uint256{"87925d0a69a0e00b2aab9512c4771fad6d918d370bf8bab5fd951789b20ddd29"});
 
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
 
         bech32_hrp = "frey";
 
-        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
+        vSeeds.emplace_back("seed1.freycoin.tech");
+        vSeeds.emplace_back("seed2.freycoin.tech");
+        vSeeds.emplace_back("seed3.freycoin.tech");
+        vFixedSeeds.clear();  // Until VPS IPs are hardcoded
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -177,10 +179,21 @@ public:
         consensus.nSubsidyHalvingInterval = 840000;
         consensus.MinBIP9WarningHeight = 0;
 
-        // Prime gap PoW parameters - lower difficulty for testing
-        consensus.nDifficultyMin = MIN_DIFFICULTY;
+        // Prime gap PoW parameters - merit ~1 minimum for practical CPU testnet mining
+        consensus.nDifficultyMin = 1ULL << 48;
         consensus.nPowTargetSpacing = 150; // 2.5 minutes
         consensus.fPowNoRetargeting = false;
+
+        // Big Gaps hard fork stage 1 — shift 1024 (385-digit primes)
+        consensus.nBigGapsForkHeight = 4000;
+        consensus.nMinShiftPostFork = 1024;
+        consensus.nMaxShiftPostFork = 16384;
+        consensus.nDifficultyMinPostFork = 1ULL << 48;   // Merit 1
+        consensus.nPowTargetSpacingPostFork = 600;        // 10 minutes
+        consensus.nSubsidyHalvingIntervalPostFork = 210000;
+        // Stage 2: shift upgrade to 12000 (3690-digit primes) for record-worthy gaps
+        consensus.nShiftUpgradeForkHeight = 4700;
+        consensus.nMinShiftPostUpgrade = 12000;
 
         // BIP9 deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -197,46 +210,40 @@ public:
         pchMessageStart[1] = 0x7e;
         pchMessageStart[2] = 0x9c;
         pchMessageStart[3] = 0x3a;
-        nDefaultPort = 31471;
+        nDefaultPort = 31473;
         nPruneAfterHeight = 1000;
         m_assumed_blockchain_size = 1;
         m_assumed_chain_state_size = 1;
 
-        // Genesis block for testnet
-        const char* pszTimestamp = "Freycoin Testnet - Prime Gap Mining";
+        // Genesis block for testnet — same memorial timestamp as mainnet
+        const char* pszTimestamp = "Freycoin Testnet - In memory of Jonnie Frey";
         const CScript genesisOutputScript = CScript() << OP_RETURN;
-
-        // Testnet genesis from Gapcoin-Revival: nonce=12, adder={95}, merit ~22.4
-        uint256 genesisAdd;
-        genesisAdd.SetNull();
-        genesisAdd.data()[0] = 0x5F; // 95
 
         genesis = CreateGenesisBlock(
             pszTimestamp,
             genesisOutputScript,
-            1736528612,       // 2026-01-10 17:03:32 UTC
-            MIN_DIFFICULTY,   // Initial difficulty
-            12,               // nNonce (mined)
-            20,               // nShift
-            genesisAdd,       // nAdd
+            1770668772,       // 2026-02-10: Freycoin testnet genesis (same timestamp as mainnet)
+            1ULL << 48,       // Initial difficulty (merit ~1 for testnet)
+            0,                // nNonce
+            14,               // nShift (minimum)
+            uint256{},        // nAdd
             1,                // nVersion
             50 * COIN         // 50 FREY coinbase
         );
 
         consensus.hashGenesisBlock = genesis.GetHash();
-
-        // TODO: Calculate and verify these hashes
-        // assert(consensus.hashGenesisBlock == uint256{"..."});
+        assert(consensus.hashGenesisBlock == uint256{"6716f28b571cf6b4f40ab00d454bae73cf7c30270197fed22369fccb762027eb"});
+        assert(genesis.hashMerkleRoot == uint256{"3d88cf475c00c0a831fb98c7816aa8ad8dae0edcaca6d012cbb4cef3bc6402d5"});
 
         vFixedSeeds.clear();
         vSeeds.clear();
+        vSeeds.emplace_back("testseed1.freycoin.tech");
+        vSeeds.emplace_back("testseed2.freycoin.tech");
 
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
 
         bech32_hrp = "tfrey";
-
-        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_test), std::end(chainparams_seed_test));
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -270,6 +277,14 @@ public:
         consensus.nPowTargetSpacing = 150;
         consensus.fPowNoRetargeting = true; // No difficulty adjustment
 
+        // Big Gaps fork always active on regtest (from genesis)
+        consensus.nBigGapsForkHeight = 0;
+        consensus.nMinShiftPostFork = 14;     // Keep low for fast testing
+        consensus.nMaxShiftPostFork = 16384;
+        consensus.nDifficultyMinPostFork = 1ULL << 48;
+        consensus.nPowTargetSpacingPostFork = 600;
+        consensus.nSubsidyHalvingIntervalPostFork = 150;
+
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -295,20 +310,18 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        // Regtest genesis - simple, instantly mineable
+        // Regtest genesis
         const char* pszTimestamp = "Freycoin Regtest";
         const CScript genesisOutputScript = CScript() << OP_RETURN;
-        uint256 genesisAdd;
-        genesisAdd.SetNull();
 
         genesis = CreateGenesisBlock(
             pszTimestamp,
             genesisOutputScript,
-            1707684554,
+            1770499200,       // 2026-02-08: Freycoin fresh genesis
             consensus.nDifficultyMin,
-            0,                // nNonce (stub PoW accepts all)
+            0,                // nNonce
             14,               // Minimum nShift
-            genesisAdd,
+            uint256{},        // nAdd
             1,
             50 * COIN
         );

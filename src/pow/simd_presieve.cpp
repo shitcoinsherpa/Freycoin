@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 
 #ifdef _WIN32
 #include <malloc.h>
@@ -138,26 +139,36 @@ static const uint32_t table13_primes[] = {83, 107};
 static const uint32_t table14_primes[] = {89, 103};
 static const uint32_t table15_primes[] = {97, 101};
 
+/*
+ * byte_size = period (NOT ceil(period/8)!)
+ *
+ * Each table stores an expanded bit pattern of period*8 bits = period bytes.
+ * Bit j in the expanded table is composite iff (j % period) is composite.
+ * This makes byte-level cyclic access (pos % byte_size) exactly match
+ * the mathematical bit-level period. Without this, byte wrapping at
+ * ceil(period/8) introduces bit drift because period is never a multiple
+ * of 8 (all periods are products of odd primes).
+ */
 const PresieveTableInfo presieve_info[PRESIEVE_NUM_TABLES] = {
-    {5957, (5957 + 7) / 8, table0_primes, 3},
-    {6479, (6479 + 7) / 8, table1_primes, 3},
-    {6409, (6409 + 7) / 8, table2_primes, 3},
-    {6683, (6683 + 7) / 8, table3_primes, 2},
-    {6751, (6751 + 7) / 8, table4_primes, 2},
-    {7097, (7097 + 7) / 8, table5_primes, 2},
-    {7897, (7897 + 7) / 8, table6_primes, 2},
-    {8201, (8201 + 7) / 8, table7_primes, 2},
-    {8357, (8357 + 7) / 8, table8_primes, 2},
-    {8777, (8777 + 7) / 8, table9_primes, 2},
-    {9017, (9017 + 7) / 8, table10_primes, 2},
-    {8249, (8249 + 7) / 8, table11_primes, 2},
-    {8611, (8611 + 7) / 8, table12_primes, 2},
-    {8881, (8881 + 7) / 8, table13_primes, 2},
-    {9167, (9167 + 7) / 8, table14_primes, 2},
-    {9797, (9797 + 7) / 8, table15_primes, 2}
+    {5957, 5957, table0_primes, 3},
+    {6479, 6479, table1_primes, 3},
+    {6409, 6409, table2_primes, 3},
+    {6683, 6683, table3_primes, 2},
+    {6751, 6751, table4_primes, 2},
+    {7097, 7097, table5_primes, 2},
+    {7897, 7897, table6_primes, 2},
+    {8201, 8201, table7_primes, 2},
+    {8357, 8357, table8_primes, 2},
+    {8777, 8777, table9_primes, 2},
+    {9017, 9017, table10_primes, 2},
+    {8249, 8249, table11_primes, 2},
+    {8611, 8611, table12_primes, 2},
+    {8881, 8881, table13_primes, 2},
+    {9167, 9167, table14_primes, 2},
+    {9797, 9797, table15_primes, 2}
 };
 
-const uint32_t presieve_total_bytes = 15801;
+const uint32_t presieve_total_bytes = 126330;
 
 /* Actual table data (dynamically allocated) */
 static uint8_t* presieve_table_data[PRESIEVE_NUM_TABLES] = {nullptr};
@@ -172,25 +183,32 @@ static bool tables_initialized = false;
 static void generate_table(int table_idx) {
     const PresieveTableInfo* info = &presieve_info[table_idx];
     uint32_t period = info->period;
-    uint32_t byte_size = info->byte_size;
+    uint32_t byte_size = info->byte_size;  // == period
 
-    /* Allocate with 64-byte alignment for SIMD */
+    /* Step 1: Compute base composite pattern for period bits */
+    std::vector<bool> composite(period, false);
+    for (int p = 0; p < info->num_primes; p++) {
+        uint32_t prime = info->primes[p];
+        uint32_t start_bit = (3 * prime - 1) / 2;
+        for (uint32_t pos = start_bit; pos < period; pos += prime) {
+            composite[pos] = true;
+        }
+    }
+
+    /* Step 2: Expand to byte_size bytes (= period*8 bits).
+     * Bit j in expanded table is composite iff (j % period) is composite.
+     * This ensures byte-level cyclic access matches the bit-level period. */
     uint32_t alloc_size = ((byte_size + 63) / 64) * 64;
     uint8_t* table = (uint8_t*)aligned_alloc(64, alloc_size);
     if (!table) {
         return;
     }
-
-    /* Initialize to all zeros (all positions potentially prime) */
     std::memset(table, 0, alloc_size);
 
-    /* Mark multiples of each prime */
-    for (int p = 0; p < info->num_primes; p++) {
-        uint32_t prime = info->primes[p];
-        uint32_t start_bit = (3 * prime - 1) / 2;
-
-        for (uint32_t pos = start_bit; pos < period; pos += prime) {
-            table[pos / 8] |= (1 << (pos % 8));
+    uint32_t expanded_bits = period * 8;
+    for (uint32_t j = 0; j < expanded_bits; j++) {
+        if (composite[j % period]) {
+            table[j / 8] |= (1 << (j % 8));
         }
     }
 
@@ -226,12 +244,35 @@ bool presieve_tables_ready() {
 }
 
 /*============================================================================
+ * Presieve Base Offset Support (GMP)
+ *============================================================================*/
+
+static thread_local uint32_t presieve_base_offsets[PRESIEVE_NUM_TABLES] = {0};
+
+void presieve_set_base_offsets(mpz_t mpz_start) {
+    mpz_t mpz_half;
+    mpz_init(mpz_half);
+    mpz_tdiv_q_2exp(mpz_half, mpz_start, 1);  // mpz_start / 2
+
+    for (int t = 0; t < PRESIEVE_NUM_TABLES; t++) {
+        uint32_t byte_size = presieve_info[t].byte_size;
+        // Global odd-index at sieve start = mpz_start/2.
+        // Table byte position = (odd_index / 8) % byte_size.
+        // Since mpz_start/2 is divisible by 2^13 (shift >= 14), /8 is exact.
+        unsigned long remainder = mpz_fdiv_ui(mpz_half, (unsigned long)(byte_size) * 8);
+        presieve_base_offsets[t] = (uint32_t)(remainder / 8);
+    }
+
+    mpz_clear(mpz_half);
+}
+
+/*============================================================================
  * Default (Portable) Implementation
  *============================================================================*/
 
 static inline uint32_t get_table_position(int table_idx, uint64_t segment_low) {
-    uint32_t period = presieve_info[table_idx].period;
-    return (uint32_t)(segment_low % period);
+    uint32_t byte_size = presieve_info[table_idx].byte_size;
+    return (uint32_t)((presieve_base_offsets[table_idx] + segment_low) % byte_size);
 }
 
 void presieve_init_default(uint8_t* sieve, size_t sieve_bytes, uint64_t segment_low) {
@@ -759,3 +800,4 @@ void presieve_full(uint8_t* sieve, size_t sieve_bytes, uint64_t segment_low) {
     presieve_init(sieve, sieve_bytes, segment_low);
     presieve_apply(sieve, sieve_bytes, segment_low);
 }
+

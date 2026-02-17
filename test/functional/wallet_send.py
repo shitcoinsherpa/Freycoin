@@ -36,7 +36,7 @@ class WalletSendTest(BitcoinTestFramework):
             ["-walletrbf=1", "-addresstype=bech32"],
             ["-walletrbf=1", "-addresstype=bech32"],
         ]
-        getcontext().prec = 8 # Satoshi precision for Decimal
+        getcontext().prec = 8 # frey precision for Decimal
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()

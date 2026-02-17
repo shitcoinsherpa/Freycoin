@@ -254,7 +254,7 @@ TransactionTableModel::TransactionTableModel(const PlatformStyle *_platformStyle
 {
     subscribeToCoreSignals();
 
-    columns << QString() << tr("Date") << tr("Type") << tr("Label") << tr("Amount (RIC)");
+    columns << QString() << tr("Date") << tr("Type") << tr("Label") << tr("Amount (FREY)");
     priv->refreshWallet(walletModel->wallet());
 }
 

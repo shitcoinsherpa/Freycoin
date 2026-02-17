@@ -10,6 +10,7 @@
 # - SIMD-accelerated presieve (AVX-512, AVX2, SSE2)
 # - BPSW primality testing
 # - GPU acceleration via CUDA/OpenCL (optional)
+# - gwnum FFT-accelerated nextprime (x86-64, bundled)
 
 add_library(freycoin_pow STATIC EXCLUDE_FROM_ALL
     pow_common.h
@@ -18,10 +19,16 @@ add_library(freycoin_pow STATIC EXCLUDE_FROM_ALL
     pow_processor.h
     pow.h
     pow.cpp
+    fast_nextprime.h
+    fast_nextprime.cpp
     wheel_tables.h
     wheel_tables.cpp
     simd_presieve.h
     simd_presieve.cpp
+    combined_sieve.h
+    combined_sieve.cpp
+    avx512_primality.h
+    avx512_primality.cpp
     mining_engine.h
     mining_engine.cpp
 )
@@ -34,20 +41,32 @@ target_include_directories(freycoin_pow
 target_link_libraries(freycoin_pow
     PRIVATE
         core_interface
-        $<TARGET_NAME_IF_EXISTS:GMP::GMP>
-        $<TARGET_NAME_IF_EXISTS:MPFR::MPFR>
+        MPFR::MPFR
+        GMP::GMP
         $<TARGET_NAME_IF_EXISTS:freycoin_gpu>
     PUBLIC
         bitcoin_crypto
 )
 
+# Bundled gwnum FFT library (accelerates nextprime by ~2.5x at 12000 bits).
+# Built from src/gwnum/ — x86-64 only, skipped on other architectures.
+# When gwnum is not available, fast_nextprime falls back to GMP mpz_nextprime.
+if(TARGET gwnum)
+    target_compile_definitions(freycoin_pow PUBLIC HAVE_GWNUM=1)
+    # Only add gwnum include dir to fast_nextprime.cpp to avoid gwnum's cpuid.h
+    # shadowing the GCC <cpuid.h> intrinsics header needed by simd_presieve/avx512.
+    set_source_files_properties(fast_nextprime.cpp PROPERTIES
+        COMPILE_FLAGS "-I${PROJECT_SOURCE_DIR}/src/gwnum"
+    )
+    target_link_libraries(freycoin_pow PRIVATE gwnum pthread)
+endif()
+
 # GPU support flags (set by gpu/CMakeLists.txt)
+# OpenCL and CUDA: always available via dynamic loading (no compile flags needed)
+# CGBN: optional, requires nvcc + bundled headers
 if(TARGET freycoin_gpu)
-    if(FREYCOIN_HAVE_CUDA)
-        target_compile_definitions(freycoin_pow PRIVATE HAVE_CUDA=1)
-    endif()
-    if(FREYCOIN_HAVE_OPENCL)
-        target_compile_definitions(freycoin_pow PRIVATE HAVE_OPENCL=1)
+    if(FREYCOIN_HAVE_CGBN)
+        target_compile_definitions(freycoin_pow PRIVATE HAVE_CGBN=1)
     endif()
 endif()
 
@@ -59,6 +78,17 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|i[3456]86")
     check_cxx_compiler_flag("-mavx512f -mavx512bw" HAVE_AVX512)
     if(HAVE_AVX512)
         target_compile_definitions(freycoin_pow PRIVATE HAVE_AVX512=1)
+    endif()
+
+    # Check for AVX-512 IFMA support (VPMADD52 — Ice Lake+, Zen 4+)
+    check_cxx_compiler_flag("-mavx512ifma" HAVE_AVX512_IFMA)
+    if(HAVE_AVX512_IFMA AND HAVE_AVX512)
+        # Compile avx512_primality.cpp with IFMA enabled
+        set_source_files_properties(avx512_primality.cpp PROPERTIES
+            COMPILE_FLAGS "-mavx512f -mavx512ifma"
+        )
+        target_compile_definitions(freycoin_pow PRIVATE HAVE_AVX512_IFMA=1)
+        message(STATUS "AVX-512 IFMA support enabled for vectorized primality testing")
     endif()
 
     # Check for AVX2 support

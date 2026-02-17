@@ -10,6 +10,7 @@
  */
 
 #include <pow/pow.h>
+#include <pow/fast_nextprime.h>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -45,14 +46,14 @@ PoW::~PoW() {
 }
 
 bool PoW::get_end_points(mpz_t mpz_start, mpz_t mpz_end) {
-    // Validate shift range
-    if (shift < MIN_SHIFT || shift > MAX_SHIFT) {
+    // Validate shift range — accept both pre-fork and post-fork ranges
+    if (shift < MIN_SHIFT || shift > MAX_SHIFT_POST_FORK) {
         return false;
     }
 
-    // Verify hash is 256 bits
+    // Verify hash has minimum entropy (SHA256 can have leading zeros)
     size_t hash_bits = mpz_sizeinbase(mpz_hash, 2);
-    if (hash_bits != 256) {
+    if (hash_bits < 200) {  // Match CheckProofOfWork minimum
         return false;
     }
 
@@ -72,8 +73,8 @@ bool PoW::get_end_points(mpz_t mpz_start, mpz_t mpz_end) {
         return false;
     }
 
-    // Find next prime
-    mpz_nextprime(mpz_end, mpz_start);
+    // Find next prime (gwnum-accelerated when available)
+    fast_nextprime(mpz_end, mpz_start);
 
     return true;
 }

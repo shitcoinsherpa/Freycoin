@@ -16,7 +16,7 @@ class ArgsManager;
 
 /**
  * CBaseChainParams defines the base parameters (shared between freycoin-cli and freycoind)
- * of a given instance of the Bitcoin system.
+ * of a given instance of the Freycoin system.
  */
 class CBaseChainParams
 {

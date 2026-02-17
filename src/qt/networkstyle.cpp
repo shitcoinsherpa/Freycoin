@@ -19,8 +19,8 @@ static const struct {
     const int iconColorSaturationReduction;
 } network_styles[] = {
     {ChainType::MAIN, QAPP_APP_NAME_DEFAULT, 0, 0},
-    {ChainType::TESTNET, QAPP_APP_NAME_TESTNET, 70, 30},
-    {ChainType::REGTEST, QAPP_APP_NAME_REGTEST, 160, 30},
+    {ChainType::TESTNET, QAPP_APP_NAME_TESTNET, 0, 0},   // Keep gold color for testnet
+    {ChainType::REGTEST, QAPP_APP_NAME_REGTEST, 0, 0},   // Keep gold color for regtest
 };
 
 // titleAddText needs to be const char* for tr()

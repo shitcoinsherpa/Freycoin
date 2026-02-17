@@ -57,7 +57,7 @@ add_executable(bench_freycoin
   verify_script.cpp
 )
 
-add_windows_application_manifest(bench_bitcoin)
+add_windows_application_manifest(bench_freycoin)
 
 include(TargetDataSources)
 target_raw_data_sources(bench_freycoin NAMESPACE benchmark::data

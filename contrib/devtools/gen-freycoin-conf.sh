@@ -8,22 +8,22 @@ export LC_ALL=C
 TOPDIR=${TOPDIR:-$(git rev-parse --show-toplevel)}
 BUILDDIR=${BUILDDIR:-$TOPDIR/build}
 BINDIR=${BINDIR:-$BUILDDIR/bin}
-BITCOIND=${BITCOIND:-$BINDIR/freycoind}
+freycoind=${freycoind:-$BINDIR/freycoind}
 SHARE_EXAMPLES_DIR=${SHARE_EXAMPLES_DIR:-$TOPDIR/share/examples}
 EXAMPLE_CONF_FILE=${EXAMPLE_CONF_FILE:-$SHARE_EXAMPLES_DIR/freycoin.conf}
 
-[ ! -x "$BITCOIND" ] && echo "$BITCOIND not found or not executable." && exit 1
+[ ! -x "$freycoind" ] && echo "$freycoind not found or not executable." && exit 1
 
 DIRTY=""
-VERSION_OUTPUT=$($BITCOIND --version)
+VERSION_OUTPUT=$($freycoind --version)
 if [[ $VERSION_OUTPUT == *"dirty"* ]]; then
-  DIRTY="${DIRTY}${BITCOIND}\n"
+  DIRTY="${DIRTY}${freycoind}\n"
 fi
 
 if [ -n "$DIRTY" ]
 then
-  echo -e "WARNING: $BITCOIND was built from a dirty tree.\n"
-  echo -e "To safely generate a freycoin.conf file, please commit your changes to $BITCOIND, rebuild, then run this script again.\n"
+  echo -e "WARNING: $freycoind was built from a dirty tree.\n"
+  echo -e "To safely generate a freycoin.conf file, please commit your changes to $freycoind, rebuild, then run this script again.\n"
 fi
 
 echo 'Generating example freycoin.conf file in share/examples/'
@@ -50,7 +50,7 @@ EOF
 # parse the output from freycoind --help
 # adding newlines is a bit funky to ensure portability for BSD
 # see here for more details: https://stackoverflow.com/a/24575385
-${BITCOIND} --help \
+${freycoind} --help \
     | sed '1,/Options:/d' \
     | sed -E '/^[[:space:]]{2}-help/,/^[[:space:]]*$/d' \
     | sed -E 's/^[[:space:]]{2}\-/#/' \

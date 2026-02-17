@@ -6,32 +6,29 @@
 /**
  * Implementation of PoW utility functions.
  *
+ * All logarithmic and exponential computations use MPFR (256-bit precision)
+ * for correctness. No home-grown approximations — every block we mine is a
+ * mathematical proof, and the math must be exact.
+ *
  * In memory of Jonnie Frey (1989-2017), creator of Gapcoin.
  */
 
 #include <pow/pow_utils.h>
 #include <crypto/sha256.h>
 #include <gmp.h>
-#ifdef HAVE_MPFR
 #include <mpfr.h>
-#endif
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 
-// Pre-computed constants (hex strings)
-static const char* LOG2E_112_HEX = "171547652b82fe1777d0ffda0d23a";
-static const char* LOG2E_64_HEX = "171547652b82fe177";
+// MPFR precision for all computations (256 bits ≈ 77 decimal digits)
+static constexpr mpfr_prec_t MPFR_PRECISION = 256;
 
 PoWUtils::PoWUtils() {
-    mpz_init_set_str(mpz_log2e112, LOG2E_112_HEX, 16);
-    mpz_init_set_str(mpz_log2e64, LOG2E_64_HEX, 16);
 }
 
 PoWUtils::~PoWUtils() {
-    mpz_clear(mpz_log2e112);
-    mpz_clear(mpz_log2e64);
 }
 
 uint64_t PoWUtils::gettime_usec() {
@@ -40,68 +37,58 @@ uint64_t PoWUtils::gettime_usec() {
     return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
-void PoWUtils::mpz_log2(mpz_t result, mpz_t src, uint32_t accuracy) {
-    mpz_t tmp, n;
-    mpz_init(tmp);
-    mpz_init_set(n, src);
+/**
+ * Compute ln(src) * 2^precision as an integer using MPFR.
+ *
+ * This replaces the old mpz_log2-based approach. MPFR's mpfr_log is
+ * proven correct to the last bit at any requested precision.
+ */
+static void mpfr_ln_fixed(mpz_t result, mpz_t src, uint32_t precision) {
+    mpfr_t mpfr_src, mpfr_ln;
+    mpfr_init2(mpfr_src, MPFR_PRECISION);
+    mpfr_init2(mpfr_ln, MPFR_PRECISION);
 
-    // Integer part: floor(log2(src)) = bit_length - 1
-    uint64_t int_log2 = mpz_sizeinbase(n, 2) - 1;
-    mpz_set_ui64(result, int_log2);
+    mpfr_set_z(mpfr_src, src, MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_src, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, precision, MPFR_RNDN);
+    mpfr_get_z(result, mpfr_ln, MPFR_RNDN);
 
-    uint32_t bits = 0;
-    uint32_t shift = accuracy + int_log2;
-
-    // Scale up for fractional precision
-    mpz_mul_2exp(result, result, accuracy);
-    mpz_mul_2exp(n, n, accuracy);
-
-    for (;;) {
-        mpz_fdiv_q_2exp(tmp, n, shift);
-
-        // While n / 2^shift < 2, square n
-        while (mpz_get_ui64(tmp) < 2 && bits <= accuracy) {
-            mpz_mul(n, n, n);
-            mpz_fdiv_q_2exp(n, n, shift);
-            mpz_fdiv_q_2exp(tmp, n, shift);
-            bits++;
-        }
-
-        if (bits > accuracy) break;
-
-        // Add 2^(accuracy - bits) to result
-        mpz_set_ui64(tmp, 1);
-        mpz_mul_2exp(tmp, tmp, accuracy - bits);
-        mpz_add(result, result, tmp);
-
-        // n = n / 2
-        mpz_fdiv_q_2exp(n, n, 1);
-    }
-
-    mpz_clear(tmp);
-    mpz_clear(n);
+    mpfr_clear(mpfr_src);
+    mpfr_clear(mpfr_ln);
 }
 
 uint64_t PoWUtils::merit(mpz_t mpz_start, mpz_t mpz_end) {
-    mpz_t mpz_merit, mpz_ld;
+    // merit = gap / ln(start), returned as fixed-point * 2^48
+    //
+    // Computed as: (gap * 2^48) / (ln(start) * 2^48) * 2^48
+    // Simplified:  gap * 2^48 / ln_fixed(start, 48)
+
+    mpz_t mpz_gap, mpz_ln, mpz_merit;
+    mpz_init(mpz_gap);
+    mpz_init(mpz_ln);
     mpz_init(mpz_merit);
-    mpz_init(mpz_ld);
 
-    // merit = gap_len * log2(e) * 2^(64 + 48)
-    mpz_sub(mpz_merit, mpz_end, mpz_start);
-    mpz_mul(mpz_merit, mpz_merit, mpz_log2e112);
+    mpz_sub(mpz_gap, mpz_end, mpz_start);
 
-    // merit = merit / (log2(start) * 2^64)
-    mpz_log2(mpz_ld, mpz_start, 64);
-    mpz_fdiv_q(mpz_merit, mpz_merit, mpz_ld);
+    // ln(start) * 2^48
+    mpfr_ln_fixed(mpz_ln, mpz_start, 48);
+
+    // merit_fp48 = gap * 2^48 / ln_fixed
+    // But gap is small (fits uint64), so: gap << 48 / ln_fixed
+    // Actually: (gap * 2^48) is what we want divided by (ln(start) * 2^48 / 2^48)
+    // = gap * 2^48 * 2^48 / (ln(start) * 2^48) = gap * 2^48 / ln(start)
+    // Which is: gap * 2^96 / ln_fixed(48)
+    mpz_mul_2exp(mpz_merit, mpz_gap, 96);
+    mpz_fdiv_q(mpz_merit, mpz_merit, mpz_ln);
 
     uint64_t result = 0;
     if (mpz_fits_ui64(mpz_merit)) {
         result = mpz_get_ui64(mpz_merit);
     }
 
+    mpz_clear(mpz_gap);
+    mpz_clear(mpz_ln);
     mpz_clear(mpz_merit);
-    mpz_clear(mpz_ld);
 
     return result;
 }
@@ -134,24 +121,27 @@ uint64_t PoWUtils::rand(mpz_t mpz_start, mpz_t mpz_end) {
 }
 
 uint64_t PoWUtils::difficulty(mpz_t mpz_start, mpz_t mpz_end) {
-    mpz_t mpz_ld, mpz_tmp;
-    mpz_init(mpz_ld);
+    // min_gap_distance_merit = 2 / ln(start), in 2^48 fixed-point
+    mpz_t mpz_ln;
+    mpz_init(mpz_ln);
 
-    // tmp = 2 * log2(e) * 2^(64 + 48)
-    mpz_init_set_ui64(mpz_tmp, 2);
-    mpz_mul(mpz_tmp, mpz_tmp, mpz_log2e112);
+    // ln(start) * 2^48
+    mpfr_ln_fixed(mpz_ln, mpz_start, 48);
 
-    // tmp = 2 / log(start) with 48-bit precision
-    mpz_log2(mpz_ld, mpz_start, 64);
-    mpz_fdiv_q(mpz_tmp, mpz_tmp, mpz_ld);
+    // 2 * 2^48 * 2^48 / (ln(start) * 2^48) = 2 * 2^48 / ln(start)
+    mpz_t mpz_num;
+    mpz_init(mpz_num);
+    mpz_set_ui(mpz_num, 2);
+    mpz_mul_2exp(mpz_num, mpz_num, 96);
+    mpz_fdiv_q(mpz_num, mpz_num, mpz_ln);
 
     uint64_t min_gap_distance_merit = 1;
-    if (mpz_fits_ui64(mpz_tmp)) {
-        min_gap_distance_merit = mpz_get_ui64(mpz_tmp);
+    if (mpz_fits_ui64(mpz_num)) {
+        min_gap_distance_merit = mpz_get_ui64(mpz_num);
     }
 
-    mpz_clear(mpz_ld);
-    mpz_clear(mpz_tmp);
+    mpz_clear(mpz_ln);
+    mpz_clear(mpz_num);
 
     // difficulty = merit + (rand % min_gap_distance_merit)
     uint64_t m = merit(mpz_start, mpz_end);
@@ -162,60 +152,47 @@ uint64_t PoWUtils::difficulty(mpz_t mpz_start, mpz_t mpz_end) {
 }
 
 uint64_t PoWUtils::target_size(mpz_t mpz_start, uint64_t difficulty) {
-    mpz_t mpz_target_size, mpz_difficulty;
-    mpz_init(mpz_target_size);
-    mpz_init_set_ui64(mpz_difficulty, difficulty);
+    // target_size = difficulty * ln(start), with difficulty in 2^48 fixed-point
+    // = (difficulty / 2^48) * ln(start)
+    // = difficulty * ln_fixed(start, 48) / 2^(48 + 48)
+    // = difficulty * ln_fixed(start, 48) / 2^96
 
-    // target_size = (difficulty * log2(start)) / log2(e)
-    mpz_log2(mpz_target_size, mpz_start, 64);
-    mpz_mul(mpz_target_size, mpz_target_size, mpz_difficulty);
-    mpz_fdiv_q(mpz_target_size, mpz_target_size, mpz_log2e112);
+    mpz_t mpz_ln, mpz_result;
+    mpz_init(mpz_ln);
+    mpz_init(mpz_result);
+
+    mpfr_ln_fixed(mpz_ln, mpz_start, 48);
+    mpz_set_ui64(mpz_result, difficulty);
+    mpz_mul(mpz_result, mpz_result, mpz_ln);
+    mpz_fdiv_q_2exp(mpz_result, mpz_result, 96);
 
     uint64_t result = 0;
-    if (mpz_fits_ui64(mpz_target_size)) {
-        result = mpz_get_ui64(mpz_target_size);
+    if (mpz_fits_ui64(mpz_result)) {
+        result = mpz_get_ui64(mpz_result);
     }
 
-    mpz_clear(mpz_target_size);
-    mpz_clear(mpz_difficulty);
+    mpz_clear(mpz_ln);
+    mpz_clear(mpz_result);
 
     return result;
 }
 
 void PoWUtils::target_work(std::vector<uint8_t>& n_primes, uint64_t difficulty) {
+    // work = exp(difficulty / 2^48)
     mpz_t mpz_n_primes;
     mpz_init(mpz_n_primes);
 
-#ifdef HAVE_MPFR
-    // Use MPFR for exp() - integer part is exact enough
     mpfr_t mpfr_difficulty;
-    mpfr_init_set_ui(mpfr_difficulty, static_cast<unsigned long>(difficulty >> 32), MPFR_RNDD);
-    mpfr_mul_2exp(mpfr_difficulty, mpfr_difficulty, 32, MPFR_RNDD);
-    mpfr_add_ui(mpfr_difficulty, mpfr_difficulty, static_cast<unsigned long>(difficulty & 0xffffffff), MPFR_RNDD);
-    mpfr_div_2exp(mpfr_difficulty, mpfr_difficulty, 48, MPFR_RNDD);
+    mpfr_init2(mpfr_difficulty, MPFR_PRECISION);
+    mpfr_set_ui(mpfr_difficulty, static_cast<unsigned long>(difficulty >> 32), MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_difficulty, mpfr_difficulty, 32, MPFR_RNDN);
+    mpfr_add_ui(mpfr_difficulty, mpfr_difficulty, static_cast<unsigned long>(difficulty & 0xffffffff), MPFR_RNDN);
+    mpfr_div_2exp(mpfr_difficulty, mpfr_difficulty, 48, MPFR_RNDN);
 
-    mpfr_exp(mpfr_difficulty, mpfr_difficulty, MPFR_RNDD);
-    mpfr_get_z(mpz_n_primes, mpfr_difficulty, MPFR_RNDD);
+    mpfr_exp(mpfr_difficulty, mpfr_difficulty, MPFR_RNDN);
+    mpfr_get_z(mpz_n_primes, mpfr_difficulty, MPFR_RNDN);
 
     mpfr_clear(mpfr_difficulty);
-#else
-    // Integer approximation: exp(d) = 2^(d * log2(e))
-    // d = difficulty / 2^48 (in floating point merit units)
-    // d * log2(e) = difficulty * log2(e) / 2^48
-    // We use mpz_log2e112 = log2(e) * 2^112, so:
-    // d * log2(e) * 2^64 = difficulty * mpz_log2e112 / 2^48
-    // Then shift right by 64 to get the integer part for 2^shift
-    mpz_t mpz_shifted;
-    mpz_init_set_ui64(mpz_shifted, difficulty);
-    mpz_mul(mpz_shifted, mpz_shifted, mpz_log2e112);
-    mpz_fdiv_q_2exp(mpz_shifted, mpz_shifted, 48 + 64);  // Now we have floor(d * log2(e))
-
-    uint64_t shift = mpz_get_ui64(mpz_shifted);
-    mpz_set_ui(mpz_n_primes, 1);
-    mpz_mul_2exp(mpz_n_primes, mpz_n_primes, shift);
-
-    mpz_clear(mpz_shifted);
-#endif
 
     size_t len;
     uint8_t* ary = mpz_to_ary(mpz_n_primes, &len);
@@ -225,19 +202,32 @@ void PoWUtils::target_work(std::vector<uint8_t>& n_primes, uint64_t difficulty) 
     mpz_clear(mpz_n_primes);
 }
 
-uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool /*testnet*/) {
-    // Calculate log(actual_timespan) * 2^48
-    mpz_t mpz_log_actual;
-    mpz_init_set_ui64(mpz_log_actual, actual_timespan);
+uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool /*testnet*/,
+                                   int64_t target_spacing, uint64_t min_difficulty) {
+    // Compute ln(actual_timespan) * 2^48 using MPFR
+    mpfr_t mpfr_val, mpfr_ln;
+    mpfr_init2(mpfr_val, MPFR_PRECISION);
+    mpfr_init2(mpfr_ln, MPFR_PRECISION);
 
-    // log_actual = (log2(actual) * 2^(64 + 48)) / (log2(e) * 2^64)
-    mpz_log2(mpz_log_actual, mpz_log_actual, 64 + 48);
-    mpz_fdiv_q(mpz_log_actual, mpz_log_actual, mpz_log2e64);
+    mpfr_set_ui(mpfr_val, static_cast<unsigned long>(actual_timespan), MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_val, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
 
-    const uint64_t log_target = log_150_48;
-    const uint64_t log_actual = mpz_get_ui64(mpz_log_actual);
+    mpz_t mpz_tmp;
+    mpz_init(mpz_tmp);
+    mpfr_get_z(mpz_tmp, mpfr_ln, MPFR_RNDN);
+    const uint64_t log_actual = mpz_get_ui64(mpz_tmp);
 
-    mpz_clear(mpz_log_actual);
+    // Compute ln(target_spacing) * 2^48 using MPFR
+    mpfr_set_si(mpfr_val, target_spacing, MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_val, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
+    mpfr_get_z(mpz_tmp, mpfr_ln, MPFR_RNDN);
+    const uint64_t log_target = mpz_get_ui64(mpz_tmp);
+
+    mpz_clear(mpz_tmp);
+    mpfr_clear(mpfr_val);
+    mpfr_clear(mpfr_ln);
 
     uint64_t next = difficulty;
     uint64_t shift = 8;  // 1/256 for increases
@@ -256,11 +246,11 @@ uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan
         if (difficulty >= (delta >> shift)) {
             next -= delta >> shift;
         } else {
-            next = MIN_DIFFICULTY;
+            next = min_difficulty;
         }
     }
 
-    // Clamp change to ±1.0 merit per block
+    // Clamp change to +/-1.0 merit per block
     if (next > difficulty + TWO_POW48) {
         next = difficulty + TWO_POW48;
     }
@@ -269,8 +259,8 @@ uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan
     }
 
     // Enforce minimum
-    if (next < MIN_DIFFICULTY) {
-        next = MIN_DIFFICULTY;
+    if (next < min_difficulty) {
+        next = min_difficulty;
     }
 
     return next;
@@ -278,7 +268,6 @@ uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan
 
 uint64_t PoWUtils::max_difficulty_decrease(uint64_t difficulty, int64_t time, bool /*testnet*/) {
     while (time > 0 && difficulty > MIN_DIFFICULTY) {
-        // Difficulty can max decrease about 1 per ~174 blocks (factor e)
         if (difficulty >= TWO_POW48) {
             difficulty -= TWO_POW48;
         }
@@ -296,28 +285,15 @@ double PoWUtils::gaps_per_day(double pps, uint64_t difficulty) {
     return (60.0 * 60.0 * 24.0) / (target_work_d(difficulty) / pps);
 }
 
-// Debug versions using MPFR (or fallbacks without MPFR)
-#ifdef HAVE_MPFR
 double PoWUtils::mpz_log_d(mpz_t mpz) {
     mpfr_t mpfr_tmp;
-    mpfr_init_set_z(mpfr_tmp, mpz, MPFR_RNDD);
-    mpfr_log(mpfr_tmp, mpfr_tmp, MPFR_RNDD);
-    double res = mpfr_get_d(mpfr_tmp, MPFR_RNDD);
+    mpfr_init2(mpfr_tmp, MPFR_PRECISION);
+    mpfr_set_z(mpfr_tmp, mpz, MPFR_RNDN);
+    mpfr_log(mpfr_tmp, mpfr_tmp, MPFR_RNDN);
+    double res = mpfr_get_d(mpfr_tmp, MPFR_RNDN);
     mpfr_clear(mpfr_tmp);
     return res;
 }
-#else
-double PoWUtils::mpz_log_d(mpz_t mpz) {
-    // Fallback using integer log2 and conversion
-    // ln(x) = log2(x) / log2(e) = log2(x) * ln(2)
-    mpz_t mpz_log;
-    mpz_init(mpz_log);
-    mpz_log2(mpz_log, mpz, 48);
-    double log2_val = static_cast<double>(mpz_get_ui64(mpz_log)) / (1ULL << 48);
-    mpz_clear(mpz_log);
-    return log2_val * 0.693147180559945309417; // ln(2)
-}
-#endif
 
 double PoWUtils::merit_d(mpz_t mpz_start, mpz_t mpz_end) {
     mpz_t mpz_len;
@@ -334,7 +310,6 @@ double PoWUtils::merit_d(mpz_t mpz_start, mpz_t mpz_end) {
 }
 
 double PoWUtils::rand_d(mpz_t mpz_start, mpz_t mpz_end) {
-    // Same as rand() but returns normalized double [0, 1)
     size_t start_len = 0, end_len = 0;
     uint8_t* start_bytes = mpz_to_ary(mpz_start, &start_len);
     uint8_t* end_bytes = mpz_to_ary(mpz_end, &end_len);
@@ -363,24 +338,47 @@ double PoWUtils::difficulty_d(mpz_t mpz_start, mpz_t mpz_end) {
     return diff < 0.0 ? 0.0 : diff;
 }
 
-double PoWUtils::next_difficulty_d(double difficulty, uint64_t actual_timespan, bool /*testnet*/) {
+double PoWUtils::next_difficulty_d(double difficulty, uint64_t actual_timespan, bool /*testnet*/,
+                                   int64_t target_spacing, double min_diff_d) {
+    // Use MPFR for log(target_spacing / actual)
+    mpfr_t mpfr_ratio, mpfr_log_ratio;
+    mpfr_init2(mpfr_ratio, MPFR_PRECISION);
+    mpfr_init2(mpfr_log_ratio, MPFR_PRECISION);
+
+    mpfr_set_d(mpfr_ratio, static_cast<double>(target_spacing) / static_cast<double>(actual_timespan), MPFR_RNDN);
+    mpfr_log(mpfr_log_ratio, mpfr_ratio, MPFR_RNDN);
+    double log_ratio = mpfr_get_d(mpfr_log_ratio, MPFR_RNDN);
+
+    mpfr_clear(mpfr_ratio);
+    mpfr_clear(mpfr_log_ratio);
+
     uint64_t shift = 8;
-    if (actual_timespan > 150) {
+    if (actual_timespan > static_cast<uint64_t>(target_spacing)) {
         shift = 6;
     }
 
-    double next = difficulty + std::log(150.0 / static_cast<double>(actual_timespan)) / (1 << shift);
+    double next = difficulty + log_ratio / (1 << shift);
 
     if (next > difficulty + 1.0) next = difficulty + 1.0;
     if (next < difficulty - 1.0) next = difficulty - 1.0;
 
-    double min_diff = static_cast<double>(MIN_DIFFICULTY) / TWO_POW48;
-    if (next < min_diff) next = min_diff;
+    if (next < min_diff_d) next = min_diff_d;
 
     return next;
 }
 
 double PoWUtils::target_work_d(uint64_t difficulty) {
-    double d = static_cast<double>(difficulty) / TWO_POW48;
-    return std::exp(d);
+    // Use MPFR for exp(d)
+    mpfr_t mpfr_d, mpfr_result;
+    mpfr_init2(mpfr_d, MPFR_PRECISION);
+    mpfr_init2(mpfr_result, MPFR_PRECISION);
+
+    mpfr_set_d(mpfr_d, static_cast<double>(difficulty) / TWO_POW48, MPFR_RNDN);
+    mpfr_exp(mpfr_result, mpfr_d, MPFR_RNDN);
+    double result = mpfr_get_d(mpfr_result, MPFR_RNDN);
+
+    mpfr_clear(mpfr_d);
+    mpfr_clear(mpfr_result);
+
+    return result;
 }

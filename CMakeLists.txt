@@ -1,6 +1,6 @@
 # Copyright (c) 2023-present The Bitcoin Core developers
 # Copyright (c) 2024-present The Riecoin developers
-# Copyright (c) 2025-present The Freycoin developers
+# Copyright (c) 2026 The Freycoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
@@ -33,7 +33,7 @@ set(CLIENT_VERSION_MONTH 2511)
 set(CLIENT_VERSION_REVISION 0)
 set(CLIENT_VERSION_RC 0)
 set(CLIENT_VERSION_IS_RELEASE "true")
-set(COPYRIGHT_YEAR "2025")
+set(COPYRIGHT_YEAR "2026")
 
 # During the enabling of the CXX and CXXOBJ languages, we modify
 # CMake's compiler/linker invocation strings by appending the content
@@ -126,7 +126,7 @@ option(WERROR "Treat compiler warnings as errors." OFF)
 option(WITH_CCACHE "Attempt to use ccache for compiling." ON)
 
 find_package(GMP MODULE REQUIRED)
-find_package(MPFR MODULE)  # Optional: used for merit calculation verification
+find_package(MPFR MODULE REQUIRED)
 
 option(WITH_ZMQ "Enable ZMQ notifications." OFF)
 if(WITH_ZMQ)

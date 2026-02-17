@@ -18,12 +18,12 @@ using node::NodeContext;
 
 namespace init {
 namespace {
-const char* EXE_NAME = "bitcoind";
+const char* EXE_NAME = "freycoind";
 
-class BitcoindInit : public interfaces::Init
+class FreycoindInit : public interfaces::Init
 {
 public:
-    BitcoindInit(NodeContext& node) : m_node(node)
+    FreycoindInit(NodeContext& node) : m_node(node)
     {
         InitContext(m_node);
         m_node.init = this;
@@ -45,6 +45,6 @@ public:
 namespace interfaces {
 std::unique_ptr<Init> MakeNodeInit(NodeContext& node, int argc, char* argv[], int& exit_status)
 {
-    return std::make_unique<init::BitcoindInit>(node);
+    return std::make_unique<init::FreycoindInit>(node);
 }
 } // namespace interfaces

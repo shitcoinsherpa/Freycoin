@@ -22,6 +22,7 @@
 
 #include <boost/test/unit_test.hpp>
 #include <gmp.h>
+#include <pow/fast_nextprime.h>
 #include <cmath>
 #include <limits>
 
@@ -99,102 +100,70 @@ BOOST_AUTO_TEST_CASE(ary_to_mpz_little_endian)
 }
 
 /*============================================================================
- * log2 calculation tests
+ * Merit precision tests
  *
- * mpz_log2(result, src, accuracy) computes:
- *   result = floor(log2(src) * 2^accuracy)
- *
- * We verify against known mathematical values.
+ * merit = gap / ln(start), computed via MPFR at 256-bit precision.
+ * We verify against independently computed values.
  *============================================================================*/
 
-BOOST_AUTO_TEST_CASE(log2_exact_powers_of_two)
+BOOST_AUTO_TEST_CASE(merit_exact_known_values)
 {
     PoWUtils utils;
-    mpz_t src, result;
-    mpz_init(src);
-    mpz_init(result);
+    mpz_t start, end;
+    mpz_init(start);
+    mpz_init(end);
 
-    // log2(2^n) = n exactly
-    for (int n = 1; n <= 256; n++) {
-        mpz_set_ui(src, 1);
-        mpz_mul_2exp(src, src, n);
+    // gap(2, 3) = 1, ln(2) = 0.693147..., merit = 1/0.693147 = 1.442695...
+    mpz_set_ui(start, 2);
+    mpz_set_ui(end, 3);
+    uint64_t merit = utils.merit(start, end);
+    double merit_d = static_cast<double>(merit) / TWO_POW48;
+    BOOST_CHECK_MESSAGE(std::abs(merit_d - 1.442695) < 0.001,
+        "merit(2,3) = " << merit_d << ", expected ~1.442695 (1/ln(2))");
 
-        utils.mpz_log2(result, src, 48);
+    // gap(3, 5) = 2, ln(3) = 1.098612..., merit = 2/1.098612 = 1.820478...
+    mpz_set_ui(start, 3);
+    mpz_set_ui(end, 5);
+    merit = utils.merit(start, end);
+    merit_d = static_cast<double>(merit) / TWO_POW48;
+    BOOST_CHECK_MESSAGE(std::abs(merit_d - 1.820478) < 0.001,
+        "merit(3,5) = " << merit_d << ", expected ~1.820478");
 
-        // Expected: n * 2^48
-        mpz_t expected;
-        mpz_init_set_ui64(expected, static_cast<uint64_t>(n) * TWO_POW48);
-
-        BOOST_CHECK_MESSAGE(mpz_cmp(result, expected) == 0,
-            "log2(2^" << n << ") with 48-bit precision failed");
-
-        mpz_clear(expected);
-    }
-
-    mpz_clear(src);
-    mpz_clear(result);
+    mpz_clear(start);
+    mpz_clear(end);
 }
 
-BOOST_AUTO_TEST_CASE(log2_known_values)
+BOOST_AUTO_TEST_CASE(merit_large_prime_precision)
 {
     PoWUtils utils;
-    mpz_t src, result;
-    mpz_init(src);
-    mpz_init(result);
+    mpz_t start, end;
+    mpz_init(start);
+    mpz_init(end);
 
-    // log2(3) = 1.584962500721156...
-    // With 48-bit precision: floor(1.584962... * 2^48) = 446392682949025
-    mpz_set_ui(src, 3);
-    utils.mpz_log2(result, src, 48);
-    uint64_t log2_3 = mpz_get_ui64(result);
-    // Allow 1 ULP error due to integer truncation
-    BOOST_CHECK_MESSAGE(log2_3 >= 446392682949024 && log2_3 <= 446392682949026,
-        "log2(3) = " << log2_3 << ", expected ~446392682949025");
+    // 2^255 + 95 is prime, next prime gives a gap
+    mpz_set_ui(start, 1);
+    mpz_mul_2exp(start, start, 255);
+    mpz_add_ui(start, start, 95);
+    BOOST_REQUIRE(mpz_probab_prime_p(start, 25) > 0);
 
-    // log2(10) = 3.321928094887362...
-    // With 48-bit precision: floor(3.321928... * 2^48) = 935615055995221
-    mpz_set_ui(src, 10);
-    utils.mpz_log2(result, src, 48);
-    uint64_t log2_10 = mpz_get_ui64(result);
-    BOOST_CHECK_MESSAGE(log2_10 >= 935615055995220 && log2_10 <= 935615055995222,
-        "log2(10) = " << log2_10 << ", expected ~935615055995221");
+    fast_nextprime(end, start);
 
-    // log2(1000000) = 19.931568569324174...
-    mpz_set_ui(src, 1000000);
-    utils.mpz_log2(result, src, 48);
-    uint64_t log2_million = mpz_get_ui64(result);
-    double log2_million_d = static_cast<double>(log2_million) / TWO_POW48;
-    BOOST_CHECK_MESSAGE(std::abs(log2_million_d - 19.931568569324174) < 1e-10,
-        "log2(1000000) = " << log2_million_d << ", expected 19.931568569324174");
+    mpz_t gap;
+    mpz_init(gap);
+    mpz_sub(gap, end, start);
+    uint64_t gap_size = mpz_get_ui64(gap);
+    mpz_clear(gap);
 
-    mpz_clear(src);
-    mpz_clear(result);
-}
+    uint64_t merit = utils.merit(start, end);
+    double merit_d = static_cast<double>(merit) / TWO_POW48;
 
-BOOST_AUTO_TEST_CASE(log2_large_primes)
-{
-    PoWUtils utils;
-    mpz_t src, result;
-    mpz_init(src);
-    mpz_init(result);
+    // ln(2^255 + 95) = 255 * ln(2) + ln(1 + 95/2^255) ≈ 176.752
+    double expected = static_cast<double>(gap_size) / (255.0 * std::log(2.0));
+    BOOST_CHECK_MESSAGE(std::abs(merit_d - expected) < 0.01,
+        "256-bit merit = " << merit_d << ", expected ~" << expected);
 
-    // A 256-bit prime (first prime > 2^255)
-    // 2^255 + 95 is prime
-    mpz_set_ui(src, 1);
-    mpz_mul_2exp(src, src, 255);
-    mpz_add_ui(src, src, 95);
-
-    utils.mpz_log2(result, src, 48);
-    uint64_t log2_val = mpz_get_ui64(result);
-    double log2_d = static_cast<double>(log2_val) / TWO_POW48;
-
-    // log2(2^255 + 95) is very close to 255.0
-    // The exact value is 255 + log2(1 + 95/2^255) ≈ 255 + 95/(2^255 * ln(2))
-    BOOST_CHECK_MESSAGE(log2_d > 255.0 && log2_d < 255.0 + 1e-74,
-        "log2(2^255+95) = " << log2_d << ", expected ~255.0");
-
-    mpz_clear(src);
-    mpz_clear(result);
+    mpz_clear(start);
+    mpz_clear(end);
 }
 
 /*============================================================================
@@ -289,7 +258,7 @@ BOOST_AUTO_TEST_CASE(merit_256bit_primes)
         "2^255 + 95 should be prime");
 
     // Find next prime
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     // Calculate gap
     mpz_sub(gap, end, start);
@@ -385,7 +354,7 @@ BOOST_AUTO_TEST_CASE(difficulty_exceeds_merit)
 
     // For any valid gap, difficulty >= merit
     mpz_set_ui(start, 1000003);
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     uint64_t merit = utils.merit(start, end);
     uint64_t diff = utils.difficulty(start, end);
@@ -411,7 +380,7 @@ BOOST_AUTO_TEST_CASE(difficulty_deterministic)
     mpz_init(end);
 
     mpz_set_ui(start, 104729);  // 10000th prime
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     uint64_t d1 = utils.difficulty(start, end);
     uint64_t d2 = utils.difficulty(start, end);
@@ -606,25 +575,27 @@ BOOST_AUTO_TEST_CASE(merit_gap_size_one)
     mpz_clear(end);
 }
 
-BOOST_AUTO_TEST_CASE(log2_minimum_input)
+BOOST_AUTO_TEST_CASE(merit_twin_primes_boundary)
 {
     PoWUtils utils;
-    mpz_t src, result;
-    mpz_init(src);
-    mpz_init(result);
+    mpz_t start, end;
+    mpz_init(start);
+    mpz_init(end);
 
-    // log2(2) = 1.0 exactly
-    mpz_set_ui(src, 2);
-    utils.mpz_log2(result, src, 48);
-    BOOST_CHECK_EQUAL(mpz_get_ui64(result), TWO_POW48);
+    // Large twin primes: 1000000007 and next prime
+    mpz_set_ui(start, 1000000007);
+    BOOST_REQUIRE(mpz_probab_prime_p(start, 25) > 0);
+    fast_nextprime(end, start);
 
-    // log2(1) = 0.0 exactly
-    mpz_set_ui(src, 1);
-    utils.mpz_log2(result, src, 48);
-    BOOST_CHECK_EQUAL(mpz_get_ui64(result), 0);
+    uint64_t merit = utils.merit(start, end);
+    double merit_d = static_cast<double>(merit) / TWO_POW48;
 
-    mpz_clear(src);
-    mpz_clear(result);
+    // merit should be positive and reasonable
+    BOOST_CHECK_GT(merit_d, 0.0);
+    BOOST_CHECK_LT(merit_d, 100.0);
+
+    mpz_clear(start);
+    mpz_clear(end);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

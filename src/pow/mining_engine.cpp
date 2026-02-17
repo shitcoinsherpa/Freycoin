@@ -23,6 +23,7 @@
  */
 
 #include <pow/mining_engine.h>
+#include <common/args.h>
 #include <pow/combined_sieve.h>
 #include <pow/avx512_primality.h>
 #include <pow/simd_presieve.h>
@@ -47,6 +48,8 @@
 
 #include <gpu/opencl_loader.h>
 #include <gpu/opencl_fermat.h>
+#include <gpu/cuda_loader.h>
+#include <gpu/cuda_fermat.h>
 
 /*============================================================================
  * Utility macros
@@ -674,7 +677,7 @@ void MiningPipeline::start_mining(PoW* pow, std::vector<uint8_t>* offset) {
     }
 
     // Start GPU worker if applicable
-    if (tier == MiningTier::CPU_OPENCL) {
+    if (tier != MiningTier::CPU_ONLY) {
         gpu_thread = std::thread(&MiningPipeline::gpu_worker, this);
     }
 }
@@ -739,7 +742,8 @@ void MiningPipeline::sieve_worker(uint32_t thread_id) {
 
         // Sieve the full valid adder range: [0, 2^shift)
         // Odd-only: each bit covers 2 integers, so half the bits cover the same range
-        sieve_size = std::min((1ULL << shift) / 2, 16777216ULL);
+        // For shift >= 25, 2^shift / 2 > 16M cap, so clamp directly (avoids UB for shift >= 64)
+        sieve_size = (shift >= 25) ? 16777216ULL : std::min((1ULL << shift) / 2, 16777216ULL);
 
         // Recreate sieve if shift changed
         if (shift != last_shift) {
@@ -783,8 +787,10 @@ void MiningPipeline::sieve_worker(uint32_t thread_id) {
                 // Pre-filter with AVX-512 IFMA batch Fermat when available.
                 // This tests 8 candidates simultaneously, then only runs full BPSW
                 // on those that pass the Fermat pre-screen.
-                // On CPUs without IFMA, falls through to direct BPSW testing.
-                bool use_ifma = avx512_ifma_available() && candidates.size() >= 8;
+                // IFMA only works on 320-bit numbers — skip for post-fork shifts.
+                const uint32_t actual_bits = gpu_bits_for_shift(shift);
+                bool use_ifma = avx512_ifma_available() && candidates.size() >= 8
+                                && actual_bits <= 320;
 
                 if (use_ifma) {
                     // Prepare batch for AVX-512 Fermat pre-filter
@@ -887,7 +893,8 @@ void MiningPipeline::sieve_worker(uint32_t thread_id) {
                 // Queue candidates for GPU
                 if (!candidates.empty()) {
                     CandidateBatch batch;
-                    tester.prepare_batch(batch, local_mpz_start, candidates, 320);
+                    const uint32_t batch_bits = gpu_bits_for_shift(shift);
+                    tester.prepare_batch(batch, local_mpz_start, candidates, batch_bits);
 
                     std::lock_guard<std::mutex> lock(queue_mutex);
                     gpu_queue.push(std::move(batch));
@@ -904,7 +911,34 @@ void MiningPipeline::sieve_worker(uint32_t thread_id) {
 }
 
 void MiningPipeline::gpu_worker() {
-    if (tier == MiningTier::CPU_OPENCL) {
+    // Initialize the appropriate GPU backend
+    if (tier == MiningTier::CPU_CUDA) {
+        if (cuda_fermat_init(0) != 0) {
+            LogPrintf("Mining: CUDA init failed, falling back to OpenCL\n");
+            // Try OpenCL fallback
+            if (opencl_load() == 0 && opencl_get_device_count() > 0) {
+                opencl_fermat_init(0);
+                tier = MiningTier::CPU_OPENCL;
+            } else {
+                LogPrintf("Mining: No GPU backend available\n");
+                return;
+            }
+        } else {
+            // Run self-test to verify Montgomery math on this GPU
+            if (cuda_fermat_selftest() != 0) {
+                LogPrintf("Mining: CUDA self-test FAILED, falling back to OpenCL\n");
+                cuda_fermat_cleanup();
+                if (opencl_load() == 0 && opencl_get_device_count() > 0) {
+                    opencl_fermat_init(0);
+                    tier = MiningTier::CPU_OPENCL;
+                } else {
+                    return;
+                }
+            } else {
+                LogPrintf("Mining: CUDA self-test passed\n");
+            }
+        }
+    } else if (tier == MiningTier::CPU_OPENCL) {
         opencl_fermat_init(0);
     }
 
@@ -923,16 +957,23 @@ void MiningPipeline::gpu_worker() {
             gpu_queue.pop();
         }
 
-        // Run OpenCL Fermat test
+        // Run GPU Fermat test on the appropriate backend
         std::vector<uint8_t> results(batch.count);
-        opencl_fermat_batch(results.data(), batch.candidates.data(),
-                            batch.count, batch.bits);
+        if (tier == MiningTier::CPU_CUDA) {
+            cuda_fermat_batch(results.data(), batch.candidates.data(),
+                              batch.count, batch.bits);
+        } else {
+            opencl_fermat_batch(results.data(), batch.candidates.data(),
+                                batch.count, batch.bits);
+        }
 
         // Process results
         process_gpu_results(batch, results);
     }
 
-    if (tier == MiningTier::CPU_OPENCL) {
+    if (tier == MiningTier::CPU_CUDA) {
+        cuda_fermat_cleanup();
+    } else if (tier == MiningTier::CPU_OPENCL) {
         opencl_fermat_cleanup();
     }
 }
@@ -1029,15 +1070,31 @@ MiningEngine::~MiningEngine() {
     gpu_workers.clear();
     gpu_initialized = false;
 
-    // Release all OpenCL devices
+    // Release GPU devices
     if (tier == MiningTier::CPU_OPENCL) {
         opencl_fermat_cleanup_all();
+    } else if (tier == MiningTier::CPU_CUDA) {
+        cuda_fermat_cleanup();
     }
 }
 
 MiningTier MiningEngine::detect_tier() {
-    // OpenCL: dynamically loaded at runtime, no SDK needed at build time
-    // Works for all GPU vendors (NVIDIA, AMD, Intel)
+    // CUDA: preferred on NVIDIA hardware (lower overhead than OpenCL)
+    // Uses Driver API loaded dynamically — no CUDA Toolkit needed at build time
+    if (cuda_load() == 0) {
+        int cuda_devices = cuda_get_device_count();
+        if (cuda_devices > 0) {
+            const char* name = cuda_get_device_name(0);
+            std::snprintf(hardware_info, sizeof(hardware_info),
+                     "CUDA: %d device(s) - %s",
+                     cuda_devices, name ? name : "unknown");
+            LogPrintf("Mining: Detected %d CUDA device(s): %s\n",
+                      cuda_devices, name ? name : "unknown");
+            return MiningTier::CPU_CUDA;
+        }
+    }
+
+    // OpenCL: fallback for AMD, Intel, or NVIDIA without CUDA drivers
     if (opencl_load() == 0) {
         int opencl_devices = opencl_get_device_count();
         if (opencl_devices > 0) {
@@ -1082,13 +1139,25 @@ static uint64_t intensity_to_sieve_cap(int intensity) {
     return caps[idx];
 }
 
-uint16_t MiningEngine::compute_shift(int intensity) {
+uint16_t MiningEngine::compute_shift(int intensity, uint16_t min_shift) {
+    // Allow -miningshift=N to override for benchmarking different prime sizes
+    int64_t override_val = gArgs.GetIntArg("-miningshift", 0);
+    if (override_val > 0) {
+        uint16_t clamped = static_cast<uint16_t>(std::clamp(override_val, int64_t{14}, int64_t{MAX_SHIFT_POST_FORK}));
+        LogPrintf("MiningEngine: Using -miningshift override: %u (%.0f-digit primes)\n",
+                  clamped, (256 + clamped) * 0.30103);
+        return clamped;
+    }
+
     const uint64_t sieve_cap = intensity_to_sieve_cap(std::clamp(intensity, 1, 10));
-    uint16_t shift = MIN_SHIFT;
+    uint16_t shift = min_shift;
     // Need 2^shift / 2 >= sieve_cap, i.e. 2^shift >= 2 * sieve_cap
-    const uint64_t required = 2 * sieve_cap;
-    while ((1ULL << shift) < required && shift < MAX_SHIFT) {
-        shift++;
+    // For large min_shift (post-fork), the sieve_cap requirement is trivially met
+    if (shift < 64) {
+        const uint64_t required = 2 * sieve_cap;
+        while ((1ULL << shift) < required && shift < MAX_SHIFT_POST_FORK) {
+            shift++;
+        }
     }
     return shift;
 }
@@ -1104,14 +1173,53 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
     int dev = worker->device_id;
 
     // Initialize this GPU device (once for the lifetime of the engine)
-    if (opencl_fermat_init_device(dev) != 0) {
-        LogPrintf("Mining: GPU worker %d failed to init OpenCL\n", dev);
-        worker->initialized = false;
-        return;
+    if (tier == MiningTier::CPU_CUDA) {
+        bool cuda_ok = false;
+        if (cuda_fermat_init(dev) == 0) {
+            // Run self-test on first device to verify Montgomery math.
+            // Uses the batch kernel (fermat_kernel_320) with known test vectors.
+            if (dev == 0 && cuda_fermat_selftest() != 0) {
+                LogPrintf("Mining: CUDA self-test FAILED on device %d, trying OpenCL fallback\n", dev);
+                cuda_fermat_cleanup();
+            } else {
+                const char* name = cuda_get_device_name(dev);
+                LogPrintf("Mining: GPU worker %d initialized CUDA (%s)\n",
+                          dev, name ? name : "unknown");
+                cuda_ok = true;
+            }
+        } else {
+            LogPrintf("Mining: GPU worker %d failed to init CUDA, trying OpenCL fallback\n", dev);
+        }
+
+        // CUDA failed — try OpenCL as fallback (works on NVIDIA too via ICD)
+        if (!cuda_ok) {
+            if (opencl_load() == 0 && opencl_get_device_count() > 0) {
+                if (opencl_fermat_init_device(dev) == 0) {
+                    tier = MiningTier::CPU_OPENCL;
+                    LogPrintf("Mining: GPU worker %d fell back to OpenCL (%s)\n",
+                              dev, opencl_get_device_name(dev));
+                } else {
+                    LogPrintf("Mining: GPU worker %d OpenCL fallback also failed\n", dev);
+                    worker->initialized = false;
+                    return;
+                }
+            } else {
+                LogPrintf("Mining: GPU worker %d no OpenCL available, falling back to CPU\n", dev);
+                worker->initialized = false;
+                return;
+            }
+        }
+    } else {
+        if (opencl_fermat_init_device(dev) != 0) {
+            LogPrintf("Mining: GPU worker %d failed to init OpenCL\n", dev);
+            worker->initialized = false;
+            return;
+        }
+        LogPrintf("Mining: GPU worker %d initialized OpenCL (%s)\n",
+                  dev, opencl_get_device_name(dev));
     }
     worker->initialized = true;
     gpu_initialized = true;  // At least one GPU is ready
-    LogPrintf("Mining: GPU worker %d initialized (%s)\n", dev, opencl_get_device_name(dev));
 
     // Process batches until the engine is destroyed (gpu_shutdown).
     // Between mine_parallel calls the thread idles on the condition variable.
@@ -1128,10 +1236,18 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
             worker->queue.pop();
         }
 
-        // Run OpenCL Fermat primality pre-filter on THIS device
-        opencl_fermat_batch_device(dev, request->results.data(),
-                                   request->batch.candidates.data(),
-                                   request->batch.count, request->batch.bits);
+        // Run GPU Fermat primality pre-filter on THIS device.
+        // CUDA: PTX handles ≤352-bit, CGBN handles >352-bit (post-fork).
+        // OpenCL: fixed kernels for ≤352-bit, cooperative kernel for >352-bit.
+        if (tier == MiningTier::CPU_CUDA) {
+            cuda_fermat_batch(request->results.data(),
+                              request->batch.candidates.data(),
+                              request->batch.count, request->batch.bits);
+        } else {
+            opencl_fermat_batch_device(dev, request->results.data(),
+                                       request->batch.candidates.data(),
+                                       request->batch.count, request->batch.bits);
+        }
 
         // Signal the submitting CPU thread that results are ready
         {
@@ -1164,13 +1280,23 @@ void MiningEngine::ensure_gpu_running() {
     if (!gpu_workers.empty()) return;    // Workers exist, still initializing
 
     gpu_shutdown = false;
-    num_gpu_devices = opencl_get_device_count();
-    if (num_gpu_devices <= 0) {
-        LogPrintf("Mining: No OpenCL devices found\n");
-        return;
+
+    if (tier == MiningTier::CPU_CUDA) {
+        num_gpu_devices = cuda_get_device_count();
+        if (num_gpu_devices <= 0) {
+            LogPrintf("Mining: No CUDA devices found\n");
+            return;
+        }
+    } else {
+        num_gpu_devices = opencl_get_device_count();
+        if (num_gpu_devices <= 0) {
+            LogPrintf("Mining: No OpenCL devices found\n");
+            return;
+        }
     }
 
-    LogPrintf("Mining: Starting %d GPU worker thread(s)\n", num_gpu_devices);
+    LogPrintf("Mining: Starting %d GPU worker thread(s) (%s)\n",
+              num_gpu_devices, tier == MiningTier::CPU_CUDA ? "CUDA" : "OpenCL");
 
     // Create one worker thread per GPU device
     for (int i = 0; i < num_gpu_devices; i++) {
@@ -1259,9 +1385,11 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                                     uint32_t start_nonce,
                                     PoWProcessor* processor) {
     // Odd-only: each bit covers 2 integers, so half the bits cover the same range
+    // For shift >= 25, 2^shift / 2 > any sieve cap, so clamp directly (avoids UB for shift >= 64)
     const uint64_t sieve_cap = intensity_to_sieve_cap(m_gpu_intensity);
-    const uint64_t half_range = (1ULL << shift) / 2;
-    const uint64_t sieve_size = (half_range < sieve_cap) ? half_range : sieve_cap;
+    const uint64_t sieve_size = (shift >= 25) ? sieve_cap
+        : std::min(static_cast<uint64_t>((1ULL << shift) / 2), sieve_cap);
+    const uint32_t actual_bits = gpu_bits_for_shift(shift);
 
     CombinedSegmentedSieve combined_sieve(DEFAULT_SIEVE_PRIMES, sieve_size);
     PrimalityTester tester;
@@ -1368,7 +1496,7 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                 if (use_gpu && candidates.size() >= 16) {
                     // Prepare batch for GPU
                     CandidateBatch batch;
-                    tester.prepare_batch(batch, states[k].mpz_start, candidates, 320);
+                    tester.prepare_batch(batch, states[k].mpz_start, candidates, actual_bits);
 
                     auto request = std::make_shared<GPURequest>();
                     request->batch = std::move(batch);
@@ -1411,16 +1539,18 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                                     PoW pow(states[k].mpz_hash, shift, states[k].mpz_adder,
                                             target_difficulty, states[k].nonce);
 
-                                    if (pow.valid()) {
-                                        LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
-                                                  states[k].nonce, (unsigned long long)gap,
-                                                  (unsigned long long)states[k].last_prime_offset);
-                                        if (processor) {
-                                            bool continue_mining = processor->process(&pow);
-                                            if (!continue_mining) {
-                                                stop_requested = true;
-                                                goto cleanup;
-                                            }
+                                    // gap >= min_gap guarantees difficulty is met
+                                    // (merit >= target, plus random bonus). Skip the
+                                    // expensive pow.valid() re-derivation via mpz_nextprime;
+                                    // ProcessNewBlock performs the authoritative validation.
+                                    LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
+                                              states[k].nonce, (unsigned long long)gap,
+                                              (unsigned long long)states[k].last_prime_offset);
+                                    if (processor) {
+                                        bool continue_mining = processor->process(&pow);
+                                        if (!continue_mining) {
+                                            stop_requested = true;
+                                            goto cleanup;
                                         }
                                     }
                                 }
@@ -1432,7 +1562,9 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                 }
 
                 // === AVX-512 IFMA PATH: batch Fermat on CPU SIMD, BPSW confirm ===
-                bool use_ifma = avx512_ifma_available() && candidates.size() >= 8;
+                // IFMA only works on 320-bit numbers — skip for post-fork shifts
+                bool use_ifma = avx512_ifma_available() && candidates.size() >= 8
+                                && actual_bits <= 320;
                 if (use_ifma) {
                     CandidateBatch ifma_batch;
                     tester.prepare_batch(ifma_batch, states[k].mpz_start, candidates, 320);
@@ -1466,16 +1598,14 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                                     PoW pow(states[k].mpz_hash, shift, states[k].mpz_adder,
                                             target_difficulty, states[k].nonce);
 
-                                    if (pow.valid()) {
-                                        LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
-                                                  states[k].nonce, (unsigned long long)gap,
-                                                  (unsigned long long)states[k].last_prime_offset);
-                                        if (processor) {
-                                            bool continue_mining = processor->process(&pow);
-                                            if (!continue_mining) {
-                                                stop_requested = true;
-                                                goto cleanup;
-                                            }
+                                    LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
+                                              states[k].nonce, (unsigned long long)gap,
+                                              (unsigned long long)states[k].last_prime_offset);
+                                    if (processor) {
+                                        bool continue_mining = processor->process(&pow);
+                                        if (!continue_mining) {
+                                            stop_requested = true;
+                                            goto cleanup;
                                         }
                                     }
                                 }
@@ -1516,16 +1646,14 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                                 PoW pow(states[k].mpz_hash, shift, states[k].mpz_adder,
                                         target_difficulty, states[k].nonce);
 
-                                if (pow.valid()) {
-                                    LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
-                                              states[k].nonce, (unsigned long long)gap,
-                                              (unsigned long long)states[k].last_prime_offset);
-                                    if (processor) {
-                                        bool continue_mining = processor->process(&pow);
-                                        if (!continue_mining) {
-                                            stop_requested = true;
-                                            goto cleanup;
-                                        }
+                                LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
+                                          states[k].nonce, (unsigned long long)gap,
+                                          (unsigned long long)states[k].last_prime_offset);
+                                if (processor) {
+                                    bool continue_mining = processor->process(&pow);
+                                    if (!continue_mining) {
+                                        stop_requested = true;
+                                        goto cleanup;
                                     }
                                 }
                             }

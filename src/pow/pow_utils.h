@@ -6,6 +6,10 @@
 /**
  * Proof-of-Work utility functions for merit and difficulty calculations.
  *
+ * All logarithmic and exponential computations use MPFR (256-bit precision).
+ * No home-grown approximations — every value is correct to the last
+ * representable bit.
+ *
  * In memory of Jonnie Frey (1989-2017), creator of Gapcoin.
  */
 
@@ -20,12 +24,12 @@
 /**
  * PoW utility class for merit and difficulty calculations.
  *
- * All calculations use fixed-point arithmetic with 2^48 precision
- * to ensure consensus-critical determinism across platforms.
+ * All fixed-point calculations use 2^48 precision. Logarithms and
+ * exponentials are computed via MPFR at 256-bit precision.
  *
  * Key formulas:
- * - merit = gap_size / ln(start) = gap_size * log2(e) / log2(start)
- * - difficulty = merit + (rand(start, end) % min_gap_distance_merit)
+ * - merit = gap_size / ln(start)  [2^48 fixed-point]
+ * - difficulty = merit + (rand(start, end) % (2/ln(start)))
  * - next_difficulty = current + log(target_spacing / actual_spacing)
  */
 class PoWUtils {
@@ -33,22 +37,13 @@ public:
     PoWUtils();
     ~PoWUtils();
 
-    // Non-copyable (holds GMP state)
+    // Non-copyable (holds computed state)
     PoWUtils(const PoWUtils&) = delete;
     PoWUtils& operator=(const PoWUtils&) = delete;
 
     /**
-     * Calculate log2 of mpz value with specified accuracy.
-     * Returns log2(src) * 2^accuracy.
-     *
-     * Algorithm: Iteratively square normalized value and track
-     * when it exceeds 2, accumulating fractional bits.
-     */
-    void mpz_log2(mpz_t result, mpz_t src, uint32_t accuracy);
-
-    /**
      * Calculate merit of a prime gap.
-     * merit = gap_size / ln(start) = gap_size * log2(e) / log2(start)
+     * merit = gap_size / ln(start)
      *
      * @param mpz_start Start of gap (must be prime)
      * @param mpz_end End of gap (next prime after start)
@@ -64,7 +59,7 @@ public:
 
     /**
      * Calculate achieved difficulty for a prime gap.
-     * difficulty = merit + (rand % min_gap_distance_merit)
+     * difficulty = merit + (rand % (2/ln(start)))
      *
      * The random component provides sub-integer-merit precision.
      */
@@ -100,10 +95,14 @@ public:
      *   - Decreases: 1/64 of adjustment (fast down for recovery)
      *
      * Bounds:
-     *   - Maximum change: ±1.0 merit per block
-     *   - Minimum: MIN_DIFFICULTY
+     *   - Maximum change: +/-1.0 merit per block
+     *   - Minimum: min_difficulty
+     *
+     * @param target_spacing Target spacing in seconds (150 pre-fork, configurable post-fork)
+     * @param min_difficulty Minimum difficulty floor (fork-aware)
      */
-    uint64_t next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool testnet);
+    uint64_t next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool testnet,
+                             int64_t target_spacing = 150, uint64_t min_difficulty = MIN_DIFFICULTY);
 
     /**
      * Compute maximum possible difficulty decrease in given time.
@@ -121,25 +120,13 @@ public:
     static uint64_t gettime_usec();
 
 private:
-    // Pre-computed constants
-    mpz_t mpz_log2e112;  // log2(e) * 2^(64+48)
-    mpz_t mpz_log2e64;   // log2(e) * 2^64
-
-    // Target block spacing (150 seconds)
-    static constexpr int64_t target_spacing = 150;
-
-    // log(150) * 2^48
-    static constexpr uint64_t log_150_48 = 0x502b8fea053a6ULL;
-
-    // Debug tolerance (1.0 / 2^47)
-    static constexpr double accuracy = 7.105427357601002e-15;
-
-    // Debug versions using MPFR (for validation)
+    // MPFR-based helpers (double-returning, for display/estimation)
     double mpz_log_d(mpz_t mpz);
     double merit_d(mpz_t mpz_start, mpz_t mpz_end);
     double rand_d(mpz_t mpz_start, mpz_t mpz_end);
     double difficulty_d(mpz_t mpz_start, mpz_t mpz_end);
-    double next_difficulty_d(double difficulty, uint64_t actual_timespan, bool testnet);
+    double next_difficulty_d(double difficulty, uint64_t actual_timespan, bool testnet,
+                             int64_t target_spacing = 150, double min_diff_d = 16.0);
     double target_work_d(uint64_t difficulty);
 };
 

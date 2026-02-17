@@ -872,7 +872,7 @@ BOOST_AUTO_TEST_CASE(test_FormatSubVersion)
     std::vector<std::string> comments2;
     comments2.emplace_back("comment1");
     comments2.push_back(SanitizeString(std::string("Comment2; .,_?@-; !\"#$%&'()*+/<=>[]\\^`{|}~"), SAFE_CHARS_UA_COMMENT)); // Semicolon is discouraged but not forbidden by BIP-0014
-    BOOST_CHECK_EQUAL(FormatSubVersion("Stella", 202500, std::vector<std::string>()),std::string("/Stella:2025/"));
+    BOOST_CHECK_EQUAL(FormatSubVersion("Freycoin", 202500, std::vector<std::string>()),std::string("/Freycoin:2025/"));
     BOOST_CHECK_EQUAL(FormatSubVersion("Moella", 202501, comments),std::string("/Moella:2025.1(comment1)/"));
     BOOST_CHECK_EQUAL(FormatSubVersion("Dev", 99909, comments2),std::string("/Dev:999.9(comment1; Comment2; .,_?@-; )/"));
 }

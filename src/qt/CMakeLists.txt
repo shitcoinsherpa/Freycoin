@@ -124,6 +124,9 @@ target_compile_definitions(freycoinqt
     QT_NO_KEYWORDS
     QT_USE_QSTRINGBUILDER
 )
+
+# GPU support: OpenCL and CUDA always available via dynamic loading
+# No compile flags needed — runtime detection handles everything
 target_include_directories(freycoinqt
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
@@ -164,6 +167,8 @@ if(ENABLE_WALLET)
       editaddressdialog.h
       generatecodedialog.cpp
       generatecodedialog.h
+      miningpage.cpp
+      miningpage.h
       openuridialog.cpp
       openuridialog.h
       overviewpage.cpp

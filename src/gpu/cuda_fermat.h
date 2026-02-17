@@ -2,6 +2,16 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/**
+ * CUDA Fermat Primality Test Interface
+ *
+ * In memory of Jonnie Frey (1989-2017), creator of Gapcoin.
+ *
+ * Uses CUDA Driver API loaded dynamically at runtime — no CUDA Toolkit
+ * needed at build time. Works on any system with NVIDIA GPU drivers.
+ * PTX kernels are JIT-compiled to the user's specific GPU architecture.
+ */
+
 #ifndef FREYCOIN_GPU_CUDA_FERMAT_H
 #define FREYCOIN_GPU_CUDA_FERMAT_H
 
@@ -14,10 +24,16 @@ extern "C" {
 
 /**
  * Initialize CUDA device for Fermat primality testing.
+ * Loads CUDA Driver API, creates context, JIT-compiles PTX kernels.
  * @param device_id CUDA device index (0 for first GPU)
- * @return 0 on success, -1 on error
+ * @return 0 on success, -1 on error, -2 if CUDA not available
  */
 int cuda_fermat_init(int device_id);
+
+/**
+ * Cleanup CUDA resources (context, module, etc).
+ */
+void cuda_fermat_cleanup(void);
 
 /**
  * Run batch Fermat primality test on GPU.
@@ -26,8 +42,8 @@ int cuda_fermat_init(int device_id);
  * @param h_results Output array: 1 = probably prime, 0 = composite
  * @param h_primes  Input array of candidates (limb-packed format)
  * @param count     Number of candidates to test
- * @param bits      Bit size: 320 or 352
- * @return Number of probable primes found, -1 on error
+ * @param bits      Bit size (320/352 via PTX, larger via CGBN fallback)
+ * @return 0 on success, -1 on error
  */
 int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
                       uint32_t count, int bits);
@@ -58,6 +74,22 @@ size_t cuda_get_device_memory(int device_id);
  * @return Number of SMs
  */
 int cuda_get_sm_count(int device_id);
+
+/**
+ * Run self-test to verify Montgomery math correctness.
+ * Tests fermat320 with known primes and composites on the GPU.
+ * Must be called after cuda_fermat_init().
+ *
+ * @return 0 if all tests pass, -1 on failure
+ */
+int cuda_fermat_selftest(void);
+
+/**
+ * Check if CUDA is available on this system.
+ * Attempts to load the CUDA driver and detect devices.
+ * @return 1 if available, 0 if not
+ */
+int cuda_is_available(void);
 
 #ifdef __cplusplus
 }

@@ -44,7 +44,7 @@ INVALID_DATA = [
     ),
     (
         "frey1qw508d6qejxtdg4y5r3zarvary0c5xw7kn4h7Nk",
-        "Invalid character or mixed case",  # ric1, Mixed case, not in BIP 173 test vectors
+        "Invalid character or mixed case",  # Mixed case, not in BIP 173 test vectors
         [41],
     ),
     (

@@ -56,6 +56,7 @@ add_dependencies(freycoin_clientversion generate_build_info)
 
 add_subdirectory(crypto)
 add_subdirectory(util)
+add_subdirectory(gwnum)
 add_subdirectory(gpu)
 add_subdirectory(pow)
 if(ENABLE_IPC)
@@ -146,10 +147,12 @@ target_link_libraries(freycoin_common
     core_interface
     freycoin_consensus
     freycoin_util
+    freycoin_pow
     univalue
     secp256k1
     Boost::headers
-    $<TARGET_NAME_IF_EXISTS:GMP::GMP>
+    MPFR::MPFR
+    GMP::GMP
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -280,6 +283,8 @@ target_link_libraries(freycoin_node
     freycoin_common
     freycoin_util
     freycoin_pow
+    MPFR::MPFR
+    GMP::GMP
     $<TARGET_NAME_IF_EXISTS:bitcoin_zmq>
     leveldb
     minisketch
@@ -288,7 +293,6 @@ target_link_libraries(freycoin_node
     $<TARGET_NAME_IF_EXISTS:libevent::core>
     $<TARGET_NAME_IF_EXISTS:libevent::extra>
     $<TARGET_NAME_IF_EXISTS:libevent::pthreads>
-    $<TARGET_NAME_IF_EXISTS:GMP::GMP>
     $<TARGET_NAME_IF_EXISTS:USDT::headers>
 )
 

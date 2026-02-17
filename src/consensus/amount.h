@@ -9,16 +9,16 @@
 
 #include <cstdint>
 
-/** Amount in satoshis (Can be negative) */
+/** Amount in freys (Can be negative) */
 typedef int64_t CAmount;
 
-/** The amount of riemanns in one RIC. */
+/** The amount of freys in one FREY. */
 static constexpr CAmount COIN = 100000000;
 
-/** No amount larger than this (in riemanns) is valid.
+/** No amount larger than this (in freys) is valid.
  *
  * Note that this constant is *not* the total money supply, which in Freycoin
- * currently happens to be less than 84,000,000 RIC for various reasons, but
+ * currently happens to be less than 84,000,000 FREY for various reasons, but
  * rather a sanity check. As this sanity check is used by consensus-critical
  * validation code, the exact value of the MAX_MONEY constant is consensus
  * critical; in unusual circumstances like an overflow bug that could allow

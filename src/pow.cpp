@@ -9,11 +9,13 @@
 
 #include <chain.h>
 #include <crypto/sha256.h>
+#include <pow/fast_nextprime.h>
 #include <primitives/block.h>
 #include <uint256.h>
 #include <util/check.h>
 
 #include <gmp.h>
+#include <mpfr.h>
 #include <cstring>
 
 /**
@@ -23,20 +25,9 @@
 static constexpr uint64_t TWO_POW48 = 1ULL << 48;
 
 /**
- * log2(e) * 2^112 - precomputed constant for integer log calculations.
- * Used for: merit = gap_len * log2(e) / log2(start)
+ * MPFR precision for all computations (256 bits = ~77 decimal digits).
  */
-static const char* LOG2E_112_HEX = "171547652b82fe1777d0ffda0d23a";
-
-/**
- * log2(e) * 2^64 - precomputed constant for difficulty adjustment.
- */
-static const char* LOG2E_64_HEX = "171547652b82fe177";
-
-/**
- * log(150) * 2^48 - precomputed for 150-second target spacing.
- */
-static constexpr uint64_t LOG_150_48 = 0x502b8fea053a6ULL;
+static constexpr mpfr_prec_t MPFR_PRECISION = 256;
 
 /**
  * Convert uint256 to mpz_t (little-endian).
@@ -47,91 +38,74 @@ static void uint256_to_mpz(mpz_t result, const uint256& value)
 }
 
 /**
- * Calculate integer log2 with specified accuracy bits.
- * Returns log2(src) * 2^accuracy.
+ * Compute ln(src) * 2^precision as an integer using MPFR.
  *
- * Algorithm: Iteratively square the normalized value and track
- * when it exceeds 2, accumulating fractional bits.
+ * MPFR's mpfr_log is proven correct to the last bit at any requested
+ * precision. This replaces the home-grown mpz_log2_fixed approximation.
  */
-static void mpz_log2_fixed(mpz_t result, const mpz_t src, uint32_t accuracy)
+static void mpfr_ln_fixed(mpz_t result, const mpz_t src, uint32_t precision)
 {
-    mpz_t tmp, n;
-    mpz_init(tmp);
-    mpz_init_set(n, src);
+    mpfr_t mpfr_src, mpfr_ln;
+    mpfr_init2(mpfr_src, MPFR_PRECISION);
+    mpfr_init2(mpfr_ln, MPFR_PRECISION);
 
-    // Integer part: floor(log2(src)) = bit_length - 1
-    size_t int_log2 = mpz_sizeinbase(n, 2) - 1;
-    mpz_set_ui(result, int_log2);
+    mpfr_set_z(mpfr_src, src, MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_src, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, precision, MPFR_RNDN);
+    mpfr_get_z(result, mpfr_ln, MPFR_RNDN);
 
-    uint32_t bits = 0;
-    uint32_t shift = accuracy + int_log2;
+    mpfr_clear(mpfr_src);
+    mpfr_clear(mpfr_ln);
+}
 
-    // Scale up for fractional precision
-    mpz_mul_2exp(result, result, accuracy);
-    mpz_mul_2exp(n, n, accuracy);
-
-    for (;;) {
-        mpz_fdiv_q_2exp(tmp, n, shift);
-
-        // While n / 2^shift < 2, square n
-        while (mpz_cmp_ui(tmp, 2) < 0 && bits <= accuracy) {
-            mpz_mul(n, n, n);
-            mpz_fdiv_q_2exp(n, n, shift);
-            mpz_fdiv_q_2exp(tmp, n, shift);
-            bits++;
-        }
-
-        if (bits > accuracy) break;
-
-        // Add 2^(accuracy - bits) to result
-        mpz_set_ui(tmp, 1);
-        mpz_mul_2exp(tmp, tmp, accuracy - bits);
-        mpz_add(result, result, tmp);
-
-        // n = n / 2
-        mpz_fdiv_q_2exp(n, n, 1);
+/**
+ * Extract a uint64_t from an mpz_t, handling both 32-bit and 64-bit platforms.
+ */
+static uint64_t mpz_get_uint64(const mpz_t value)
+{
+    if (mpz_fits_ulong_p(value)) {
+        return mpz_get_ui(value);
     }
-
-    mpz_clear(tmp);
-    mpz_clear(n);
+    if (mpz_sizeinbase(value, 2) <= 64) {
+        mpz_t high;
+        mpz_init(high);
+        mpz_fdiv_q_2exp(high, value, 32);
+        uint64_t result = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(value);
+        mpz_clear(high);
+        return result;
+    }
+    return 0;
 }
 
 /**
  * Calculate merit of a prime gap.
- * merit = gap_size / ln(start) = gap_size * log2(e) / log2(start)
+ * merit = gap_size / ln(start), returned as fixed-point * 2^48.
  *
- * Returns merit * 2^48 (fixed-point with 48-bit fractional precision).
+ * Uses MPFR for ln(start) — no approximations.
  */
 static uint64_t CalculateMerit(const mpz_t start, const mpz_t end)
 {
-    mpz_t merit, log_start, log2e112;
+    mpz_t gap, ln_start, merit;
+    mpz_init(gap);
+    mpz_init(ln_start);
     mpz_init(merit);
-    mpz_init(log_start);
-    mpz_init_set_str(log2e112, LOG2E_112_HEX, 16);
 
-    // merit = gap_len * log2(e) * 2^(64+48)
-    mpz_sub(merit, end, start);
-    mpz_mul(merit, merit, log2e112);
+    // gap = end - start
+    mpz_sub(gap, end, start);
 
-    // merit = merit / (log2(start) * 2^64)
-    mpz_log2_fixed(log_start, start, 64);
-    mpz_fdiv_q(merit, merit, log_start);
+    // ln(start) * 2^48
+    mpfr_ln_fixed(ln_start, start, 48);
 
-    uint64_t result = 0;
-    if (mpz_fits_ulong_p(merit)) {
-        result = mpz_get_ui(merit);
-    } else if (mpz_sizeinbase(merit, 2) <= 64) {
-        // Handle 64-bit values on 32-bit systems
-        mpz_t high;
-        mpz_init(high);
-        mpz_fdiv_q_2exp(high, merit, 32);
-        result = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(merit);
-        mpz_clear(high);
-    }
+    // merit_fp48 = gap * 2^96 / (ln(start) * 2^48)
+    //            = gap * 2^48 / ln(start)
+    mpz_mul_2exp(merit, gap, 96);
+    mpz_fdiv_q(merit, merit, ln_start);
 
+    uint64_t result = mpz_get_uint64(merit);
+
+    mpz_clear(gap);
+    mpz_clear(ln_start);
     mpz_clear(merit);
-    mpz_clear(log_start);
-    mpz_clear(log2e112);
 
     return result;
 }
@@ -142,7 +116,6 @@ static uint64_t CalculateMerit(const mpz_t start, const mpz_t end)
  */
 static uint64_t GapRandom(const mpz_t start, const mpz_t end)
 {
-    // Export start and end to byte arrays
     size_t start_len = (mpz_sizeinbase(start, 2) + 7) / 8;
     size_t end_len = (mpz_sizeinbase(end, 2) + 7) / 8;
 
@@ -165,79 +138,86 @@ static uint64_t GapRandom(const mpz_t start, const mpz_t end)
 
     // XOR-fold 256 bits to 64 bits
     const uint64_t* ptr = reinterpret_cast<const uint64_t*>(hash);
-    uint64_t result = ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];
-
-    return result;
+    return ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];
 }
 
 /**
  * Calculate achieved difficulty for a prime gap.
  * difficulty = merit + random(start, end) % min_gap_distance_merit
  *
+ * min_gap_distance_merit = 2 / ln(start), in 2^48 fixed-point.
+ *
  * The random component provides sub-integer-merit precision,
  * making it harder to game the system with specific gap sizes.
  */
 static uint64_t CalculateDifficulty(const mpz_t start, const mpz_t end)
 {
-    mpz_t log_start, min_gap_merit, log2e112;
-    mpz_init(log_start);
+    mpz_t ln_start, min_gap_merit;
+    mpz_init(ln_start);
     mpz_init(min_gap_merit);
-    mpz_init_set_str(log2e112, LOG2E_112_HEX, 16);
 
-    // Calculate 2/ln(start) * 2^48 - the merit of minimal gap distance
-    // min_gap_merit = 2 * log2(e) * 2^(64+48) / (log2(start) * 2^64)
+    // ln(start) * 2^48
+    mpfr_ln_fixed(ln_start, start, 48);
+
+    // min_gap_distance_merit = 2 * 2^96 / (ln(start) * 2^48) = 2 * 2^48 / ln(start)
     mpz_set_ui(min_gap_merit, 2);
-    mpz_mul(min_gap_merit, min_gap_merit, log2e112);
-    mpz_log2_fixed(log_start, start, 64);
-    mpz_fdiv_q(min_gap_merit, min_gap_merit, log_start);
+    mpz_mul_2exp(min_gap_merit, min_gap_merit, 96);
+    mpz_fdiv_q(min_gap_merit, min_gap_merit, ln_start);
 
-    uint64_t min_gap_distance_merit = 1;
-    if (mpz_fits_ulong_p(min_gap_merit)) {
-        min_gap_distance_merit = mpz_get_ui(min_gap_merit);
-    } else if (mpz_sizeinbase(min_gap_merit, 2) <= 64) {
-        mpz_t high;
-        mpz_init(high);
-        mpz_fdiv_q_2exp(high, min_gap_merit, 32);
-        min_gap_distance_merit = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(min_gap_merit);
-        mpz_clear(high);
-    }
+    uint64_t min_gap_distance_merit = mpz_get_uint64(min_gap_merit);
+    if (min_gap_distance_merit == 0) min_gap_distance_merit = 1;
 
-    mpz_clear(log_start);
+    mpz_clear(ln_start);
     mpz_clear(min_gap_merit);
-    mpz_clear(log2e112);
 
     // difficulty = merit + (rand % min_gap_distance_merit)
     uint64_t merit = CalculateMerit(start, end);
     uint64_t rand = GapRandom(start, end);
-    uint64_t difficulty = merit + (rand % min_gap_distance_merit);
-
-    return difficulty;
+    return merit + (rand % min_gap_distance_merit);
 }
 
 /**
  * Check whether a block satisfies the prime gap proof-of-work requirement.
  *
  * Algorithm:
- * 1. Validate nShift is in [MIN_SHIFT, MAX_SHIFT]
- * 2. Validate nDifficulty >= minimum
+ * 1. Validate nShift is in [MIN_SHIFT, MAX_SHIFT] (fork-aware)
+ * 2. Validate nDifficulty >= minimum (fork-aware)
  * 3. Construct start = GetHash() * 2^nShift + nAdd
  * 4. Verify start is prime (BPSW via GMP, 25 Miller-Rabin rounds)
  * 5. Find next prime after start
  * 6. Calculate achieved difficulty = f(merit, random)
  * 7. Accept if achieved >= required
+ *
+ * When nHeight == -1 (context-free), accepts the union of pre/post-fork
+ * ranges. Precise fork enforcement happens in contextual checks.
  */
-bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params)
+bool CheckProofOfWork(const CBlockHeader& block, int nHeight, const Consensus::Params& params)
 {
+    // Determine shift and difficulty bounds based on fork state
+    uint16_t minShift, maxShift;
+    uint64_t diffMin;
+
+    if (nHeight < 0) {
+        // Context-free: accept union of both pre-fork and post-fork ranges
+        minShift = MIN_SHIFT;
+        maxShift = std::max(MAX_SHIFT, params.nMaxShiftPostFork);
+        diffMin = std::min(params.nDifficultyMin, params.nDifficultyMinPostFork);
+    } else {
+        minShift = params.GetMinShift(nHeight);
+        maxShift = params.GetMaxShift(nHeight);
+        diffMin = params.GetDifficultyMin(nHeight);
+    }
+
     // Validate shift range
-    if (block.nShift < MIN_SHIFT) {
+    if (block.nShift < minShift) {
         return false;
     }
-    if (block.nShift > MAX_SHIFT) {
+    if (block.nShift > maxShift) {
         return false;
     }
 
     // Validate difficulty meets minimum
-    if (block.nDifficulty < params.nDifficultyMin) {
+    if (block.nDifficulty < diffMin) {
         return false;
     }
 
@@ -250,7 +230,6 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
     uint256_to_mpz(mpz_hash, hash);
 
     // Hash should have at least MIN_HASH_BITS to ensure adequate PoW entropy
-    // (SHA256 outputs 256 bits, but leading zeros are valid and reduce effective bits)
     constexpr size_t MIN_HASH_BITS = 200;
     size_t hash_bits = mpz_sizeinbase(mpz_hash, 2);
     if (hash_bits < MIN_HASH_BITS) {
@@ -281,17 +260,16 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
     mpz_clear(mpz_adder);
 
     // Verify start is prime (BPSW + 25 Miller-Rabin rounds)
-    // mpz_probab_prime_p returns: 0 = composite, 1 = probably prime, 2 = definitely prime
     int prime_result = mpz_probab_prime_p(mpz_start, 25);
     if (prime_result == 0) {
         mpz_clear(mpz_start);
         return false;
     }
 
-    // Find next prime after start
+    // Find next prime after start (gwnum-accelerated when available)
     mpz_t mpz_end;
     mpz_init(mpz_end);
-    mpz_nextprime(mpz_end, mpz_start);
+    fast_nextprime(mpz_end, mpz_start);
 
     // Calculate achieved difficulty
     uint64_t achieved = CalculateDifficulty(mpz_start, mpz_end);
@@ -314,16 +292,28 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
  *   - Decreases: 1/64 of adjustment (faster down, network recovery)
  *
  * Bounds:
- *   - Maximum change: ±1.0 merit per block
- *   - Minimum: params.nDifficultyMin
+ *   - Maximum change: +/-1.0 merit per block
+ *   - Minimum: height-aware nDifficultyMin
  */
 uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
 
+    int nNextHeight = pindexLast->nHeight + 1;
+
     // Genesis or first block: use current difficulty
     if (pindexLast->nHeight == 0) {
         return pindexLast->nDifficulty;
+    }
+
+    // Difficulty reset at Big Gaps fork height
+    if (nNextHeight == params.nBigGapsForkHeight) {
+        return params.nDifficultyMinPostFork;
+    }
+
+    // Difficulty reset at shift upgrade fork height (stage 2)
+    if (nNextHeight == params.nShiftUpgradeForkHeight && params.nShiftUpgradeForkHeight != params.nBigGapsForkHeight) {
+        return params.nDifficultyMinPostFork;
     }
 
     // No retargeting in regtest
@@ -340,7 +330,7 @@ uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Par
     // Actual timespan between last two blocks
     int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexPrev->GetBlockTime();
 
-    return CalculateNextWorkRequired(pindexLast->nDifficulty, nActualTimespan, params);
+    return CalculateNextWorkRequired(pindexLast->nDifficulty, nActualTimespan, nNextHeight, params);
 }
 
 /**
@@ -348,44 +338,52 @@ uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Par
  *
  * Formula: next = current + log(target/actual) / damping
  *
- * This is consensus-critical code. The integer math must match exactly
- * across all implementations.
+ * All logarithms computed via MPFR at 256-bit precision.
+ * Target spacing is fork-aware (150s pre-fork, configurable post-fork).
  */
-uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, const Consensus::Params& params)
+uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, int nHeight, const Consensus::Params& params)
 {
+    // Use height-aware target spacing
+    int64_t nTargetSpacing = params.GetTargetSpacing(nHeight);
+    uint64_t nDiffMin = params.GetDifficultyMin(nHeight);
+
     // Clamp extreme timespans
     if (nActualTimespan < 1) {
         nActualTimespan = 1;
     }
-    // Max 12x target (30 minutes for 150s target)
-    if (nActualTimespan > 12 * params.nPowTargetSpacing) {
-        nActualTimespan = 12 * params.nPowTargetSpacing;
+    // Max 12x target
+    if (nActualTimespan > 12 * nTargetSpacing) {
+        nActualTimespan = 12 * nTargetSpacing;
     }
 
-    // Calculate log(actual_timespan) * 2^48 using integer math
-    mpz_t mpz_log_actual, mpz_log2e64;
-    mpz_init_set_ui(mpz_log_actual, static_cast<unsigned long>(nActualTimespan));
-    mpz_init_set_str(mpz_log2e64, LOG2E_64_HEX, 16);
+    // Compute ln(actual_timespan) * 2^48 using MPFR
+    mpfr_t mpfr_actual, mpfr_ln;
+    mpfr_init2(mpfr_actual, MPFR_PRECISION);
+    mpfr_init2(mpfr_ln, MPFR_PRECISION);
 
-    // log_actual = (log2(actual) * 2^(64+48)) / (log2(e) * 2^64)
-    mpz_log2_fixed(mpz_log_actual, mpz_log_actual, 64 + 48);
-    mpz_fdiv_q(mpz_log_actual, mpz_log_actual, mpz_log2e64);
+    mpfr_set_si(mpfr_actual, nActualTimespan, MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_actual, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
 
-    uint64_t log_actual = 0;
-    if (mpz_fits_ulong_p(mpz_log_actual)) {
-        log_actual = mpz_get_ui(mpz_log_actual);
-    } else if (mpz_sizeinbase(mpz_log_actual, 2) <= 64) {
-        mpz_t high;
-        mpz_init(high);
-        mpz_fdiv_q_2exp(high, mpz_log_actual, 32);
-        log_actual = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(mpz_log_actual);
-        mpz_clear(high);
-    }
+    mpz_t mpz_log_actual_z;
+    mpz_init(mpz_log_actual_z);
+    mpfr_get_z(mpz_log_actual_z, mpfr_ln, MPFR_RNDN);
+    uint64_t log_actual = mpz_get_uint64(mpz_log_actual_z);
+    mpz_clear(mpz_log_actual_z);
 
-    mpz_clear(mpz_log_actual);
-    mpz_clear(mpz_log2e64);
+    // Compute ln(target_spacing) * 2^48 using MPFR
+    mpfr_set_si(mpfr_actual, nTargetSpacing, MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_actual, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
 
-    const uint64_t log_target = LOG_150_48;
+    mpz_t mpz_log_target_z;
+    mpz_init(mpz_log_target_z);
+    mpfr_get_z(mpz_log_target_z, mpfr_ln, MPFR_RNDN);
+    uint64_t log_target = mpz_get_uint64(mpz_log_target_z);
+    mpz_clear(mpz_log_target_z);
+
+    mpfr_clear(mpfr_actual);
+    mpfr_clear(mpfr_ln);
 
     uint64_t next = nDifficulty;
 
@@ -398,15 +396,14 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
         next += delta >> shift;
     } else {
         uint64_t delta = log_actual - log_target;
-        // Check for underflow
         if (nDifficulty >= (delta >> shift)) {
             next -= delta >> shift;
         } else {
-            next = params.nDifficultyMin;
+            next = nDiffMin;
         }
     }
 
-    // Clamp change to ±1.0 merit per block
+    // Clamp change to +/-1.0 merit per block
     if (next > nDifficulty + TWO_POW48) {
         next = nDifficulty + TWO_POW48;
     }
@@ -415,8 +412,8 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
     }
 
     // Enforce minimum
-    if (next < params.nDifficultyMin) {
-        next = params.nDifficultyMin;
+    if (next < nDiffMin) {
+        next = nDiffMin;
     }
 
     return next;

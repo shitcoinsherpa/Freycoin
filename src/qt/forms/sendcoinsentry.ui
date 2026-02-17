@@ -166,14 +166,14 @@
      <item>
       <widget class="FreycoinAmountField" name="payAmount" native="true">
        <property name="toolTip">
-        <string>The amount of RIC to send</string>
+        <string>The amount of FREY to send</string>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QLabel" name="unitlLabel">
        <property name="text">
-        <string>RIC</string>
+        <string>FREY</string>
        </property>
       </widget>
      </item>

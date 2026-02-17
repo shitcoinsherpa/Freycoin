@@ -88,8 +88,8 @@ bool FindValidPoW(CBlock& block, const Consensus::Params& params)
                     mpz_export(add_data, &count, -1, 1, -1, 0, mpz_adder);
                 }
 
-                // Verify the PoW is valid
-                if (CheckProofOfWork(block, params)) {
+                // Verify the PoW is valid (context-free check for test utility)
+                if (CheckProofOfWork(block, /*nHeight=*/-1, params)) {
                     mpz_clear(mpz_hash);
                     mpz_clear(mpz_base);
                     mpz_clear(mpz_start);

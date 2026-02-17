@@ -324,20 +324,20 @@ static RPCHelpMan echoipc()
             interfaces::Init& local_init = *EnsureAnyNodeContext(request.context).init;
             std::unique_ptr<interfaces::Echo> echo;
             if (interfaces::Ipc* ipc = local_init.ipc()) {
-                // Spawn a new bitcoin-node process and call makeEcho to get a
+                // Spawn a new freycoin-node process and call makeEcho to get a
                 // client pointer to a interfaces::Echo instance running in
                 // that process. This is just for testing. A slightly more
                 // realistic test spawning a different executable instead of
-                // the same executable would add a new bitcoin-echo executable,
-                // and spawn bitcoin-echo below instead of bitcoin-node. But
-                // using bitcoin-node avoids the need to build and install a
+                // the same executable would add a new freycoin-echo executable,
+                // and spawn freycoin-echo below instead of freycoin-node. But
+                // using freycoin-node avoids the need to build and install a
                 // new executable just for this one test.
-                auto init = ipc->spawnProcess("bitcoin-node");
+                auto init = ipc->spawnProcess("freycoin-node");
                 echo = init->makeEcho();
                 ipc->addCleanup(*echo, [init = init.release()] { delete init; });
             } else {
-                // IPC support is not available because this is a bitcoind
-                // process not a bitcoind-node process, so just create a local
+                // IPC support is not available because this is a freycoind
+                // process not a freycoind-node process, so just create a local
                 // interfaces::Echo object and return it so the `echoipc` RPC
                 // method will work, and the python test calling `echoipc`
                 // can expect the same result.

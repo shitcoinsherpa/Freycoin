@@ -1920,14 +1920,29 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
-    int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
-    // Force block reward to zero when right shift is undefined.
-    if (halvings >= 64)
-        return 0;
+    static constexpr CAmount TAIL_EMISSION = COIN / 10; // 0.1 FREY perpetual floor
 
-    CAmount nSubsidy = 50 * COIN;
-    // Subsidy is cut in half every 840,000 blocks which will occur approximately every 4 years.
+    CAmount nSubsidy;
+    int halvings;
+
+    if (nHeight >= consensusParams.nBigGapsForkHeight) {
+        // Post-fork: 200 FREY, halving from fork height every 210,000 blocks
+        halvings = (nHeight - consensusParams.nBigGapsForkHeight)
+                   / consensusParams.nSubsidyHalvingIntervalPostFork;
+        nSubsidy = 200 * COIN;
+    } else {
+        // Pre-fork: 50 FREY, original schedule
+        halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
+        nSubsidy = 50 * COIN;
+    }
+
+    if (halvings >= 64)
+        return TAIL_EMISSION;
+
     nSubsidy >>= halvings;
+
+    if (nSubsidy < TAIL_EMISSION)
+        nSubsidy = TAIL_EMISSION;
 
     return nSubsidy;
 }
@@ -3814,7 +3829,7 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
-static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
+static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, int nHeight = -1, bool fCheckPOW = true)
 {
     // Skip PoW validation for genesis block (hashPrevBlock is null)
     // Genesis block hash is verified separately against consensusParams.hashGenesisBlock
@@ -3823,7 +3838,8 @@ static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& st
     }
 
     // Check proof of work matches claimed amount (prime gap validation)
-    if (fCheckPOW && !CheckProofOfWork(block, consensusParams))
+    // nHeight=-1 means context-free check (accepts union of pre/post-fork ranges)
+    if (fCheckPOW && !CheckProofOfWork(block, nHeight, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-gap", "prime gap proof of work failed");
 
     return true;
@@ -3919,7 +3935,8 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
 
     // Check that the header is valid (particularly PoW).  This is mostly
     // redundant with the call in AcceptBlockHeader.
-    if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW))
+    // Context-free check: nHeight=-1 accepts both pre/post-fork ranges.
+    if (!CheckBlockHeader(block, state, consensusParams, /*nHeight=*/-1, fCheckPOW))
         return false;
 
     // Check the merkle root.
@@ -4205,7 +4222,7 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
             return false;
         }
 
-        if (!CheckBlockHeader(block, state, GetConsensus(), checkPoW)) {
+        if (!CheckBlockHeader(block, state, GetConsensus(), /*nHeight=*/pindexPrev->nHeight + 1, checkPoW)) {
             LogDebug(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
             return false;
         }
@@ -4653,7 +4670,7 @@ VerifyDBResult CVerifyDB::VerifyDB(
             return VerifyDBResult::CORRUPTED_BLOCK_DB;
         }
         // check level 1: verify block validity
-        if (nCheckLevel >= 1 && !CheckBlock(block, state, consensus_params)) {
+        if (nCheckLevel >= 1 && !CheckBlock(block, state, consensus_params, /*fCheckPOW=*/false)) {
             LogPrintf("Verification error: found bad block at %d, hash=%s (%s)\n",
                       pindex->nHeight, pindex->GetBlockHash().ToString(), state.ToString());
             return VerifyDBResult::CORRUPTED_BLOCK_DB;

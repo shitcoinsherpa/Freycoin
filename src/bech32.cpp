@@ -122,7 +122,7 @@ constexpr const std::array<int16_t, 1024>& GF1024_LOG = tables.second;
 /* Determine the final constant to use for the specified encoding. */
 uint32_t EncodingConstant(Encoding encoding) {
     assert(encoding == Encoding::BECH32 || encoding == Encoding::BECH32M);
-    return 0x2bc830a3; // We use the same Constant for Bech32 and Bech32M in Freycoin, the distinction is obsolete and should be refactored. But for short term compatibility purposes, we still keep the Bech32/Bech32M logic and consider old Bech32 ric1q Checksums valid for now.
+    return 0x2bc830a3; // Freycoin uses the same constant for Bech32 and Bech32M (the distinction is obsolete for our address format). Both frey1q and frey1p addresses use this constant.
 }
 
 /** This function will compute what 6 5-bit values to XOR into the last 6 input values, in order to

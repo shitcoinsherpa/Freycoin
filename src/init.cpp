@@ -532,6 +532,7 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-gen", "Enable mining (default: false). Requires -minetoaddress for headless daemon.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-genproclimit=<n>", strprintf("Set the number of CPU threads for mining (-1 = all cores, default: 1)"), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-gpuintensity=<n>", "GPU mining intensity from 1 (minimal) to 10 (maximum). Controls sieve range per nonce (default: 5)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-miningshift=<n>", "Override the mining shift value for benchmarking (14-16384). Higher shift = larger primes = larger gaps. Default: use consensus minimum.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-minetoaddress=<addr>", "Mine to this address instead of the default wallet address", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blockfilterindex=<type>",
@@ -1395,6 +1396,16 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
     LogPrintf("Mining: Hardware tier: %s\n", engine.get_hardware_info());
 
     while (!chainman.m_interrupt) {
+        // Wait for initial block download to complete before mining
+        if (chainman.IsInitialBlockDownload()) {
+            LogPrintf("Mining: Waiting for blockchain sync to complete...\n");
+            while (!chainman.m_interrupt && chainman.IsInitialBlockDownload()) {
+                UninterruptibleSleep(std::chrono::seconds{10});
+            }
+            if (chainman.m_interrupt) break;
+            LogPrintf("Mining: Sync complete, starting to mine.\n");
+        }
+
         // Create a new block template
         CTxMemPool* mempool = node.mempool.get();
         if (!mempool) {
@@ -1427,8 +1438,10 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
         CBlock& block = block_template->block;
         block.hashMerkleRoot = BlockMerkleRoot(block);
 
-        // Set up mining parameters — shift computed from intensity to allow full sieve range
-        const uint16_t shift = MiningEngine::compute_shift(gpu_intensity);
+        // Set up mining parameters — shift computed from intensity, fork-aware
+        const int nNextHeight = tip->nHeight + 1;
+        const uint16_t forkMinShift = chainman.GetConsensus().GetMinShift(nNextHeight);
+        const uint16_t shift = MiningEngine::compute_shift(gpu_intensity, forkMinShift);
         block.nShift = shift;
         block.nAdd.SetNull();
         block.nReserved = 0;
@@ -1501,12 +1514,11 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
 
         if (!processor.found) continue;
 
-        // Verify and submit
-        if (!CheckProofOfWork(block, chainman.GetConsensus())) {
-            LogPrintf("Mining: ERROR - mined block failed CheckProofOfWork!\n");
-            continue;
-        }
-
+        // Mark block as pre-checked so ProcessNewBlock skips the expensive
+        // CheckProofOfWork (fast_nextprime ~31s) under cs_main. The miner already
+        // validated the gap meets difficulty. Without this, cs_main is held for ~31s
+        // per block, completely blocking RPC for the entire duration.
+        block.fChecked = true;
         auto block_ptr = std::make_shared<const CBlock>(std::move(block));
         if (chainman.ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {
             LogPrintf("Mining: Found block! hash=%s height=%d\n",

@@ -18,10 +18,10 @@ using util::Join;
 
 /**
  * Name of client reported in the 'version' message. Report the same name
- * for both bitcoind and bitcoin-qt, to make it harder for attackers to
+ * for both freycoind and freycoin-qt, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
-const std::string UA_NAME("Stella");
+const std::string UA_NAME("Freycoin");
 
 
 #include <freycoin-build-info.h>
@@ -73,26 +73,25 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
 std::string CopyrightHolders(const std::string& strPrefix)
 {
     std::string strCopyrightHolders = strPrefix + " 2009-" + std::to_string(COPYRIGHT_YEAR) + " The Bitcoin Core developers";
-    strCopyrightHolders += "\n" + strPrefix + " 2013-" + std::to_string(COPYRIGHT_YEAR) + " The Freycoin developers";
+    strCopyrightHolders += "\n" + strPrefix + " 2013-" + std::to_string(COPYRIGHT_YEAR) + " The Riecoin developers";
+    strCopyrightHolders += "\n" + strPrefix + " " + std::to_string(COPYRIGHT_YEAR) + " The Freycoin developers";
     return strCopyrightHolders;
 }
 
 std::string LicenseInfo()
 {
-    const std::string URL_SOURCE_CODE = "<https://github.com/FreycoinTeam/Freycoin>";
+    const std::string URL_SOURCE_CODE = "<https://github.com/RiecoinTeam/Riecoin>";
 
     return CopyrightHolders("(C) ") + "" +
-           "\n Freycoin Core 2511 is based on Bitcoin Core (Master 2025-11-05/~30.x).\n" +
+           "\n Freycoin is based on Riecoin Core 2511 / Bitcoin Core (~30.x).\n" +
            strprintf(_("Please contribute if you find %s useful. "
                        "Visit %s for further information about the software."),
                      CLIENT_NAME, "<" CLIENT_URL ">")
                .translated +
            "\n" +
-           strprintf(_("The source code is currently available from %s."), URL_SOURCE_CODE).translated +
-           "\n\n Whitepaper: <https://freycoin.xyz/Whitepaper>" +
-           "\n Freycoin Forum: <https://freycoin.xyz/Forum>" +
-           "\n Discord: <https://discord.gg/2sJEayC>" +
-           "\n Mastodon: <https://steloj.xyz/@Freycoin>\n\n" +
+           strprintf(_("The source code for the Riecoin base is available from %s."), URL_SOURCE_CODE).translated +
+           "\n\n Freycoin: <https://freycoin.tech>" +
+           "\n Based on Riecoin: <https://riecoin.xyz>\n\n" +
            _("This is experimental software.") + "\n" +
            strprintf(_("Distributed under the GPLv3 license, see %s"), "<https://www.gnu.org/licenses/gpl-3.0.en.html>").translated +
            "\n";

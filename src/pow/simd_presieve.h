@@ -25,6 +25,8 @@
 #include <cstddef>
 #include <cstring>
 
+#include <gmp.h>
+
 #ifdef _WIN32
 #include <intrin.h>
 #else
@@ -76,8 +78,8 @@ static constexpr int PRESIEVE_MAX_PRIME = 163;
 
 /** Table size info */
 struct PresieveTableInfo {
-    uint32_t period;           // Period in odd numbers
-    uint32_t byte_size;        // Size in bytes
+    uint32_t period;           // Period in odd numbers (= product of table's primes)
+    uint32_t byte_size;        // Table size in bytes (= period, for correct byte-level wrapping)
     const uint32_t* primes;    // Array of primes for this table
     uint8_t num_primes;        // Number of primes
 };
@@ -121,6 +123,18 @@ void presieve_apply(uint8_t* sieve, size_t sieve_bytes, uint64_t segment_low);
  * Convenience function that calls presieve_init then presieve_apply
  */
 void presieve_full(uint8_t* sieve, size_t sieve_bytes, uint64_t segment_low);
+
+/**
+ * Set presieve base byte offsets for a new mpz_start using GMP.
+ *
+ * Must be called before presieve_init/apply when mpz_start changes.
+ * Computes (mpz_start/2) mod (byte_size*8) / 8 for each table, so
+ * that get_table_position() returns correct byte positions for the
+ * odd-only sieve segment.
+ *
+ * @param mpz_start The sieve starting number (must be even)
+ */
+void presieve_set_base_offsets(mpz_t mpz_start);
 
 /*============================================================================
  * SIMD Implementation Functions (Internal)

@@ -26,3 +26,28 @@ target/
 /guix-build-*
 
 /ci/scratch/
+
+# Freycoin project files (not part of source distribution)
+PLAN.md
+CLAUDE.md
+IMPLEMENTATION_PLAN.md
+ANN_THREAD.md
+THREAD.TXT
+.claude/
+
+# Infrastructure and deployment
+/site/
+/explorer/
+/deploy/
+/tools/
+
+# Temporary/scratch files
+tmp_*
+nul
+*.tar.gz
+*.bat
+check_merit.ps1
+
+# SSH keys (should never be committed)
+C*UsersGreg*
+

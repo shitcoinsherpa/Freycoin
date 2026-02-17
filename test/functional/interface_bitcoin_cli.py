@@ -151,7 +151,7 @@ class TestBitcoinCli(BitcoinTestFramework):
 
         self.log.info("Test port usage preferences")
         node_rpc_port = rpc_port(self.nodes[0].index)
-        # Prevent bitcoin-cli from using existing rpcport in conf
+        # Prevent freycoin-cli from using existing rpcport in conf
         conf_rpcport = "rpcport=" + str(node_rpc_port)
         self.nodes[0].replace_in_config([(conf_rpcport, "#" + conf_rpcport)])
         # prefer rpcport over rpcconnect

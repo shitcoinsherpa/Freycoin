@@ -26,6 +26,8 @@
 #include <node/warnings.h>
 #include <policy/ephemeral_policy.h>
 #include <pow.h>
+#include <pow/mining_engine.h>
+#include <pow/pow_processor.h>
 #include <rpc/blockchain.h>
 #include <rpc/mining.h>
 #include <rpc/server.h>
@@ -44,6 +46,7 @@
 #include <validation.h>
 #include <validationinterface.h>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
@@ -129,29 +132,155 @@ static RPCHelpMan getnetworkminingpower()
     };
 }
 
+/**
+ * BlockMiningProcessor: Receives valid prime gap proofs from MiningEngine
+ * and updates the block with the proof fields.
+ */
+class BlockMiningProcessor : public PoWProcessor {
+public:
+    CBlock* block;
+    std::atomic<bool> found{false};
+    uint32_t found_nonce{0};
+    uint16_t found_shift{0};
+    uint256 found_add;
+
+    explicit BlockMiningProcessor(CBlock* b) : block(b) {}
+
+    bool process(PoW* pow) override {
+        // Extract proof fields from the PoW solution
+        found_nonce = pow->get_nonce();
+        found_shift = pow->get_shift();
+
+        std::vector<uint8_t> adder_bytes;
+        pow->get_adder(adder_bytes);
+
+        // Convert adder to uint256 (little-endian)
+        found_add.SetNull();
+        if (!adder_bytes.empty()) {
+            size_t copy_len = std::min(adder_bytes.size(), size_t(32));
+            std::memcpy(found_add.begin(), adder_bytes.data(), copy_len);
+        }
+
+        found = true;
+        return false;  // Stop mining - we found a valid solution
+    }
+};
+
 static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t& max_tries, std::shared_ptr<const CBlock>& block_out, bool process_new_block)
 {
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    // Prime gap mining: iterate nonce values and check for valid proof
-    // TODO (Phase 5): Replace with real MiningEngine that searches for prime gaps
-    // For now, stub PoW accepts all blocks so we just need to set reasonable values
-    block.nNonce = 0;
-    block.nShift = 20;  // Default shift
+    // Set up mining parameters — shift computed to allow full sieve range, fork-aware
+    uint16_t forkMinShift;
+    {
+        LOCK(cs_main);
+        const CBlockIndex* pindexPrev = chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock);
+        if (!pindexPrev) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot find previous block index for " + block.hashPrevBlock.GetHex());
+        }
+        forkMinShift = chainman.GetConsensus().GetMinShift(pindexPrev->nHeight + 1);
+    }
+    const uint16_t shift = MiningEngine::compute_shift(5, forkMinShift);  // default intensity
+    block.nShift = shift;
     block.nAdd.SetNull();
     block.nReserved = 0;
 
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() &&
-           !CheckProofOfWork(block, chainman.GetConsensus()) && !chainman.m_interrupt) {
-        ++block.nNonce;
-        --max_tries;
-    }
+    // Serialize the consensus header (84 bytes: version + prevhash + merkle + time + difficulty + nonce)
+    // The mining engine will iterate nonces and compute hashes
+    std::vector<uint8_t> header_template;
+    header_template.reserve(84);
 
-    if (max_tries == 0 || chainman.m_interrupt) {
+    // nVersion (4 bytes, little-endian)
+    uint32_t version = static_cast<uint32_t>(block.nVersion);
+    header_template.insert(header_template.end(),
+        reinterpret_cast<uint8_t*>(&version),
+        reinterpret_cast<uint8_t*>(&version) + 4);
+
+    // hashPrevBlock (32 bytes)
+    header_template.insert(header_template.end(),
+        block.hashPrevBlock.begin(), block.hashPrevBlock.end());
+
+    // hashMerkleRoot (32 bytes)
+    header_template.insert(header_template.end(),
+        block.hashMerkleRoot.begin(), block.hashMerkleRoot.end());
+
+    // nTime (4 bytes, little-endian)
+    uint32_t time = block.nTime;
+    header_template.insert(header_template.end(),
+        reinterpret_cast<uint8_t*>(&time),
+        reinterpret_cast<uint8_t*>(&time) + 4);
+
+    // nDifficulty (8 bytes, little-endian)
+    uint64_t difficulty = block.nDifficulty;
+    header_template.insert(header_template.end(),
+        reinterpret_cast<uint8_t*>(&difficulty),
+        reinterpret_cast<uint8_t*>(&difficulty) + 8);
+
+    // nNonce placeholder (4 bytes) - will be filled by miner
+    uint32_t nonce_placeholder = 0;
+    header_template.insert(header_template.end(),
+        reinterpret_cast<uint8_t*>(&nonce_placeholder),
+        reinterpret_cast<uint8_t*>(&nonce_placeholder) + 4);
+
+    // Nonce offset in the header template
+    constexpr size_t NONCE_OFFSET = 4 + 32 + 32 + 4 + 8;  // 80 bytes
+
+    // Create processor to capture valid proofs
+    BlockMiningProcessor processor(&block);
+
+    // Create mining engine with 1 thread for RPC mining (low intensity)
+    MiningEngine engine(MiningTier::CPU_ONLY, 1);
+
+    LogPrintf("GenerateBlock: Starting prime gap mining with difficulty=%016llx shift=%u\n",
+              static_cast<long long>(block.nDifficulty), shift);
+
+    // Mine with the engine - it will call processor.process() when a valid gap is found
+    engine.mine_parallel(
+        header_template,
+        NONCE_OFFSET,
+        shift,
+        block.nDifficulty,
+        0,  // start_nonce
+        &processor
+    );
+
+    // Check if mining was interrupted
+    if (chainman.m_interrupt) {
+        engine.stop();
         return false;
     }
 
+    // Check if we found a valid proof
+    if (!processor.found) {
+        LogPrintf("GenerateBlock: No valid prime gap found after mining\n");
+        return false;
+    }
+
+    // Update block with the found proof
+    block.nNonce = processor.found_nonce;
+    block.nShift = processor.found_shift;
+    block.nAdd = processor.found_add;
+
+    LogPrintf("GenerateBlock: Found valid block! nonce=%u shift=%u gap_add=%s\n",
+              block.nNonce, block.nShift, block.nAdd.GetHex());
+
+    // Verify the proof is valid before submitting
+    // Determine block height from the previous block index
+    int nBlockHeight = -1;
+    {
+        LOCK(cs_main);
+        const CBlockIndex* pindexPrev = chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock);
+        if (pindexPrev) nBlockHeight = pindexPrev->nHeight + 1;
+    }
+    if (!CheckProofOfWork(block, nBlockHeight, chainman.GetConsensus())) {
+        LogPrintf("GenerateBlock: ERROR - mined block failed CheckProofOfWork!\n");
+        return false;
+    }
+
+    // PoW verified above — mark as checked so ProcessNewBlock skips the
+    // expensive re-check (fast_nextprime ~31s) under cs_main.
+    block.fChecked = true;
     block_out = std::make_shared<const CBlock>(std::move(block));
 
     if (!process_new_block) return true;
@@ -309,7 +438,7 @@ static RPCHelpMan generateblock()
     return RPCHelpMan{"generateblock",
         "Mine a set of ordered transactions to a specified address or descriptor and return the block hash.",
         {
-            {"output", RPCArg::Type::STR, RPCArg::Optional::NO, "The address or descriptor to send the newly generated bitcoin to."},
+            {"output", RPCArg::Type::STR, RPCArg::Optional::NO, "The address or descriptor to send the newly generated coins to."},
             {"transactions", RPCArg::Type::ARR, RPCArg::Optional::NO, "An array of hex strings which are either txids or raw transactions.\n"
                 "Txids must reference transactions currently in the mempool.\n"
                 "All transactions must be valid and in valid order, otherwise the block will be rejected.",
@@ -491,7 +620,7 @@ static RPCHelpMan prioritisetransaction()
                 "Accepts the transaction into mined blocks at a higher (or lower) priority\n",
                 {
                     {"txid", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The transaction id."},
-                    {"fee_delta", RPCArg::Type::NUM, RPCArg::Optional::NO, "The fee value (in riemanns) to add (or subtract, if negative).\n"
+                    {"fee_delta", RPCArg::Type::NUM, RPCArg::Optional::NO, "The fee value (in freys) to add (or subtract, if negative).\n"
             "                  Note, that this value is not a fee rate. It is a value to modify absolute fee of the TX.\n"
             "                  The fee is not actually paid, only the algorithm for selecting transactions into a block\n"
             "                  considers the transaction as it would have paid a higher (or lower) fee."},
@@ -532,9 +661,9 @@ static RPCHelpMan getprioritisedtransactions()
             RPCResult::Type::OBJ_DYN, "", "prioritisation keyed by txid",
             {
                 {RPCResult::Type::OBJ, "<transactionid>", "", {
-                    {RPCResult::Type::NUM, "fee_delta", "transaction fee delta in satoshis"},
+                    {RPCResult::Type::NUM, "fee_delta", "transaction fee delta in freys"},
                     {RPCResult::Type::BOOL, "in_mempool", "whether this transaction is currently in mempool"},
-                    {RPCResult::Type::NUM, "modified_fee", /*optional=*/true, "modified fee in satoshis. Only returned if in_mempool=true"},
+                    {RPCResult::Type::NUM, "modified_fee", /*optional=*/true, "modified fee in freys. Only returned if in_mempool=true"},
                 }}
             },
         },
@@ -650,7 +779,7 @@ static RPCHelpMan getblocktemplate()
                         {
                             {RPCResult::Type::NUM, "", "transactions before this one (by 1-based index in 'transactions' list) that must be present in the final block if this one is"},
                         }},
-                        {RPCResult::Type::NUM, "fee", "difference in value between transaction inputs and outputs (in satoshis); for coinbase transactions, this is a negative Number of the total collected block fees (ie, not including the block subsidy); if key is not present, fee is unknown and clients MUST NOT assume there isn't one"},
+                        {RPCResult::Type::NUM, "fee", "difference in value between transaction inputs and outputs (in freys); for coinbase transactions, this is a negative Number of the total collected block fees (ie, not including the block subsidy); if key is not present, fee is unknown and clients MUST NOT assume there isn't one"},
                         {RPCResult::Type::NUM, "sigops", "total SigOps cost, as counted for purposes of block limits; if key is not present, sigop cost is unknown and clients MUST NOT assume it is zero"},
                         {RPCResult::Type::NUM, "weight", "total transaction weight, as counted for purposes of block limits"},
                     }},
@@ -659,7 +788,7 @@ static RPCHelpMan getblocktemplate()
                 {
                     {RPCResult::Type::STR_HEX, "key", "values must be in the coinbase (keys may be ignored)"},
                 }},
-                {RPCResult::Type::NUM, "coinbasevalue", "maximum allowable input to coinbase transaction, including the generation award and transaction fees (in satoshis)"},
+                {RPCResult::Type::NUM, "coinbasevalue", "maximum allowable input to coinbase transaction, including the generation award and transaction fees (in freys)"},
                 {RPCResult::Type::STR, "longpollid", "an id to include with a request to longpoll on an update to this template"},
                 {RPCResult::Type::NUM_TIME, "mintime", "The minimum timestamp appropriate for the next block time, expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::ARR, "mutable", "list of ways the block template may be changed",
@@ -774,7 +903,7 @@ static RPCHelpMan getblocktemplate()
          * On mainnet the mempool changes frequently enough that in practice this RPC
          * returns after 60 seconds, or sooner if the best block changes.
          *
-         * getblocktemplate is unlikely to be called by bitcoin-cli, so
+         * getblocktemplate is unlikely to be called by freycoin-cli, so
          * -rpcclienttimeout is not a concern. BIP22 recommends a long request timeout.
          *
          * The longpollid is assumed to be a tip hash if it has the right format.
