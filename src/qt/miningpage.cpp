@@ -535,11 +535,15 @@ void MiningPage::miningThreadFunc()
     // threaded call before workers launch.  gwnum's share_sincos_data() has a
     // racy mutex init — multiple threads calling gwsetup simultaneously on
     // first use double-initialize the mutex, corrupting the heap.
+    // The dummy must be >= 2000 bits to hit the gwnum code path (below that
+    // fast_nextprime falls back to GMP's mpz_nextprime and never touches gwnum).
     {
         mpz_t dummy_n, dummy_r;
-        mpz_init_set_ui(dummy_n, 1000000007);
+        mpz_init(dummy_n);
+        mpz_ui_pow_ui(dummy_n, 2, 2048);  // 2^2048 — a 2049-bit number
+        mpz_nextprime(dummy_n, dummy_n);   // find an actual prime near 2^2048
         mpz_init(dummy_r);
-        fast_nextprime(dummy_r, dummy_n);
+        fast_nextprime(dummy_r, dummy_n);  // THIS now triggers gwnum init
         mpz_clear(dummy_r);
         mpz_clear(dummy_n);
     }
