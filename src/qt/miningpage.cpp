@@ -17,6 +17,7 @@
 #include <pow/mining_engine.h>
 #include <pow/pow.h>
 #include <pow/pow_processor.h>
+#include <pow/fast_nextprime.h>
 #include <gpu/opencl_loader.h>
 #include <gpu/opencl_fermat.h>
 #include <gpu/cuda_loader.h>
@@ -529,6 +530,19 @@ void MiningPage::miningThreadFunc()
 
     m_engine = std::make_unique<MiningEngine>(tier, m_numThreads);
     m_engine->set_gpu_intensity(m_gpuIntensity);
+
+    // Warm up gwnum's global state (shareable sincos mutex) with a single-
+    // threaded call before workers launch.  gwnum's share_sincos_data() has a
+    // racy mutex init — multiple threads calling gwsetup simultaneously on
+    // first use double-initialize the mutex, corrupting the heap.
+    {
+        mpz_t dummy_n, dummy_r;
+        mpz_init_set_ui(dummy_n, 1000000007);
+        mpz_init(dummy_r);
+        fast_nextprime(dummy_r, dummy_n);
+        mpz_clear(dummy_r);
+        mpz_clear(dummy_n);
+    }
 
     QMetaObject::invokeMethod(this, [this]() {
         logMessage(QString("Mining engine: %1 (%2 threads, intensity %3)")
