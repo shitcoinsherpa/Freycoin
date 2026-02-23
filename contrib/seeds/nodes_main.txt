@@ -1,2 +1,3 @@
 # Freycoin mainnet seed nodes
-# Add seed node IPs here after mainnet launch
+138.197.130.221:31470
+159.223.231.75:31470

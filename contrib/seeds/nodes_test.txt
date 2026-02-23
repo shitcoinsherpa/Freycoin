@@ -1,2 +1,2 @@
 # Freycoin testnet seed nodes
-# Add DigitalOcean VPS IPs here after deployment
+138.197.130.221:31473

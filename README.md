@@ -1,121 +1,148 @@
 # Freycoin Core
 
-![Freycoin Logo](https://freycoin.xyz/Logos/Freycoin128.png)
+Freycoin is a cryptocurrency whose Proof-of-Work discovers **prime gaps** — unusually large distances between consecutive prime numbers. Every block mined contributes to the mathematical frontier of prime gap research. Gaps discovered by miners earn places in the [Top-20 Prime Gaps](https://www.trnicely.net/gaps/gaplist.html) record lists maintained by mathematicians.
 
-This repository hosts the Freycoin Core source code. Freycoin Core connects to the Bitcoin peer-to-peer network to download and fully validate blocks and transactions. It also includes a wallet and graphical user interface, which can be optionally built.
+This is PoW with meaning — energy spent on number theory, not thrown into the void of meaningless hash collisions.
 
-Guides and release notes are available on the [project's page on Freycoin.xyz](https://freycoin.xyz/Core/).
+Freycoin is built on Bitcoin Core 30.0 (via Riecoin 2511) and inherits all of Bitcoin's battle-tested infrastructure: SegWit, Taproot, descriptor wallets, and the full UTXO-based transaction model.
 
-## Freycoin Introduction
+**Website:** [freycoin.tech](https://freycoin.tech)
+**Explorer:** [explorer.freycoin.tech](https://explorer.freycoin.tech) (mainnet) | [testnet.freycoin.tech](https://testnet.freycoin.tech) (testnet)
 
-Freycoin is a currency based on Bitcoin, and follows in its footsteps into becoming a world currency. The Project supports and concretizes the idea that the gigantic mining resources can also serve scientific research, thus power a world currency of greater value for the society.
+## How It Works
 
-Freycoin miners are not looking for useless hashes, but doing actual scientific number crunching, like in Folding@Home or the GIMPS (currently, they are looking for prime constellations).
+Miners search for large gaps between consecutive primes near numbers derived from block headers. The difficulty metric is **merit** = gap_size / ln(start_prime). High-merit gaps are genuine mathematical discoveries that advance human knowledge of prime distribution.
 
-The project broke and holds several number theory world records, and demonstrated that scientific computations can be done using the PoW concept, and at the same time power a secure and practical international currency. It effectively solves the Bitcoin's power consumption issue without resorting to ideas like PoS that enrich the richer by design and makes value out of thin air.
+The mining engine uses:
+- **Segmented sieve** with SIMD presieve (AVX-512/AVX2/SSE2) for candidate generation
+- **BPSW primality testing** for start-of-gap verification
+- **gwnum (FFT-based arithmetic)** for fast next-prime computation via George Woltman's number theory library
+- **GPU acceleration** (OpenCL for AMD/Intel, CUDA PTX for NVIDIA) for batch Fermat primality testing
 
-Visit [Freycoin.xyz](https://freycoin.xyz/) to learn more about Freycoin.
+## Pre-Built Binaries
 
-## Build Freycoin Core
+Most users should download the latest release binaries from the [Releases](https://github.com/shitcoinsherpa/Freycoin/releases) page. Available for Windows (x64) and Linux (x64).
 
-### Recent Debian/Ubuntu
+## Building from Source
 
-Here are basic build instructions to generate the Freycoin Core binaries, including the Freycoin-Qt GUI wallet.
+### Requirements
 
-First, get the build tools and dependencies, which can be done by running as root the following commands.
+- **C++20 compiler:** GCC 13+ (recommended), Clang 17+, or MSVC 2022 17.6+
+- **CMake** 3.22+
+- **GMP** (arbitrary precision integer arithmetic for prime computations)
+- **MPFR** (arbitrary precision floating point for ln() in merit calculation)
+- **libevent** 2.1.8+
+- **SQLite3** 3.7.17+
+- **Qt 6.2+** (optional, for GUI wallet)
+- **Boost** (headers only)
+
+### Bundled Libraries
+
+The source tree includes several bundled libraries that do not need to be installed separately:
+
+- **`src/gwnum/`** — George Woltman's FFT-based modular arithmetic library (from GIMPS/Prime95). Provides the `fast_nextprime` function that accelerates prime gap verification by ~3x over GMP's `mpz_nextprime`. Includes pre-assembled x86-64 objects for FFT routines (Linux ELF and Windows COFF) plus C/C++ sources compiled at build time. x86-64 only; other architectures fall back to GMP.
+
+- **`src/gpu/cgbn_lib/`** — Cooperative Groups Big Number library (CGBN) for GPU-accelerated big number arithmetic used in CUDA Fermat primality testing.
+
+### Linux (Ubuntu 24.04 — Recommended)
 
 ```bash
-apt install build-essential cmake pkg-config bsdmainutils python3
-apt install libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev qt6-base-dev qt6-tools-dev qt6-l10n-tools qt6-wayland libgmp-dev libsqlite3-dev libqrencode-dev
-```
+sudo apt install build-essential cmake pkg-config \
+  libgmp-dev libmpfr-dev libevent-dev libsqlite3-dev \
+  libboost-dev qt6-base-dev qt6-tools-dev qt6-l10n-tools libqrencode-dev
 
-Get the source code.
-
-```bash
-git clone https://github.com/FreycoinTeam/Freycoin.git
-```
-
-Then,
-
-```bash
+git clone https://github.com/shitcoinsherpa/Freycoin.git
 cd Freycoin
-cmake -B build -DBUILD_GUI=ON
-cmake --build build
+cmake -B build -DBUILD_GUI=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ```
 
-The Freycoin-Qt binary is located in `build/bin`. You can run `strip freycoin-qt` to reduce its size a lot, or build without the Qt Gui with
+Binaries are in `build/bin/`. Run `strip build/bin/freycoin-qt` to reduce size.
+
+To build without the GUI:
 
 ```bash
-cd Freycoin
-cmake -B build
-cmake --build build
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ```
 
-The build can be speed up by appending `-j N` to the last command, which runs N parallel jobs.
+### Linux (Ubuntu 22.04 / WSL2)
 
-#### Guix Build
-
-Freycoin can be built using Guix. The process is longer, but also deterministic: everyone building this way should obtain the exact same binaries. Distributed binaries are produced this way, so anyone can ensure that they were not created with an altered source code by building themselves using Guix. Read the [Guix Guide](contrib/guix/README.md) for more details and options.
-
-You should have a lot of free disk space (at least 40 GB), and 16 GB of RAM or more is recommended.
-
-Install Guix on your system, on Debian 12 this can be done as root with
+Ubuntu 22.04's GCC 11 is too old for C++20. Use Clang 17 with libc++:
 
 ```bash
-apt install guix
+sudo apt install build-essential cmake pkg-config \
+  libgmp-dev libmpfr-dev libevent-dev libsqlite3-dev libboost-dev libzmq3-dev
+
+# Install Clang 17
+wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
+sudo apt update && sudo apt install -y clang-17 lld-17 libc++-17-dev libc++abi-17-dev
+
+CC=clang-17 CXX=clang++-17 cmake -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_FLAGS='-stdlib=libc++' \
+  -DCMAKE_EXE_LINKER_FLAGS='-stdlib=libc++ -lc++abi' \
+  -DBUILD_GUI=OFF
+cmake --build build -j$(nproc)
 ```
 
-Still as root, start the daemon,
+Note: Qt6 GUI is not available on Ubuntu 22.04 with this method (Qt6 is built against libstdc++, incompatible with libc++). Use Ubuntu 24.04 for GUI builds.
+
+### Windows Cross-Compilation (from Ubuntu 24.04)
+
+This is the recommended method for Windows binaries with Qt6 GUI:
 
 ```bash
-guix-daemon
+sudo apt install build-essential cmake pkg-config python3 \
+  g++-mingw-w64-x86-64-posix mingw-w64-tools nsis \
+  libgmp-dev libmpfr-dev curl
+
+git clone https://github.com/shitcoinsherpa/Freycoin.git
+cd Freycoin/depends
+make HOST=x86_64-w64-mingw32 -j4    # 30-60 minutes
+
+cd ..
+cmake -B build-win --toolchain depends/x86_64-w64-mingw32/toolchain.cmake
+cmake --build build-win -j$(nproc)
 ```
 
-Now, get the Freycoin Core source code.
+### Windows Native (MSVC)
 
-```bash
-git clone https://github.com/FreycoinTeam/Freycoin.git
+Requires Visual Studio 2022 with vcpkg. Qt6 has parallel build issues on Windows — use single-threaded compilation:
+
+```powershell
+$env:VCPKG_MAX_CONCURRENCY = "1"
+cmake -B build --preset vs2022-static
+cmake --build build --config Release -j1
 ```
 
-Start the Guix build. The environment variable will set which binaries to build (here, Linux x64, Linux Arm64, and Windows x64, but it is possible to add other architectures or Mac with an SDK).
+## Chain Parameters
 
-```bash
-export HOSTS="x86_64-linux-gnu aarch64-linux-gnu x86_64-w64-mingw32"
-cd Freycoin
-./contrib/guix/guix-build
-```
-
-It will be very long, do not be surprised if it takes an hour or more, even with a powerful machine. The binaries will be generated in a `guix-build-.../output` folder.
-
-### Other OSes
-
-Either build using Guix as explained above in a spare physical or virtual machine, or refer to the [Bitcoin's Documentation (build-... files)](https://github.com/bitcoin/bitcoin/tree/master/doc) and adapt the instructions for Freycoin if needed.
+| Parameter | Mainnet | Testnet |
+|-----------|---------|---------|
+| Block time | 150 seconds | 150 seconds |
+| Initial reward | 50 FREY | 50 FREY |
+| Halving interval | 840,000 blocks (~4 years) | 840,000 blocks |
+| Tail emission | 0.1 FREY perpetual | 0.1 FREY |
+| Coinbase maturity | 100 blocks | 100 blocks |
+| Default P2P port | 31470 | 31473 |
+| Default RPC port | 31469 | 31472 |
 
 ## Testing
 
-Most Boost and Python Bitcoin Tests were ported for Freycoin. These should all pass after every code change, unless it is precised in the `test_runner.py` file that a particular Test may fail. In order to run them,
-
 ```bash
-build/bin/test_freycoin # Boost Test Suite
-build/test/functional/test_runner.py # Python Functional Tests, use -j N for N jobs
-
-build/bin/test_freycoin-qt # Freycoin-Qt Tests
+build/bin/test_freycoin                        # Unit tests
+build/test/functional/test_runner.py           # Functional tests (-j N for parallel)
+build/bin/test_freycoin-qt                     # Qt GUI tests
 ```
 
-Here are examples in order to run a particular test (check the Source Code regarding the names of the Boost Tests),
+## In Memory Of
 
-```bash
-build/src/test/test_freycoin --run_test=getarg_tests
-build/src/test/test_freycoin --run_test=getarg_tests/doubledash
-build/src/test/test_freycoin --log_level=all --run_test=getarg_tests/doubledash
-
-build/test/functional/mining_basic.py
-```
-
-Currently, the Cirrus Ci was not ported, and Fuzz Tests are not checked beyond being able to compile. Given the current very limited development resources, successfully running the Tests above and not encountering major issues in normal use of Freycoin Core is deemed sufficient.
+Jonnie Frey (1989-2017) created Gapcoin — the first cryptocurrency to use prime gaps as Proof-of-Work. He died too young, but his vision that mining should produce scientific value lives on in Freycoin.
 
 ## License
 
-The Freycoin Core code is published under the terms of the MIT license. See [COPYING](COPYING) for more information or see https://opensource.org/licenses/MIT.
+Freycoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for details.
 
-However, releases are under the terms of the Gnu General Public License Version 3 (GPLv3) since Freycoin Core uses some GPL licensed software.
+Releases are distributed under GPLv3 due to inclusion of GPL-licensed dependencies.

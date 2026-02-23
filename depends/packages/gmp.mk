@@ -5,7 +5,9 @@ $(package)_file_name=$(package)-$($(package)_version).tar.xz
 $(package)_sha256_hash=a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898
 
 define $(package)_set_vars
-$(package)_config_opts=--disable-shared --enable-cxx --enable-fat CFLAGS="-O2 -fPIE" CXXFLAGS="-O2 -fPIE"
+$(package)_config_opts=--disable-shared --enable-cxx CFLAGS="-O2 -fPIE" CXXFLAGS="-O2 -fPIE"
+$(package)_config_opts_linux=--enable-fat
+$(package)_config_opts_freebsd=--enable-fat
 endef
 
 define $(package)_config_cmds

@@ -189,14 +189,10 @@ BitcoinGUI::BitcoinGUI(interfaces::Node& node, const PlatformStyle *_platformSty
     progressBar->setAlignment(Qt::AlignCenter);
     progressBar->setVisible(false);
 
-    // Override style sheet for progress bar for styles that have a segmented progress bar,
-    // as they make the text unreadable (workaround for issue #1071)
-    // See https://doc.qt.io/qt-5/gallery.html
-    QString curStyle = QApplication::style()->metaObject()->className();
-    if(curStyle == "QWindowsStyle" || curStyle == "QWindowsXPStyle")
-    {
-        progressBar->setStyleSheet("QProgressBar { background-color: #e8e8e8; border: 1px solid grey; border-radius: 7px; padding: 1px; text-align: center; } QProgressBar::chunk { background: QLinearGradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #FF8000, stop: 1 orange); border-radius: 7px; margin: 0px; }");
-    }
+    // Override style sheet for progress bar to ensure readable text and consistent
+    // appearance across all Windows styles (including Windows 11's thin blue accent bar).
+    // Without this, QWindows11Style renders a barely-visible blue line with no text.
+    progressBar->setStyleSheet("QProgressBar { background-color: #e8e8e8; border: 1px solid grey; border-radius: 7px; padding: 1px; text-align: center; } QProgressBar::chunk { background: QLinearGradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #FF8000, stop: 1 orange); border-radius: 7px; margin: 0px; }");
 
     statusBar()->addWidget(progressBarLabel);
     statusBar()->addWidget(progressBar);
@@ -1015,7 +1011,12 @@ void BitcoinGUI::updateHeadersSyncProgressLabel()
 {
     int64_t headersTipTime = clientModel->getHeaderTipTime();
     int headersTipHeight = clientModel->getHeaderTipHeight();
-    int estHeadersLeft = (GetTime() - headersTipTime) / Params().GetConsensus().nPowTargetSpacing;
+    // Use post-fork spacing if headers are past the fork height, pre-fork otherwise
+    int64_t spacing = headersTipHeight >= Params().GetConsensus().nBigGapsForkHeight
+        ? Params().GetConsensus().nPowTargetSpacingPostFork
+        : Params().GetConsensus().nPowTargetSpacing;
+    if (spacing <= 0) spacing = Params().GetConsensus().nPowTargetSpacing;
+    int estHeadersLeft = (GetTime() - headersTipTime) / spacing;
     if (estHeadersLeft > HEADER_HEIGHT_DELTA_SYNC)
         progressBarLabel->setText(tr("Sync Phase 1/2: Processing Headers (%1, %2%)…").arg(headersTipHeight).arg(QString::number(100.0 / (headersTipHeight+estHeadersLeft)*headersTipHeight, 'f', 1)));
 }
@@ -1081,8 +1082,14 @@ void BitcoinGUI::setNumBlocks(int count, const QDateTime& blockDate, double nVer
     QDateTime currentDate = QDateTime::currentDateTime();
     qint64 secs = blockDate.secsTo(currentDate);
 
-    // Set icon state: spinning if catching up, tick otherwise
-    if (secs < MAX_BLOCK_TIME_GAP) {
+    // Set icon state: spinning if catching up, tick otherwise.
+    // If we've downloaded all known headers, we're fully synced — any
+    // time gap just means no one has mined a block recently, not that
+    // we're behind. On low-hashrate networks, hours between blocks
+    // is normal and shouldn't trigger the "syncing" display.
+    int headerHeight = clientModel->getHeaderTipHeight();
+    bool allHeadersSynced = (count >= headerHeight && headerHeight > 0);
+    if (allHeadersSynced || secs < MAX_BLOCK_TIME_GAP) {
         labelBlocksIcon->setThemedPixmap(QStringLiteral(":/icons/synced"), STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE);
 
 #ifdef ENABLE_WALLET
@@ -1100,9 +1107,18 @@ void BitcoinGUI::setNumBlocks(int count, const QDateTime& blockDate, double nVer
         QString timeBehindText = GUIUtil::formatNiceTimeOffset(secs);
 
         progressBarLabel->setVisible(true);
-        progressBar->setFormat(tr("%1 behind").arg(timeBehindText));
+        int headerHeight = clientModel->getHeaderTipHeight();
+        int blocksRemaining = headerHeight - count;
+        if (blocksRemaining < 0) blocksRemaining = 0;
+        progressBar->setFormat(tr("%1 behind — %2 / %3 blocks (%4%)")
+            .arg(timeBehindText)
+            .arg(count)
+            .arg(headerHeight)
+            .arg(headerHeight > 0 ? QString::number(100.0 * count / headerHeight, 'f', 1) : "0.0"));
         progressBar->setMaximum(1000000000);
         progressBar->setValue(nVerificationProgress * 1000000000.0 + 0.5);
+        progressBar->setToolTip(tr("Synchronizing: %1 of %2 blocks processed (%3 remaining)")
+            .arg(count).arg(headerHeight).arg(blocksRemaining));
         progressBar->setVisible(true);
 
         if(count != prevBlocks || count == 0)

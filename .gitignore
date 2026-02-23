@@ -26,3 +26,20 @@ target/
 /guix-build-*
 
 /ci/scratch/
+
+# Claude Code / AI assistant artifacts
+.claude/
+CLAUDE.md
+IMPLEMENTATION_PLAN.md
+ANN_THREAD.md
+
+# Local infrastructure and deployment
+/deploy/
+/site/
+/tools/embed_ptx.py
+/tools/validate_chain.py
+
+# Local scripts and tools
+.python-version
+check_merit.ps1
+freycoin-testnet.bat
