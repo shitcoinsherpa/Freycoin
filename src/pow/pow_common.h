@@ -13,6 +13,7 @@
 #ifndef FREYCOIN_POW_COMMON_H
 #define FREYCOIN_POW_COMMON_H
 
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -82,7 +83,8 @@ static constexpr uint64_t DEFAULT_SIEVE_PRIMES = 250000;
  */
 enum class MiningTier {
     CPU_ONLY = 1,      // Pure CPU mining with BPSW
-    CPU_OPENCL = 2,    // CPU sieve + OpenCL primality
+    CPU_OPENCL = 2,    // CPU sieve + OpenCL primality (AMD, Intel, NVIDIA)
+    CPU_CUDA = 3,      // CPU sieve + CUDA primality (NVIDIA, preferred)
 };
 
 /**
@@ -107,9 +109,22 @@ struct Bucket {
 struct CandidateBatch {
     std::vector<uint32_t> candidates;  // Limb-packed candidate numbers
     std::vector<uint32_t> indices;     // Sieve indices for each candidate
-    uint32_t bits;                     // Bit width (320 or 352)
+    uint32_t bits;                     // Bit width (rounded up to 32-bit boundary)
     uint32_t count;                    // Number of candidates
 };
+
+/**
+ * Compute GPU batch bit width from shift.
+ * Total prime size = 256 (hash) + shift bits, rounded up to 32-bit limb boundary.
+ * Minimum 320 bits — the GPU kernels have fixed 320-bit and 352-bit variants,
+ * so the batch buffer must be padded to at least 10 limbs (320 bits).
+ * Post-fork (shift >= 8192): uses cooperative kernel with arbitrary width.
+ */
+inline uint32_t gpu_bits_for_shift(uint16_t shift) {
+    uint32_t total_bits = 256 + static_cast<uint32_t>(shift);
+    uint32_t rounded = ((total_bits + 31) / 32) * 32;
+    return std::max(rounded, uint32_t{320});
+}
 
 /**
  * Snapshot of mining statistics (copyable, thread-safe read)

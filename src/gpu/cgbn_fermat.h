@@ -5,12 +5,19 @@
 /**
  * CGBN-based Fermat Primality Test — Host API
  *
- * Optional acceleration using NVIDIA's CGBN library for warp-cooperative
- * big number arithmetic. Falls back to custom Montgomery kernels when
- * CGBN is not available.
+ * Warp-cooperative big number arithmetic using NVIDIA's CGBN library
+ * (bundled). Supports arbitrary bit widths from 320 to 16640, covering
+ * both pre-fork (shift 14-256) and post-fork (shift 1024-16384).
  *
- * Build: cmake -DWITH_CGBN=ON -DCGBN_INCLUDE_DIR=/path/to/cgbn/include
- * Source: https://github.com/NVlabs/CGBN
+ * CGBN kernels are pre-compiled to PTX and embedded in the binary —
+ * no nvcc or CUDA SDK needed at build time. JIT-compiled by the CUDA
+ * driver at runtime.
+ *
+ * At runtime, the requested bit width is rounded UP to the nearest
+ * supported CGBN tier. Input data is zero-padded to match.
+ *
+ * Supported tiers: 320, 384, 512, 1024, 1280, 2048, 4096,
+ *                  8192, 8448, 12288, 16384, 16640
  */
 
 #ifndef FREYCOIN_GPU_CGBN_FERMAT_H
@@ -22,44 +29,39 @@
 extern "C" {
 #endif
 
-#ifdef HAVE_CGBN
+/**
+ * Initialize the CGBN module. Loads the embedded CGBN PTX and
+ * JIT-compiles it. Must be called after cuda_fermat_init().
+ *
+ * @return 0 on success, -1 on error
+ */
+int cgbn_fermat_init(void);
 
 /**
  * Batch Fermat primality test using CGBN cooperative groups.
  *
  * @param h_results  Output: 1 = probable prime, 0 = composite
- * @param h_primes   Input: limb-packed candidate numbers
+ * @param h_primes   Input: limb-packed candidate numbers (little-endian 32-bit limbs)
  * @param count      Number of candidates
- * @param bits       Bit width (320 or 352)
+ * @param bits       Bit width of input data (will be rounded up to nearest CGBN tier)
  * @return 0 on success, negative on error
  *
- * Note: For 352-bit, input should be 11 limbs per candidate.
- * This function internally pads to 12 limbs (384-bit) for CGBN alignment.
+ * Input layout: h_primes[i * limbs + j] where limbs = ceil(bits/32).
+ * The function handles zero-padding to the CGBN tier's limb count internally.
  */
 int cgbn_fermat_batch(uint8_t *h_results,
                       const uint32_t *h_primes,
                       uint32_t count,
                       int bits);
 
-/** Check if CGBN support was compiled in */
+/** Check if CGBN PTX module is loaded and ready */
 int cgbn_is_available(void);
 
-#else
+/** Clean up CGBN module resources */
+void cgbn_fermat_cleanup(void);
 
-/* Stubs when CGBN is not available */
-static inline int cgbn_fermat_batch(uint8_t *h_results,
-                                     const uint32_t *h_primes,
-                                     uint32_t count,
-                                     int bits) {
-    (void)h_results; (void)h_primes; (void)count; (void)bits;
-    return -1;  /* Not available */
-}
-
-static inline int cgbn_is_available(void) {
-    return 0;
-}
-
-#endif /* HAVE_CGBN */
+/** Maximum supported bit width */
+#define CGBN_MAX_BITS 16640
 
 #ifdef __cplusplus
 }

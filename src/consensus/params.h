@@ -87,6 +87,39 @@ struct Params {
         return std::chrono::seconds{nPowTargetSpacing};
     }
 
+    /** Big Gaps hard fork parameters (stage 1).
+     *  At nBigGapsForkHeight, consensus shifts to large primes (1024+ bit shifts)
+     *  for scientifically meaningful prime gaps at 385+ digit primes. */
+    int nBigGapsForkHeight{std::numeric_limits<int>::max()};  // Disabled by default
+    uint16_t nMinShiftPostFork{1024};
+    uint16_t nMaxShiftPostFork{16384};
+    uint64_t nDifficultyMinPostFork{4ULL << 48};              // Merit 4
+    int64_t nPowTargetSpacingPostFork{600};                   // 10 minutes
+    int nSubsidyHalvingIntervalPostFork{210000};
+
+    /** Big Gaps stage 2: shift upgrade.
+     *  Raises minimum shift further (e.g., 1024 → 12000) at a later height.
+     *  On mainnet this equals nBigGapsForkHeight (single-stage).
+     *  On testnet this is a second fork to preserve the existing chain. */
+    int nShiftUpgradeForkHeight{std::numeric_limits<int>::max()};  // Disabled by default
+    uint16_t nMinShiftPostUpgrade{12000};
+
+    /** Height-aware parameter accessors for fork transitions. */
+    uint16_t GetMinShift(int nHeight) const {
+        if (nHeight >= nShiftUpgradeForkHeight) return nMinShiftPostUpgrade;
+        if (nHeight >= nBigGapsForkHeight) return nMinShiftPostFork;
+        return 14;
+    }
+    uint16_t GetMaxShift(int nHeight) const {
+        return nHeight >= nBigGapsForkHeight ? nMaxShiftPostFork : 256;
+    }
+    uint64_t GetDifficultyMin(int nHeight) const {
+        return nHeight >= nBigGapsForkHeight ? nDifficultyMinPostFork : nDifficultyMin;
+    }
+    int64_t GetTargetSpacing(int nHeight) const {
+        return nHeight >= nBigGapsForkHeight ? nPowTargetSpacingPostFork : nPowTargetSpacing;
+    }
+
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
 };

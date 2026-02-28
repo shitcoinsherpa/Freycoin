@@ -96,9 +96,13 @@ public:
      *
      * Bounds:
      *   - Maximum change: +/-1.0 merit per block
-     *   - Minimum: MIN_DIFFICULTY
+     *   - Minimum: min_difficulty
+     *
+     * @param target_spacing Target spacing in seconds (150 pre-fork, configurable post-fork)
+     * @param min_difficulty Minimum difficulty floor (fork-aware)
      */
-    uint64_t next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool testnet);
+    uint64_t next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool testnet,
+                             int64_t target_spacing = 150, uint64_t min_difficulty = MIN_DIFFICULTY);
 
     /**
      * Compute maximum possible difficulty decrease in given time.
@@ -116,18 +120,13 @@ public:
     static uint64_t gettime_usec();
 
 private:
-    // Target block spacing (150 seconds)
-    static constexpr int64_t target_spacing = 150;
-
-    // ln(150) * 2^48, computed via MPFR at init
-    uint64_t log_150_48_computed;
-
     // MPFR-based helpers (double-returning, for display/estimation)
     double mpz_log_d(mpz_t mpz);
     double merit_d(mpz_t mpz_start, mpz_t mpz_end);
     double rand_d(mpz_t mpz_start, mpz_t mpz_end);
     double difficulty_d(mpz_t mpz_start, mpz_t mpz_end);
-    double next_difficulty_d(double difficulty, uint64_t actual_timespan, bool testnet);
+    double next_difficulty_d(double difficulty, uint64_t actual_timespan, bool testnet,
+                             int64_t target_spacing = 150, double min_diff_d = 16.0);
     double target_work_d(uint64_t difficulty);
 };
 

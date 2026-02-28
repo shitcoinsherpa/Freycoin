@@ -10,8 +10,17 @@
  * big-number operation across multiple threads in a warp, achieving
  * lower latency per operation than per-thread Montgomery.
  *
- * For 320-bit numbers: TPI=8 threads per instance, 4 instances per warp
- * For 352-bit numbers: TPI=16 threads per instance, 2 instances per warp
+ * Pre-fork kernels (320/384-bit):
+ *   TPI=8/16 — multiple instances per warp for high throughput
+ *
+ * Post-fork kernels (512-bit through 16640-bit):
+ *   TPI=32 — one instance per warp, necessary for large limb counts
+ *
+ * Supported bit widths (CGBN_BITS must be compile-time constant):
+ *   320, 384, 512, 1024, 1280, 2048, 4096, 8192, 8448, 12288, 16384, 16640
+ *
+ * At runtime, the requested bit width is rounded UP to the nearest supported
+ * tier. Data is zero-padded to the tier's limb count.
  *
  * Requires: CGBN headers from https://github.com/NVlabs/CGBN
  * Build with: -DWITH_CGBN=ON -DCGBN_INCLUDE_DIR=/path/to/cgbn/include
@@ -23,108 +32,132 @@
 
 #include <cuda_runtime.h>
 #include <stdint.h>
+#include <string.h>
 #include <cgbn/cgbn.h>
 
 /*
- * CGBN configuration for 320-bit and 384-bit (covers 352-bit) numbers.
+ * Macro to define a CGBN Fermat kernel at a given TPI and BITS.
  *
- * TPI (threads per instance): controls how many threads cooperate on one number.
- * - TPI=8: Each warp (32 threads) processes 4 numbers simultaneously.
- *   For 320-bit (10 × 32-bit limbs), 8 threads handle ~1.25 limbs each.
- * - TPI=16: Each warp processes 2 numbers.
- *   For 352-bit (11 × 32-bit limbs), 16 threads handle ~0.7 limbs each.
- *
- * BITS must be a multiple of 32. We use 320 and 384 (next multiple >= 352).
- */
-
-/* 320-bit configuration: 8 threads per instance */
-static const uint32_t CGBN_TPI_320 = 8;
-static const uint32_t CGBN_BITS_320 = 320;
-
-/* 384-bit configuration (for 352-bit numbers): 16 threads per instance */
-static const uint32_t CGBN_TPI_352 = 16;
-static const uint32_t CGBN_BITS_352 = 384;
-
-/* Context type: no error checking for maximum performance */
-typedef cgbn_context_t<CGBN_TPI_320, cgbn_default_parameters_t> context320_t;
-typedef cgbn_env_t<context320_t, CGBN_BITS_320> env320_t;
-
-typedef cgbn_context_t<CGBN_TPI_352, cgbn_default_parameters_t> context352_t;
-typedef cgbn_env_t<context352_t, CGBN_BITS_352> env352_t;
-
-/**
- * CGBN Fermat kernel for 320-bit numbers.
- *
- * Each instance uses TPI=8 threads to cooperatively compute 2^(p-1) mod p.
+ * Each kernel computes 2^(p-1) mod p for a batch of candidate primes.
  * CGBN handles Montgomery form conversion, modular exponentiation, and
  * reduction internally using optimized PTX instructions.
+ *
+ * The extern "C" linkage gives unmangled names for CUDA Driver API lookup
+ * via cuModuleGetFunction().
  */
-__global__ void cgbn_fermat_kernel_320(uint8_t *results,
-                                        const uint32_t *primes,
-                                        uint32_t count) {
-    /* Calculate which instance this thread belongs to */
-    int32_t instance = (blockIdx.x * blockDim.x + threadIdx.x) / CGBN_TPI_320;
-    if (instance >= (int32_t)count) return;
-
-    /* Create CGBN context and environment */
-    context320_t bn_context(cgbn_no_checks);
-    env320_t bn_env(bn_context);
-
-    /* Declare big number variables */
-    env320_t::cgbn_t p, base, exp, result, one;
-
-    /* Load candidate prime from global memory */
-    cgbn_load(bn_env, p, (cgbn_mem_t<CGBN_BITS_320>*)&primes[instance * 10]);
-
-    /* base = 2 */
-    cgbn_set_ui32(bn_env, base, 2);
-
-    /* exp = p - 1 */
-    cgbn_sub_ui32(bn_env, exp, p, 1);
-
-    /* result = 2^(p-1) mod p using CGBN's optimized modular exponentiation */
-    cgbn_modular_power(bn_env, result, base, exp, p);
-
-    /* Check if result == 1 */
-    cgbn_set_ui32(bn_env, one, 1);
-    bool is_prime = cgbn_equals(bn_env, result, one);
-
-    /* Only thread 0 of each instance writes the result */
-    if (threadIdx.x % CGBN_TPI_320 == 0) {
-        results[instance] = is_prime ? 1 : 0;
-    }
+#define DEFINE_CGBN_FERMAT_KERNEL(SUFFIX, TPI, BITS)                           \
+extern "C" __global__ void cgbn_fermat_kernel_##SUFFIX(                        \
+    uint8_t *results, const uint32_t *primes, uint32_t count)                  \
+{                                                                              \
+    int32_t instance = (blockIdx.x * blockDim.x + threadIdx.x) / (TPI);       \
+    if (instance >= (int32_t)count) return;                                    \
+                                                                               \
+    typedef cgbn_context_t<(TPI), cgbn_default_parameters_t> ctx_t;            \
+    typedef cgbn_env_t<ctx_t, (BITS)> env_t;                                   \
+                                                                               \
+    ctx_t bn_context(cgbn_no_checks);                                          \
+    env_t bn_env(bn_context);                                                  \
+                                                                               \
+    typename env_t::cgbn_t p, base, exp, result, one;                          \
+                                                                               \
+    const uint32_t limbs = (BITS) / 32;                                        \
+    cgbn_load(bn_env, p,                                                       \
+              (cgbn_mem_t<(BITS)>*)&primes[instance * limbs]);                  \
+                                                                               \
+    cgbn_set_ui32(bn_env, base, 2);                                            \
+    cgbn_sub_ui32(bn_env, exp, p, 1);                                          \
+    cgbn_modular_power(bn_env, result, base, exp, p);                          \
+                                                                               \
+    cgbn_set_ui32(bn_env, one, 1);                                             \
+    bool is_prime = cgbn_equals(bn_env, result, one);                          \
+                                                                               \
+    if (threadIdx.x % (TPI) == 0) {                                            \
+        results[instance] = is_prime ? 1 : 0;                                  \
+    }                                                                          \
 }
 
-/**
- * CGBN Fermat kernel for 352-bit numbers (using 384-bit CGBN width).
- */
-__global__ void cgbn_fermat_kernel_352(uint8_t *results,
-                                        const uint32_t *primes,
-                                        uint32_t count) {
-    int32_t instance = (blockIdx.x * blockDim.x + threadIdx.x) / CGBN_TPI_352;
-    if (instance >= (int32_t)count) return;
+/* =========================================================================
+ * Pre-fork kernels (high throughput for small numbers)
+ * ========================================================================= */
 
-    context352_t bn_context(cgbn_no_checks);
-    env352_t bn_env(bn_context);
+/* 320-bit: TPI=8, 4 instances per warp. Shift 14-64 (typical pre-fork). */
+DEFINE_CGBN_FERMAT_KERNEL(320, 8, 320)
 
-    env352_t::cgbn_t p, base, exp, result, one;
+/* 384-bit: TPI=16, 2 instances per warp. Covers 352-bit (shift 65-128). */
+DEFINE_CGBN_FERMAT_KERNEL(384, 16, 384)
 
-    /* Load 352-bit number into 384-bit container (upper bits zeroed by CGBN) */
-    cgbn_load(bn_env, p, (cgbn_mem_t<CGBN_BITS_352>*)&primes[instance * 12]);
+/* 512-bit: TPI=16, 2 instances per warp. Full pre-fork range (shift up to 256). */
+DEFINE_CGBN_FERMAT_KERNEL(512, 16, 512)
 
-    cgbn_set_ui32(bn_env, base, 2);
-    cgbn_sub_ui32(bn_env, exp, p, 1);
-    cgbn_modular_power(bn_env, result, base, exp, p);
+/* =========================================================================
+ * Post-fork kernels (TPI=32: one instance per warp, for large numbers)
+ *
+ * Coverage map (shift → total bits → CGBN tier):
+ *   shift  257-768  → bits  513-1024 → tier 1024
+ *   shift  769-1024 → bits 1025-1280 → tier 1280
+ *   shift 1025-1792 → bits 1281-2048 → tier 2048
+ *   shift 1793-3840 → bits 2049-4096 → tier 4096
+ *   shift 3841-7936 → bits 4097-8192 → tier 8192
+ *   shift 7937-8192 → bits 8193-8448 → tier 8448  [mainnet MIN_SHIFT exact]
+ *   shift 8193-12032→ bits 8449-12288→ tier 12288
+ *   shift 12033-16128→bits 12289-16384→tier 16384
+ *   shift 16129-16384→bits 16385-16640→tier 16640 [mainnet MAX_SHIFT exact]
+ * ========================================================================= */
 
-    cgbn_set_ui32(bn_env, one, 1);
-    bool is_prime = cgbn_equals(bn_env, result, one);
+DEFINE_CGBN_FERMAT_KERNEL(1024,  32, 1024)
+DEFINE_CGBN_FERMAT_KERNEL(1280,  32, 1280)
+DEFINE_CGBN_FERMAT_KERNEL(2048,  32, 2048)
+DEFINE_CGBN_FERMAT_KERNEL(4096,  32, 4096)
+DEFINE_CGBN_FERMAT_KERNEL(8192,  32, 8192)
+DEFINE_CGBN_FERMAT_KERNEL(8448,  32, 8448)
+DEFINE_CGBN_FERMAT_KERNEL(12288, 32, 12288)
+DEFINE_CGBN_FERMAT_KERNEL(16384, 32, 16384)
+DEFINE_CGBN_FERMAT_KERNEL(16640, 32, 16640)
 
-    if (threadIdx.x % CGBN_TPI_352 == 0) {
-        results[instance] = is_prime ? 1 : 0;
+/* =========================================================================
+ * Tier selection: round requested bits UP to next supported CGBN kernel.
+ *
+ * Returns the CGBN_BITS tier and the corresponding TPI.
+ * ========================================================================= */
+struct CgbnTier {
+    int bits;
+    int tpi;
+};
+
+static CgbnTier select_tier(int requested_bits) {
+    /* Ascending order — pick first tier >= requested */
+    static const CgbnTier tiers[] = {
+        {  320,  8},
+        {  384, 16},
+        {  512, 16},
+        { 1024, 32},
+        { 1280, 32},
+        { 2048, 32},
+        { 4096, 32},
+        { 8192, 32},
+        { 8448, 32},
+        {12288, 32},
+        {16384, 32},
+        {16640, 32},
+    };
+    static const int n_tiers = sizeof(tiers) / sizeof(tiers[0]);
+
+    for (int i = 0; i < n_tiers; i++) {
+        if (tiers[i].bits >= requested_bits) {
+            return tiers[i];
+        }
     }
+    /* Requested size exceeds all tiers — return largest */
+    return tiers[n_tiers - 1];
 }
 
-/* Host-side wrapper functions */
+/* =========================================================================
+ * Host-side batch dispatcher
+ *
+ * Accepts arbitrary bit widths. Rounds up to nearest supported CGBN tier,
+ * zero-pads input data to the tier's limb count, then dispatches to the
+ * correct kernel instantiation.
+ * ========================================================================= */
 extern "C" {
 
 int cgbn_fermat_batch(uint8_t *h_results,
@@ -133,43 +166,87 @@ int cgbn_fermat_batch(uint8_t *h_results,
                       int bits) {
     if (count == 0) return 0;
 
+    CgbnTier tier = select_tier(bits);
+    int input_limbs = (bits + 31) / 32;
+    int tier_limbs = tier.bits / 32;
+
     uint8_t *d_results;
     uint32_t *d_primes;
 
-    int limbs = (bits <= 320) ? 10 : 12;  /* 352-bit padded to 384 = 12 limbs */
-    size_t primes_size = count * limbs * sizeof(uint32_t);
-    size_t results_size = count * sizeof(uint8_t);
+    size_t primes_size = (size_t)count * tier_limbs * sizeof(uint32_t);
+    size_t results_size = (size_t)count * sizeof(uint8_t);
 
     cudaMalloc(&d_results, results_size);
     cudaMalloc(&d_primes, primes_size);
 
-    /*
-     * For 352-bit: input is 11 limbs but CGBN needs 12 (384-bit aligned).
-     * We allocate padded buffers on host, zero-fill the 12th limb.
-     */
-    if (bits > 320 && limbs == 12) {
-        uint32_t* padded = (uint32_t*)calloc(count * 12, sizeof(uint32_t));
+    /* If input limbs < tier limbs, we need to zero-pad each candidate */
+    if (input_limbs < tier_limbs) {
+        uint32_t* padded = (uint32_t*)calloc((size_t)count * tier_limbs, sizeof(uint32_t));
+        if (!padded) {
+            cudaFree(d_results);
+            cudaFree(d_primes);
+            return -1;
+        }
         for (uint32_t i = 0; i < count; i++) {
-            memcpy(&padded[i * 12], &h_primes[i * 11], 11 * sizeof(uint32_t));
-            padded[i * 12 + 11] = 0;  /* Zero-fill padding limb */
+            memcpy(&padded[i * tier_limbs],
+                   &h_primes[i * input_limbs],
+                   input_limbs * sizeof(uint32_t));
+            /* Remaining limbs already zero from calloc */
         }
         cudaMemcpy(d_primes, padded, primes_size, cudaMemcpyHostToDevice);
         free(padded);
     } else {
+        /* Input already matches tier size — direct copy */
         cudaMemcpy(d_primes, h_primes, primes_size, cudaMemcpyHostToDevice);
     }
 
-    if (bits <= 320) {
-        /* TPI=8: need 8 threads per instance. Block size should be multiple of 32 (warp). */
-        int threads_needed = count * CGBN_TPI_320;
-        int block_size = 128;  /* 128/8 = 16 instances per block */
-        int blocks = (threads_needed + block_size - 1) / block_size;
+    /* Dispatch to the correct kernel.
+     * Block size = 128 threads. Instances per block = 128 / TPI. */
+    int block_size = 128;
+    int threads_needed = count * tier.tpi;
+    int blocks = (threads_needed + block_size - 1) / block_size;
+
+    switch (tier.bits) {
+    case 320:
         cgbn_fermat_kernel_320<<<blocks, block_size>>>(d_results, d_primes, count);
-    } else {
-        int threads_needed = count * CGBN_TPI_352;
-        int block_size = 128;  /* 128/16 = 8 instances per block */
-        int blocks = (threads_needed + block_size - 1) / block_size;
-        cgbn_fermat_kernel_352<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 384:
+        cgbn_fermat_kernel_384<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 512:
+        cgbn_fermat_kernel_512<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 1024:
+        cgbn_fermat_kernel_1024<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 1280:
+        cgbn_fermat_kernel_1280<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 2048:
+        cgbn_fermat_kernel_2048<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 4096:
+        cgbn_fermat_kernel_4096<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 8192:
+        cgbn_fermat_kernel_8192<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 8448:
+        cgbn_fermat_kernel_8448<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 12288:
+        cgbn_fermat_kernel_12288<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 16384:
+        cgbn_fermat_kernel_16384<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 16640:
+        cgbn_fermat_kernel_16640<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    default:
+        cudaFree(d_results);
+        cudaFree(d_primes);
+        return -1;  /* Unsupported tier — should never happen */
     }
 
     cudaMemcpy(h_results, d_results, results_size, cudaMemcpyDeviceToHost);

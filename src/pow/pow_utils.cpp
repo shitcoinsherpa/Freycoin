@@ -26,25 +26,6 @@
 static constexpr mpfr_prec_t MPFR_PRECISION = 256;
 
 PoWUtils::PoWUtils() {
-    // Compute log(150) * 2^48 at init using MPFR for exactness
-    mpfr_t mpfr_150, mpfr_log150, mpfr_scaled;
-    mpfr_init2(mpfr_150, MPFR_PRECISION);
-    mpfr_init2(mpfr_log150, MPFR_PRECISION);
-    mpfr_init2(mpfr_scaled, MPFR_PRECISION);
-
-    mpfr_set_ui(mpfr_150, 150, MPFR_RNDN);
-    mpfr_log(mpfr_log150, mpfr_150, MPFR_RNDN);
-    mpfr_mul_2exp(mpfr_scaled, mpfr_log150, 48, MPFR_RNDN);
-
-    mpz_t mpz_tmp;
-    mpz_init(mpz_tmp);
-    mpfr_get_z(mpz_tmp, mpfr_scaled, MPFR_RNDN);
-    log_150_48_computed = mpz_get_ui(mpz_tmp);
-    mpz_clear(mpz_tmp);
-
-    mpfr_clear(mpfr_150);
-    mpfr_clear(mpfr_log150);
-    mpfr_clear(mpfr_scaled);
 }
 
 PoWUtils::~PoWUtils() {
@@ -221,25 +202,31 @@ void PoWUtils::target_work(std::vector<uint8_t>& n_primes, uint64_t difficulty) 
     mpz_clear(mpz_n_primes);
 }
 
-uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool /*testnet*/) {
+uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan, bool /*testnet*/,
+                                   int64_t target_spacing, uint64_t min_difficulty) {
     // Compute ln(actual_timespan) * 2^48 using MPFR
-    mpfr_t mpfr_actual, mpfr_ln;
-    mpfr_init2(mpfr_actual, MPFR_PRECISION);
+    mpfr_t mpfr_val, mpfr_ln;
+    mpfr_init2(mpfr_val, MPFR_PRECISION);
     mpfr_init2(mpfr_ln, MPFR_PRECISION);
 
-    mpfr_set_ui(mpfr_actual, static_cast<unsigned long>(actual_timespan), MPFR_RNDN);
-    mpfr_log(mpfr_ln, mpfr_actual, MPFR_RNDN);
+    mpfr_set_ui(mpfr_val, static_cast<unsigned long>(actual_timespan), MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_val, MPFR_RNDN);
     mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
 
-    mpz_t mpz_log_actual_z;
-    mpz_init(mpz_log_actual_z);
-    mpfr_get_z(mpz_log_actual_z, mpfr_ln, MPFR_RNDN);
+    mpz_t mpz_tmp;
+    mpz_init(mpz_tmp);
+    mpfr_get_z(mpz_tmp, mpfr_ln, MPFR_RNDN);
+    const uint64_t log_actual = mpz_get_ui64(mpz_tmp);
 
-    const uint64_t log_target = log_150_48_computed;
-    const uint64_t log_actual = mpz_get_ui64(mpz_log_actual_z);
+    // Compute ln(target_spacing) * 2^48 using MPFR
+    mpfr_set_si(mpfr_val, target_spacing, MPFR_RNDN);
+    mpfr_log(mpfr_ln, mpfr_val, MPFR_RNDN);
+    mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
+    mpfr_get_z(mpz_tmp, mpfr_ln, MPFR_RNDN);
+    const uint64_t log_target = mpz_get_ui64(mpz_tmp);
 
-    mpz_clear(mpz_log_actual_z);
-    mpfr_clear(mpfr_actual);
+    mpz_clear(mpz_tmp);
+    mpfr_clear(mpfr_val);
     mpfr_clear(mpfr_ln);
 
     uint64_t next = difficulty;
@@ -259,7 +246,7 @@ uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan
         if (difficulty >= (delta >> shift)) {
             next -= delta >> shift;
         } else {
-            next = MIN_DIFFICULTY;
+            next = min_difficulty;
         }
     }
 
@@ -272,8 +259,8 @@ uint64_t PoWUtils::next_difficulty(uint64_t difficulty, uint64_t actual_timespan
     }
 
     // Enforce minimum
-    if (next < MIN_DIFFICULTY) {
-        next = MIN_DIFFICULTY;
+    if (next < min_difficulty) {
+        next = min_difficulty;
     }
 
     return next;
@@ -351,13 +338,14 @@ double PoWUtils::difficulty_d(mpz_t mpz_start, mpz_t mpz_end) {
     return diff < 0.0 ? 0.0 : diff;
 }
 
-double PoWUtils::next_difficulty_d(double difficulty, uint64_t actual_timespan, bool /*testnet*/) {
-    // Use MPFR for log(150 / actual)
+double PoWUtils::next_difficulty_d(double difficulty, uint64_t actual_timespan, bool /*testnet*/,
+                                   int64_t target_spacing, double min_diff_d) {
+    // Use MPFR for log(target_spacing / actual)
     mpfr_t mpfr_ratio, mpfr_log_ratio;
     mpfr_init2(mpfr_ratio, MPFR_PRECISION);
     mpfr_init2(mpfr_log_ratio, MPFR_PRECISION);
 
-    mpfr_set_d(mpfr_ratio, 150.0 / static_cast<double>(actual_timespan), MPFR_RNDN);
+    mpfr_set_d(mpfr_ratio, static_cast<double>(target_spacing) / static_cast<double>(actual_timespan), MPFR_RNDN);
     mpfr_log(mpfr_log_ratio, mpfr_ratio, MPFR_RNDN);
     double log_ratio = mpfr_get_d(mpfr_log_ratio, MPFR_RNDN);
 
@@ -365,7 +353,7 @@ double PoWUtils::next_difficulty_d(double difficulty, uint64_t actual_timespan, 
     mpfr_clear(mpfr_log_ratio);
 
     uint64_t shift = 8;
-    if (actual_timespan > 150) {
+    if (actual_timespan > static_cast<uint64_t>(target_spacing)) {
         shift = 6;
     }
 
@@ -374,8 +362,7 @@ double PoWUtils::next_difficulty_d(double difficulty, uint64_t actual_timespan, 
     if (next > difficulty + 1.0) next = difficulty + 1.0;
     if (next < difficulty - 1.0) next = difficulty - 1.0;
 
-    double min_diff = static_cast<double>(MIN_DIFFICULTY) / TWO_POW48;
-    if (next < min_diff) next = min_diff;
+    if (next < min_diff_d) next = min_diff_d;
 
     return next;
 }

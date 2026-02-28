@@ -125,7 +125,7 @@ target_compile_definitions(freycoinqt
     QT_USE_QSTRINGBUILDER
 )
 
-# GPU support: OpenCL always available via dynamic loading
+# GPU support: OpenCL and CUDA always available via dynamic loading
 # No compile flags needed — runtime detection handles everything
 target_include_directories(freycoinqt
   PUBLIC

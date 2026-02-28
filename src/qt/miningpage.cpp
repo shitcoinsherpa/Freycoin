@@ -808,10 +808,16 @@ void MiningPage::miningThreadFunc()
         }
     }
 
-    // Clean up submit thread — detach if still in ProcessNewBlock (safe: no `this` capture)
+    // Clean up submit thread — give ProcessNewBlock time to finish before detaching
     if (m_submitThread.joinable()) {
         if (m_submitResult && !m_submitResult->done.load()) {
-            LogPrintf("Mining: Detaching submit thread (still validating block)\n");
+            auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (!m_submitResult->done.load() && std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+        if (m_submitResult && !m_submitResult->done.load()) {
+            LogPrintf("Mining: Detaching submit thread (still validating after 5s timeout)\n");
             m_submitThread.detach();
         } else {
             m_submitThread.join();
@@ -840,17 +846,6 @@ void MiningPage::startMining()
     if (!walletModel) {
         QMessageBox::warning(this, tr("Mining"), tr("Wallet not loaded. Please wait for wallet to initialize."));
         return;
-    }
-
-    // Block mining during initial block download — mining before sync
-    // completes would create a local fork at pre-fork difficulty
-    if (clientModel) {
-        node::NodeContext* ctx = clientModel->node().context();
-        if (ctx && ctx->chainman && ctx->chainman->IsInitialBlockDownload()) {
-            QMessageBox::warning(this, tr("Mining"),
-                tr("Cannot mine while syncing. Please wait for the blockchain to fully synchronize before starting mining."));
-            return;
-        }
     }
 
     // Get thread count

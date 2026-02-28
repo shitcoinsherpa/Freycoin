@@ -10,6 +10,7 @@
 # - SIMD-accelerated presieve (AVX-512, AVX2, SSE2)
 # - BPSW primality testing
 # - GPU acceleration via CUDA/OpenCL (optional)
+# - gwnum FFT-accelerated nextprime (x86-64, bundled)
 
 add_library(freycoin_pow STATIC EXCLUDE_FROM_ALL
     pow_common.h
@@ -18,6 +19,8 @@ add_library(freycoin_pow STATIC EXCLUDE_FROM_ALL
     pow_processor.h
     pow.h
     pow.cpp
+    fast_nextprime.h
+    fast_nextprime.cpp
     wheel_tables.h
     wheel_tables.cpp
     simd_presieve.h
@@ -44,6 +47,19 @@ target_link_libraries(freycoin_pow
     PUBLIC
         bitcoin_crypto
 )
+
+# Bundled gwnum FFT library (accelerates nextprime by ~2.5x at 12000 bits).
+# Built from src/gwnum/ — x86-64 only, skipped on other architectures.
+# When gwnum is not available, fast_nextprime falls back to GMP mpz_nextprime.
+if(TARGET gwnum)
+    target_compile_definitions(freycoin_pow PUBLIC HAVE_GWNUM=1)
+    # Only add gwnum include dir to fast_nextprime.cpp to avoid gwnum's cpuid.h
+    # shadowing the GCC <cpuid.h> intrinsics header needed by simd_presieve/avx512.
+    set_source_files_properties(fast_nextprime.cpp PROPERTIES
+        COMPILE_FLAGS "-I${PROJECT_SOURCE_DIR}/src/gwnum"
+    )
+    target_link_libraries(freycoin_pow PRIVATE gwnum pthread)
+endif()
 
 # GPU support flags (set by gpu/CMakeLists.txt)
 # OpenCL and CUDA: always available via dynamic loading (no compile flags needed)

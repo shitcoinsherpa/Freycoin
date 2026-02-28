@@ -44,7 +44,7 @@ void opencl_fermat_cleanup(void);
  * @param h_results Output array: 1 = probably prime, 0 = composite
  * @param h_primes  Input array of candidates (limb-packed format)
  * @param count     Number of candidates to test
- * @param bits      Bit size: 320 or 352
+ * @param bits      Bit size (320, 352, or arbitrary for generic kernel)
  * @return 0 on success, -1 on error
  */
 int opencl_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,

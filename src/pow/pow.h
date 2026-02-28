@@ -123,7 +123,7 @@ public:
     uint64_t get_target() const { return target_difficulty; }
 
     // Setters
-    void set_shift(uint16_t s) { shift = s; }
+    void set_shift(uint16_t s) { shift = s; m_endpoints_cached = false; }
     void set_adder(mpz_t mpz_adder);
     void set_adder(const std::vector<uint8_t>& adder);
 
@@ -136,8 +136,15 @@ private:
 
     PoWUtils* utils;          // Utility functions
 
+    // Cached endpoints — avoids redundant fast_nextprime calls in to_string()
+    bool m_endpoints_cached{false};
+    bool m_endpoints_valid{false};
+    mpz_t m_cached_start;
+    mpz_t m_cached_end;
+
     /**
      * Calculate start and end primes for this PoW.
+     * Results are cached after first successful computation.
      * @param mpz_start Output: start prime
      * @param mpz_end Output: end prime
      * @return true if valid prime gap found

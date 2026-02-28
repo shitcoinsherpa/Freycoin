@@ -26,11 +26,12 @@ class uint256;
  * 5. Compute difficulty with randomness: merit + rand(start, p2) % (2/ln(start))
  * 6. Accept if achieved difficulty >= nDifficulty
  *
- * @param[in] block   The block header to validate
- * @param[in] params  Consensus parameters
+ * @param[in] block    The block header to validate
+ * @param[in] nHeight  Block height (-1 for context-free check: accepts both pre/post-fork ranges)
+ * @param[in] params   Consensus parameters
  * @return true if the proof-of-work is valid
  */
-bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params);
+bool CheckProofOfWork(const CBlockHeader& block, int nHeight, const Consensus::Params& params);
 
 /**
  * Calculate the next required difficulty for the block following pindexLast.
@@ -39,7 +40,7 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
  *   next = current + log(target_spacing / actual_spacing)
  *
  * With damping: increases at 1/256 rate, decreases at 1/64 rate.
- * Clamped to ±1 per block to prevent instability.
+ * Clamped to +/-1 per block to prevent instability.
  *
  * @param[in] pindexLast  The last block in the chain
  * @param[in] params      Consensus parameters
@@ -52,27 +53,18 @@ uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Par
  *
  * @param[in] nDifficulty     Previous block's difficulty
  * @param[in] nActualTimespan Time between prev and prev-prev blocks
+ * @param[in] nHeight         Height of the block being computed
  * @param[in] params          Consensus parameters
  * @return The required nDifficulty for the next block
  */
-uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, const Consensus::Params& params);
+uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, int nHeight, const Consensus::Params& params);
 
-/**
- * Minimum difficulty constant (merit ~16).
- * Corresponds to gaps achievable by anyone with basic hardware.
- */
+/** Pre-fork constants (blocks before nBigGapsForkHeight) */
 constexpr uint64_t MIN_DIFFICULTY = 16ULL << 48;
-
-/**
- * Maximum shift for starting prime construction.
- * Limits starting prime size to hash * 2^256, preventing DoS via huge numbers.
- */
 constexpr uint16_t MAX_SHIFT = 256;
-
-/**
- * Minimum shift for starting prime construction.
- * Ensures starting primes are large enough for meaningful gaps.
- */
 constexpr uint16_t MIN_SHIFT = 14;
+
+/** Post-fork maximum shift (absolute ceiling for all fork configurations) */
+constexpr uint16_t MAX_SHIFT_POST_FORK = 16384;
 
 #endif // BITCOIN_POW_H

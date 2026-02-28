@@ -74,7 +74,7 @@ std::string CopyrightHolders(const std::string& strPrefix)
 {
     std::string strCopyrightHolders = strPrefix + " 2009-" + std::to_string(COPYRIGHT_YEAR) + " The Bitcoin Core developers";
     strCopyrightHolders += "\n" + strPrefix + " 2013-" + std::to_string(COPYRIGHT_YEAR) + " The Riecoin developers";
-    strCopyrightHolders += "\n" + strPrefix + " 2025-" + std::to_string(COPYRIGHT_YEAR) + " The Freycoin developers";
+    strCopyrightHolders += "\n" + strPrefix + " " + std::to_string(COPYRIGHT_YEAR) + " The Freycoin developers";
     return strCopyrightHolders;
 }
 

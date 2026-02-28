@@ -33,6 +33,7 @@ struct OCLDeviceState {
     cl_program program;
     cl_kernel kernel_320;
     cl_kernel kernel_352;
+    cl_kernel kernel_coop;
     int initialized;
     char device_name[256];
     size_t device_memory;
@@ -179,6 +180,16 @@ static int init_single_device(int device_id) {
         return -1;
     }
 
+    dev->kernel_coop = ocl_clCreateKernel(dev->program, "fermat_kernel_coop", &err);
+    if (err != CL_SUCCESS) {
+        ocl_clReleaseKernel(dev->kernel_352);
+        ocl_clReleaseKernel(dev->kernel_320);
+        ocl_clReleaseProgram(dev->program);
+        ocl_clReleaseCommandQueue(dev->queue);
+        ocl_clReleaseContext(dev->context);
+        return -1;
+    }
+
     dev->initialized = 1;
     return 0;
 }
@@ -190,6 +201,7 @@ static void cleanup_single_device(int device_id) {
 
     if (dev->kernel_320) ocl_clReleaseKernel(dev->kernel_320);
     if (dev->kernel_352) ocl_clReleaseKernel(dev->kernel_352);
+    if (dev->kernel_coop) ocl_clReleaseKernel(dev->kernel_coop);
     if (dev->program) ocl_clReleaseProgram(dev->program);
     if (dev->queue) ocl_clReleaseCommandQueue(dev->queue);
     if (dev->context) ocl_clReleaseContext(dev->context);
@@ -278,9 +290,9 @@ int opencl_fermat_batch_device(int device_id, uint8_t *h_results,
     if (count == 0) return 0;
 
     cl_int err;
-    int limbs = (bits <= 320) ? 10 : 11;
-    size_t primes_size = count * limbs * sizeof(uint32_t);
-    size_t results_size = count * sizeof(uint8_t);
+    int limbs = (bits + 31) / 32;
+    size_t primes_size = (size_t)count * limbs * sizeof(uint32_t);
+    size_t results_size = (size_t)count * sizeof(uint8_t);
 
     /* Create buffers */
     cl_mem d_primes = ocl_clCreateBuffer(dev->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -294,18 +306,41 @@ int opencl_fermat_batch_device(int device_id, uint8_t *h_results,
         return -1;
     }
 
-    /* Select kernel */
-    cl_kernel kernel = (bits <= 320) ? dev->kernel_320 : dev->kernel_352;
+    /* Pre-fork fast path: use fixed-size kernels for 320/352-bit numbers */
+    if (bits <= 320) {
+        ocl_clSetKernelArg(dev->kernel_320, 0, sizeof(cl_mem), &d_results);
+        ocl_clSetKernelArg(dev->kernel_320, 1, sizeof(cl_mem), &d_primes);
+        ocl_clSetKernelArg(dev->kernel_320, 2, sizeof(uint32_t), &count);
 
-    /* Set kernel arguments */
-    ocl_clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_results);
-    ocl_clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_primes);
-    ocl_clSetKernelArg(kernel, 2, sizeof(uint32_t), &count);
+        size_t global_size = ((count + 63) / 64) * 64;
+        size_t local_size = 64;
+        err = ocl_clEnqueueNDRangeKernel(dev->queue, dev->kernel_320, 1, nullptr,
+                                          &global_size, &local_size, 0, nullptr, nullptr);
+    } else if (bits <= 352) {
+        ocl_clSetKernelArg(dev->kernel_352, 0, sizeof(cl_mem), &d_results);
+        ocl_clSetKernelArg(dev->kernel_352, 1, sizeof(cl_mem), &d_primes);
+        ocl_clSetKernelArg(dev->kernel_352, 2, sizeof(uint32_t), &count);
 
-    /* Execute kernel */
-    size_t global_size = ((count + 63) / 64) * 64;
-    size_t local_size = 64;
-    err = ocl_clEnqueueNDRangeKernel(dev->queue, kernel, 1, nullptr, &global_size, &local_size, 0, nullptr, nullptr);
+        size_t global_size = ((count + 63) / 64) * 64;
+        size_t local_size = 64;
+        err = ocl_clEnqueueNDRangeKernel(dev->queue, dev->kernel_352, 1, nullptr,
+                                          &global_size, &local_size, 0, nullptr, nullptr);
+    } else {
+        /* Post-fork path: cooperative kernel — 32 threads per candidate.
+         * No workspace buffer needed (uses local memory + private registers).
+         * Each work group of COOP_TPI=32 threads processes one candidate. */
+        uint32_t limbs_u32 = (uint32_t)limbs;
+        ocl_clSetKernelArg(dev->kernel_coop, 0, sizeof(cl_mem), &d_results);
+        ocl_clSetKernelArg(dev->kernel_coop, 1, sizeof(cl_mem), &d_primes);
+        ocl_clSetKernelArg(dev->kernel_coop, 2, sizeof(uint32_t), &count);
+        ocl_clSetKernelArg(dev->kernel_coop, 3, sizeof(uint32_t), &limbs_u32);
+
+        size_t local_size = 32;  /* COOP_TPI = 32 threads per candidate */
+        size_t global_size = (size_t)count * local_size;
+        err = ocl_clEnqueueNDRangeKernel(dev->queue, dev->kernel_coop, 1, nullptr,
+                                          &global_size, &local_size, 0, nullptr, nullptr);
+    }
+
     if (err != CL_SUCCESS) {
         ocl_clReleaseMemObject(d_results);
         ocl_clReleaseMemObject(d_primes);

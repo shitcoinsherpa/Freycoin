@@ -65,7 +65,7 @@ FUZZ_TARGET(pow, .init = initialize_pow)
         {
             (void)GetBlockProof(current_block);
             const int64_t timespan = fuzzed_data_provider.ConsumeIntegralInRange<int64_t>(0, std::numeric_limits<int64_t>::max());
-            (void)CalculateNextWorkRequired(current_block.nDifficulty, timespan, consensus_params);
+            (void)CalculateNextWorkRequired(current_block.nDifficulty, timespan, current_block.nHeight, consensus_params);
             if (current_block.nHeight != std::numeric_limits<int>::max()) {
                 (void)GetNextWorkRequired(&current_block, consensus_params);
             }
@@ -82,7 +82,7 @@ FUZZ_TARGET(pow, .init = initialize_pow)
         {
             // CheckProofOfWork requires a complete block header
             CBlockHeader header = current_block.GetBlockHeader();
-            (void)CheckProofOfWork(header, consensus_params);
+            (void)CheckProofOfWork(header, current_block.nHeight, consensus_params);
         }
     }
 }

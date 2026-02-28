@@ -17,8 +17,9 @@
 
 /CMakeUserPresets.json
 
-# Previous releases
+# Previous releases and staging
 /releases
+/release-staging
 
 # cargo default target dir
 target/

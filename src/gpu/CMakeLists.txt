@@ -7,13 +7,19 @@
 # OpenCL is loaded dynamically at runtime — no SDK needed at build time.
 # Works for all GPU vendors (NVIDIA, AMD, Intel).
 
-# Create GPU library — OpenCL only (dynamic loading)
+# Create GPU library — OpenCL + CUDA Driver API (both dynamically loaded)
+# No SDK required at build time for either path.
 add_library(freycoin_gpu STATIC EXCLUDE_FROM_ALL
     opencl_loader.h
     opencl_loader.cpp
     opencl_fermat.h
     opencl_fermat.cpp
     fermat_cl_source.h
+    cuda_loader.h
+    cuda_loader.cpp
+    cuda_fermat.h
+    cuda_fermat_driver.cpp
+    cgbn_fermat.h
 )
 
 # Platform-specific dynamic linking support

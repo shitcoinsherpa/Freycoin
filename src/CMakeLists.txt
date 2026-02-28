@@ -56,6 +56,7 @@ add_dependencies(freycoin_clientversion generate_build_info)
 
 add_subdirectory(crypto)
 add_subdirectory(util)
+add_subdirectory(gwnum)
 add_subdirectory(gpu)
 add_subdirectory(pow)
 if(ENABLE_IPC)
@@ -146,6 +147,7 @@ target_link_libraries(freycoin_common
     core_interface
     freycoin_consensus
     freycoin_util
+    freycoin_pow
     univalue
     secp256k1
     Boost::headers

@@ -9,6 +9,8 @@
 
 #include <chain.h>
 #include <crypto/sha256.h>
+#include <pow/fast_nextprime.h>
+#include <pow/pow_common.h>
 #include <primitives/block.h>
 #include <uint256.h>
 #include <util/check.h>
@@ -16,12 +18,6 @@
 #include <gmp.h>
 #include <mpfr.h>
 #include <cstring>
-
-/**
- * 2^48 - fixed-point precision for difficulty/merit calculations.
- * 1.0 merit = 0x0001_0000_0000_0000
- */
-static constexpr uint64_t TWO_POW48 = 1ULL << 48;
 
 /**
  * MPFR precision for all computations (256 bits = ~77 decimal digits).
@@ -58,25 +54,6 @@ static void mpfr_ln_fixed(mpz_t result, const mpz_t src, uint32_t precision)
 }
 
 /**
- * Extract a uint64_t from an mpz_t, handling both 32-bit and 64-bit platforms.
- */
-static uint64_t mpz_get_uint64(const mpz_t value)
-{
-    if (mpz_fits_ulong_p(value)) {
-        return mpz_get_ui(value);
-    }
-    if (mpz_sizeinbase(value, 2) <= 64) {
-        mpz_t high;
-        mpz_init(high);
-        mpz_fdiv_q_2exp(high, value, 32);
-        uint64_t result = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(value);
-        mpz_clear(high);
-        return result;
-    }
-    return 0;
-}
-
-/**
  * Calculate merit of a prime gap.
  * merit = gap_size / ln(start), returned as fixed-point * 2^48.
  *
@@ -100,7 +77,7 @@ static uint64_t CalculateMerit(const mpz_t start, const mpz_t end)
     mpz_mul_2exp(merit, gap, 96);
     mpz_fdiv_q(merit, merit, ln_start);
 
-    uint64_t result = mpz_get_uint64(merit);
+    uint64_t result = mpz_get_ui64(merit);
 
     mpz_clear(gap);
     mpz_clear(ln_start);
@@ -163,7 +140,7 @@ static uint64_t CalculateDifficulty(const mpz_t start, const mpz_t end)
     mpz_mul_2exp(min_gap_merit, min_gap_merit, 96);
     mpz_fdiv_q(min_gap_merit, min_gap_merit, ln_start);
 
-    uint64_t min_gap_distance_merit = mpz_get_uint64(min_gap_merit);
+    uint64_t min_gap_distance_merit = mpz_get_ui64(min_gap_merit);
     if (min_gap_distance_merit == 0) min_gap_distance_merit = 1;
 
     mpz_clear(ln_start);
@@ -179,26 +156,44 @@ static uint64_t CalculateDifficulty(const mpz_t start, const mpz_t end)
  * Check whether a block satisfies the prime gap proof-of-work requirement.
  *
  * Algorithm:
- * 1. Validate nShift is in [MIN_SHIFT, MAX_SHIFT]
- * 2. Validate nDifficulty >= minimum
+ * 1. Validate nShift is in [MIN_SHIFT, MAX_SHIFT] (fork-aware)
+ * 2. Validate nDifficulty >= minimum (fork-aware)
  * 3. Construct start = GetHash() * 2^nShift + nAdd
  * 4. Verify start is prime (BPSW via GMP, 25 Miller-Rabin rounds)
  * 5. Find next prime after start
  * 6. Calculate achieved difficulty = f(merit, random)
  * 7. Accept if achieved >= required
+ *
+ * When nHeight == -1 (context-free), accepts the union of pre/post-fork
+ * ranges. Precise fork enforcement happens in contextual checks.
  */
-bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params)
+bool CheckProofOfWork(const CBlockHeader& block, int nHeight, const Consensus::Params& params)
 {
+    // Determine shift and difficulty bounds based on fork state
+    uint16_t minShift, maxShift;
+    uint64_t diffMin;
+
+    if (nHeight < 0) {
+        // Context-free: accept union of both pre-fork and post-fork ranges
+        minShift = MIN_SHIFT;
+        maxShift = std::max(MAX_SHIFT, params.nMaxShiftPostFork);
+        diffMin = std::min(params.nDifficultyMin, params.nDifficultyMinPostFork);
+    } else {
+        minShift = params.GetMinShift(nHeight);
+        maxShift = params.GetMaxShift(nHeight);
+        diffMin = params.GetDifficultyMin(nHeight);
+    }
+
     // Validate shift range
-    if (block.nShift < MIN_SHIFT) {
+    if (block.nShift < minShift) {
         return false;
     }
-    if (block.nShift > MAX_SHIFT) {
+    if (block.nShift > maxShift) {
         return false;
     }
 
     // Validate difficulty meets minimum
-    if (block.nDifficulty < params.nDifficultyMin) {
+    if (block.nDifficulty < diffMin) {
         return false;
     }
 
@@ -247,10 +242,10 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
         return false;
     }
 
-    // Find next prime after start
+    // Find next prime after start (gwnum-accelerated when available)
     mpz_t mpz_end;
     mpz_init(mpz_end);
-    mpz_nextprime(mpz_end, mpz_start);
+    fast_nextprime(mpz_end, mpz_start);
 
     // Calculate achieved difficulty
     uint64_t achieved = CalculateDifficulty(mpz_start, mpz_end);
@@ -274,15 +269,27 @@ bool CheckProofOfWork(const CBlockHeader& block, const Consensus::Params& params
  *
  * Bounds:
  *   - Maximum change: +/-1.0 merit per block
- *   - Minimum: params.nDifficultyMin
+ *   - Minimum: height-aware nDifficultyMin
  */
 uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
 
+    int nNextHeight = pindexLast->nHeight + 1;
+
     // Genesis or first block: use current difficulty
     if (pindexLast->nHeight == 0) {
         return pindexLast->nDifficulty;
+    }
+
+    // Difficulty reset at Big Gaps fork height
+    if (nNextHeight == params.nBigGapsForkHeight) {
+        return params.nDifficultyMinPostFork;
+    }
+
+    // Difficulty reset at shift upgrade fork height (stage 2)
+    if (nNextHeight == params.nShiftUpgradeForkHeight && params.nShiftUpgradeForkHeight != params.nBigGapsForkHeight) {
+        return params.nDifficultyMinPostFork;
     }
 
     // No retargeting in regtest
@@ -299,7 +306,7 @@ uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Par
     // Actual timespan between last two blocks
     int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexPrev->GetBlockTime();
 
-    return CalculateNextWorkRequired(pindexLast->nDifficulty, nActualTimespan, params);
+    return CalculateNextWorkRequired(pindexLast->nDifficulty, nActualTimespan, nNextHeight, params);
 }
 
 /**
@@ -308,16 +315,21 @@ uint64_t GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Par
  * Formula: next = current + log(target/actual) / damping
  *
  * All logarithms computed via MPFR at 256-bit precision.
+ * Target spacing is fork-aware (150s pre-fork, configurable post-fork).
  */
-uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, const Consensus::Params& params)
+uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan, int nHeight, const Consensus::Params& params)
 {
+    // Use height-aware target spacing
+    int64_t nTargetSpacing = params.GetTargetSpacing(nHeight);
+    uint64_t nDiffMin = params.GetDifficultyMin(nHeight);
+
     // Clamp extreme timespans
     if (nActualTimespan < 1) {
         nActualTimespan = 1;
     }
-    // Max 12x target (30 minutes for 150s target)
-    if (nActualTimespan > 12 * params.nPowTargetSpacing) {
-        nActualTimespan = 12 * params.nPowTargetSpacing;
+    // Max 12x target
+    if (nActualTimespan > 12 * nTargetSpacing) {
+        nActualTimespan = 12 * nTargetSpacing;
     }
 
     // Compute ln(actual_timespan) * 2^48 using MPFR
@@ -332,18 +344,18 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
     mpz_t mpz_log_actual_z;
     mpz_init(mpz_log_actual_z);
     mpfr_get_z(mpz_log_actual_z, mpfr_ln, MPFR_RNDN);
-    uint64_t log_actual = mpz_get_uint64(mpz_log_actual_z);
+    uint64_t log_actual = mpz_get_ui64(mpz_log_actual_z);
     mpz_clear(mpz_log_actual_z);
 
-    // Compute ln(150) * 2^48 using MPFR (target spacing)
-    mpfr_set_ui(mpfr_actual, 150, MPFR_RNDN);
+    // Compute ln(target_spacing) * 2^48 using MPFR
+    mpfr_set_si(mpfr_actual, nTargetSpacing, MPFR_RNDN);
     mpfr_log(mpfr_ln, mpfr_actual, MPFR_RNDN);
     mpfr_mul_2exp(mpfr_ln, mpfr_ln, 48, MPFR_RNDN);
 
     mpz_t mpz_log_target_z;
     mpz_init(mpz_log_target_z);
     mpfr_get_z(mpz_log_target_z, mpfr_ln, MPFR_RNDN);
-    uint64_t log_target = mpz_get_uint64(mpz_log_target_z);
+    uint64_t log_target = mpz_get_ui64(mpz_log_target_z);
     mpz_clear(mpz_log_target_z);
 
     mpfr_clear(mpfr_actual);
@@ -363,7 +375,7 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
         if (nDifficulty >= (delta >> shift)) {
             next -= delta >> shift;
         } else {
-            next = params.nDifficultyMin;
+            next = nDiffMin;
         }
     }
 
@@ -376,8 +388,8 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
     }
 
     // Enforce minimum
-    if (next < params.nDifficultyMin) {
-        next = params.nDifficultyMin;
+    if (next < nDiffMin) {
+        next = nDiffMin;
     }
 
     return next;

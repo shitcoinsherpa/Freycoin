@@ -10,6 +10,7 @@
  */
 
 #include <pow/pow.h>
+#include <pow/fast_nextprime.h>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -19,6 +20,8 @@ PoW::PoW(mpz_t hash, uint16_t shift, mpz_t adder, uint64_t difficulty, uint32_t 
     : nonce(nonce), shift(shift), target_difficulty(difficulty) {
     mpz_init_set(mpz_hash, hash);
     mpz_init_set(mpz_adder, adder);
+    mpz_init(m_cached_start);
+    mpz_init(m_cached_end);
     utils = new PoWUtils();
 }
 
@@ -27,6 +30,8 @@ PoW::PoW(const std::vector<uint8_t>& hash, uint16_t shift,
     : nonce(nonce), shift(shift), target_difficulty(difficulty) {
     mpz_init(mpz_hash);
     mpz_init(mpz_adder);
+    mpz_init(m_cached_start);
+    mpz_init(m_cached_end);
 
     if (!hash.empty()) {
         ary_to_mpz(mpz_hash, hash.data(), hash.size());
@@ -41,24 +46,41 @@ PoW::PoW(const std::vector<uint8_t>& hash, uint16_t shift,
 PoW::~PoW() {
     mpz_clear(mpz_hash);
     mpz_clear(mpz_adder);
+    mpz_clear(m_cached_start);
+    mpz_clear(m_cached_end);
     delete utils;
 }
 
 bool PoW::get_end_points(mpz_t mpz_start, mpz_t mpz_end) {
-    // Validate shift range
-    if (shift < MIN_SHIFT || shift > MAX_SHIFT) {
+    // Return cached result if available (avoids redundant fast_nextprime calls)
+    if (m_endpoints_cached) {
+        if (m_endpoints_valid) {
+            mpz_set(mpz_start, m_cached_start);
+            mpz_set(mpz_end, m_cached_end);
+        }
+        return m_endpoints_valid;
+    }
+
+    // Validate shift range — accept both pre-fork and post-fork ranges
+    if (shift < MIN_SHIFT || shift > MAX_SHIFT_POST_FORK) {
+        m_endpoints_cached = true;
+        m_endpoints_valid = false;
         return false;
     }
 
     // Verify hash has minimum entropy (SHA256 can have leading zeros)
     size_t hash_bits = mpz_sizeinbase(mpz_hash, 2);
     if (hash_bits < 200) {  // Match CheckProofOfWork minimum
+        m_endpoints_cached = true;
+        m_endpoints_valid = false;
         return false;
     }
 
     // Verify adder < 2^shift
     size_t adder_bits = mpz_sizeinbase(mpz_adder, 2);
     if (adder_bits > shift) {
+        m_endpoints_cached = true;
+        m_endpoints_valid = false;
         return false;
     }
 
@@ -69,12 +91,19 @@ bool PoW::get_end_points(mpz_t mpz_start, mpz_t mpz_end) {
 
     // Verify start is prime (BPSW + 25 Miller-Rabin rounds)
     if (mpz_probab_prime_p(mpz_start, 25) == 0) {
+        m_endpoints_cached = true;
+        m_endpoints_valid = false;
         return false;
     }
 
-    // Find next prime
-    mpz_nextprime(mpz_end, mpz_start);
+    // Find next prime (gwnum-accelerated when available)
+    fast_nextprime(mpz_end, mpz_start);
 
+    // Cache the result
+    mpz_set(m_cached_start, mpz_start);
+    mpz_set(m_cached_end, mpz_end);
+    m_endpoints_cached = true;
+    m_endpoints_valid = true;
     return true;
 }
 
@@ -176,6 +205,7 @@ void PoW::get_adder(std::vector<uint8_t>& result) {
 
 void PoW::set_adder(mpz_t adder) {
     mpz_set(mpz_adder, adder);
+    m_endpoints_cached = false;
 }
 
 void PoW::set_adder(const std::vector<uint8_t>& adder) {
@@ -184,6 +214,7 @@ void PoW::set_adder(const std::vector<uint8_t>& adder) {
     } else {
         mpz_set_ui(mpz_adder, 0);
     }
+    m_endpoints_cached = false;
 }
 
 std::string PoW::to_string() {

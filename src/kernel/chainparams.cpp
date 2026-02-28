@@ -94,6 +94,17 @@ public:
         consensus.nPowTargetSpacing = 150; // 2.5 minutes
         consensus.fPowNoRetargeting = false;
 
+        // Big Gaps hard fork — shift 12000 (3690-digit primes) for record-worthy gaps
+        consensus.nBigGapsForkHeight = 5500;
+        consensus.nMinShiftPostFork = 12000;
+        consensus.nMaxShiftPostFork = 16384;
+        consensus.nDifficultyMinPostFork = 2ULL << 48;   // Merit 2
+        consensus.nPowTargetSpacingPostFork = 600;        // 10 minutes
+        consensus.nSubsidyHalvingIntervalPostFork = 210000;
+        // Stage 2 same as stage 1 on mainnet (single-stage fork)
+        consensus.nShiftUpgradeForkHeight = 5500;
+        consensus.nMinShiftPostUpgrade = 12000;
+
         // BIP9 deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -172,6 +183,17 @@ public:
         consensus.nDifficultyMin = 1ULL << 48;
         consensus.nPowTargetSpacing = 150; // 2.5 minutes
         consensus.fPowNoRetargeting = false;
+
+        // Big Gaps hard fork stage 1 — shift 1024 (385-digit primes)
+        consensus.nBigGapsForkHeight = 4000;
+        consensus.nMinShiftPostFork = 1024;
+        consensus.nMaxShiftPostFork = 16384;
+        consensus.nDifficultyMinPostFork = 1ULL << 48;   // Merit 1
+        consensus.nPowTargetSpacingPostFork = 600;        // 10 minutes
+        consensus.nSubsidyHalvingIntervalPostFork = 210000;
+        // Stage 2: shift upgrade to 12000 (3690-digit primes) for record-worthy gaps
+        consensus.nShiftUpgradeForkHeight = 4700;
+        consensus.nMinShiftPostUpgrade = 12000;
 
         // BIP9 deployments
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
@@ -254,6 +276,14 @@ public:
         consensus.nDifficultyMin = 1ULL << 48;
         consensus.nPowTargetSpacing = 150;
         consensus.fPowNoRetargeting = true; // No difficulty adjustment
+
+        // Big Gaps fork always active on regtest (from genesis)
+        consensus.nBigGapsForkHeight = 0;
+        consensus.nMinShiftPostFork = 14;     // Keep low for fast testing
+        consensus.nMaxShiftPostFork = 16384;
+        consensus.nDifficultyMinPostFork = 1ULL << 48;
+        consensus.nPowTargetSpacingPostFork = 600;
+        consensus.nSubsidyHalvingIntervalPostFork = 150;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;

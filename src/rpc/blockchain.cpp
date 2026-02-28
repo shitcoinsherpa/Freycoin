@@ -15,6 +15,7 @@
 #include <common/args.h>
 #include <consensus/amount.h>
 #include <consensus/params.h>
+#include <pow/fast_nextprime.h>
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <deploymentinfo.h>
@@ -33,6 +34,7 @@
 #include <node/transaction.h>
 #include <node/utxo_snapshot.h>
 #include <pow.h>
+#include <pow/pow_common.h>
 #include <node/warnings.h>
 #include <primitives/transaction.h>
 #include <rpc/server.h>
@@ -123,9 +125,9 @@ double ComputeRealMerit(const CBlockIndex& blockindex)
     mpz_mul_2exp(mpz_start, mpz_hash, blockindex.nShift);
     mpz_import(mpz_adder, 32, -1, 1, -1, 0, blockindex.nAdd.data());
     mpz_add(mpz_start, mpz_start, mpz_adder);
-    mpz_nextprime(mpz_end, mpz_start);
+    fast_nextprime(mpz_end, mpz_start);
     mpz_sub(mpz_gap, mpz_end, mpz_start);
-    uint64_t gap_size = mpz_get_ui(mpz_gap);
+    uint64_t gap_size = mpz_get_ui64(mpz_gap);
 
     double merit = 0.0;
     if (gap_size > 0 && mpz_sgn(mpz_start) > 0) {
@@ -224,11 +226,11 @@ static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
     mpz_add(mpz_start, mpz_start, mpz_adder);
 
     // Find next prime after start
-    mpz_nextprime(mpz_end, mpz_start);
+    fast_nextprime(mpz_end, mpz_start);
 
     // Compute gap = end - start
     mpz_sub(mpz_gap, mpz_end, mpz_start);
-    uint64_t gap_size = mpz_get_ui(mpz_gap);
+    uint64_t gap_size = mpz_get_ui64(mpz_gap);
 
     // Compute real merit = gap / ln(start_prime) using MPFR for accuracy
     double real_merit = 0.0;
@@ -1440,9 +1442,9 @@ static RPCHelpMan getresult()
         mpz_mul_2exp(mpz_start, mpz_hash, pblockindex->nShift);
         mpz_import(mpz_adder, 32, -1, 1, -1, 0, pblockindex->nAdd.data());
         mpz_add(mpz_start, mpz_start, mpz_adder);
-        mpz_nextprime(mpz_end, mpz_start);
+        fast_nextprime(mpz_end, mpz_start);
         mpz_sub(mpz_gap, mpz_end, mpz_start);
-        gap_size = mpz_get_ui(mpz_gap);
+        gap_size = mpz_get_ui64(mpz_gap);
         mpz_clear(mpz_hash); mpz_clear(mpz_start); mpz_clear(mpz_adder);
         mpz_clear(mpz_end); mpz_clear(mpz_gap);
     }

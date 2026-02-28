@@ -171,8 +171,17 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    // Set up mining parameters — shift computed to allow full sieve range
-    const uint16_t shift = MiningEngine::compute_shift(5);  // default intensity
+    // Set up mining parameters — shift computed to allow full sieve range, fork-aware
+    uint16_t forkMinShift;
+    {
+        LOCK(cs_main);
+        const CBlockIndex* pindexPrev = chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock);
+        if (!pindexPrev) {
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot find previous block index for " + block.hashPrevBlock.GetHex());
+        }
+        forkMinShift = chainman.GetConsensus().GetMinShift(pindexPrev->nHeight + 1);
+    }
+    const uint16_t shift = MiningEngine::compute_shift(5, forkMinShift);  // default intensity
     block.nShift = shift;
     block.nAdd.SetNull();
     block.nReserved = 0;
@@ -257,11 +266,21 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
               block.nNonce, block.nShift, block.nAdd.GetHex());
 
     // Verify the proof is valid before submitting
-    if (!CheckProofOfWork(block, chainman.GetConsensus())) {
+    // Determine block height from the previous block index
+    int nBlockHeight = -1;
+    {
+        LOCK(cs_main);
+        const CBlockIndex* pindexPrev = chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock);
+        if (pindexPrev) nBlockHeight = pindexPrev->nHeight + 1;
+    }
+    if (!CheckProofOfWork(block, nBlockHeight, chainman.GetConsensus())) {
         LogPrintf("GenerateBlock: ERROR - mined block failed CheckProofOfWork!\n");
         return false;
     }
 
+    // PoW verified above — mark as checked so ProcessNewBlock skips the
+    // expensive re-check (fast_nextprime ~31s) under cs_main.
+    block.fChecked = true;
     block_out = std::make_shared<const CBlock>(std::move(block));
 
     if (!process_new_block) return true;

@@ -22,6 +22,7 @@
 
 #include <boost/test/unit_test.hpp>
 #include <gmp.h>
+#include <pow/fast_nextprime.h>
 #include <cmath>
 #include <limits>
 
@@ -145,7 +146,7 @@ BOOST_AUTO_TEST_CASE(merit_large_prime_precision)
     mpz_add_ui(start, start, 95);
     BOOST_REQUIRE(mpz_probab_prime_p(start, 25) > 0);
 
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     mpz_t gap;
     mpz_init(gap);
@@ -257,7 +258,7 @@ BOOST_AUTO_TEST_CASE(merit_256bit_primes)
         "2^255 + 95 should be prime");
 
     // Find next prime
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     // Calculate gap
     mpz_sub(gap, end, start);
@@ -353,7 +354,7 @@ BOOST_AUTO_TEST_CASE(difficulty_exceeds_merit)
 
     // For any valid gap, difficulty >= merit
     mpz_set_ui(start, 1000003);
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     uint64_t merit = utils.merit(start, end);
     uint64_t diff = utils.difficulty(start, end);
@@ -379,7 +380,7 @@ BOOST_AUTO_TEST_CASE(difficulty_deterministic)
     mpz_init(end);
 
     mpz_set_ui(start, 104729);  // 10000th prime
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     uint64_t d1 = utils.difficulty(start, end);
     uint64_t d2 = utils.difficulty(start, end);
@@ -584,7 +585,7 @@ BOOST_AUTO_TEST_CASE(merit_twin_primes_boundary)
     // Large twin primes: 1000000007 and next prime
     mpz_set_ui(start, 1000000007);
     BOOST_REQUIRE(mpz_probab_prime_p(start, 25) > 0);
-    mpz_nextprime(end, start);
+    fast_nextprime(end, start);
 
     uint64_t merit = utils.merit(start, end);
     double merit_d = static_cast<double>(merit) / TWO_POW48;
