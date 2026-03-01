@@ -207,6 +207,13 @@ public:
     //! (memory only) Maximum nTime in the chain up to and including this block.
     int64_t nTimeMax{0};
 
+    //! (memory only) Cached prime gap data — avoids re-running fast_nextprime() on every getblock RPC
+    mutable bool m_pow_cached{false};
+    mutable uint64_t m_cached_gap{0};
+    mutable double m_cached_merit{0.0};
+    mutable std::string m_cached_start_hex;
+    mutable std::string m_cached_end_hex;
+
     explicit CBlockIndex(const CBlockHeader& block)
         : nVersion{block.nVersion},
           hashMerkleRoot{block.hashMerkleRoot},

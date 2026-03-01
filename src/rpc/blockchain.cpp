@@ -209,6 +209,15 @@ static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
         return;
     }
 
+    // Return cached results if available (fast_nextprime is expensive at high bit counts)
+    if (blockindex.m_pow_cached) {
+        result.pushKV("start_prime", blockindex.m_cached_start_hex);
+        result.pushKV("end_prime", blockindex.m_cached_end_hex);
+        result.pushKV("gap", blockindex.m_cached_gap);
+        result.pushKV("merit", blockindex.m_cached_merit);
+        return;
+    }
+
     mpz_t mpz_hash, mpz_start, mpz_adder, mpz_end, mpz_gap;
     mpz_init(mpz_hash);
     mpz_init(mpz_start);
@@ -248,9 +257,16 @@ static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
         mpfr_clear(mpfr_ln);
     }
 
+    // Cache results to avoid recomputation on subsequent RPC calls
+    blockindex.m_cached_start_hex = MpzToHex(mpz_start);
+    blockindex.m_cached_end_hex = MpzToHex(mpz_end);
+    blockindex.m_cached_gap = gap_size;
+    blockindex.m_cached_merit = real_merit;
+    blockindex.m_pow_cached = true;
+
     // Add to result
-    result.pushKV("start_prime", MpzToHex(mpz_start));
-    result.pushKV("end_prime", MpzToHex(mpz_end));
+    result.pushKV("start_prime", blockindex.m_cached_start_hex);
+    result.pushKV("end_prime", blockindex.m_cached_end_hex);
     result.pushKV("gap", gap_size);
     result.pushKV("merit", real_merit);
 
