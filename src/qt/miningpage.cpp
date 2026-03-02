@@ -558,11 +558,11 @@ void MiningPage::miningThreadFunc()
     // Mining loop — create block templates and mine them
     while (!m_stopRequested.load()) {
         // Wait until the node is fully caught up before mining.
-        // Post-fork block validation holds cs_main for 2+ minutes per block
-        // (fast_nextprime on 12K-bit numbers), so if the node is syncing
-        // blocks from peers, createNewBlock() would block indefinitely.
-        // Use TRY_LOCK to stay responsive and check both cs_main availability
-        // AND chain tip recency (tip within 5 minutes = caught up).
+        // Post-fork block validation calls fast_nextprime on 12K-bit numbers,
+        // holding cs_main for ~9s (GPU lib), ~31s (gwnum), or ~78s (GMP).
+        // If the node is syncing blocks from peers, createNewBlock() would
+        // block indefinitely. Use TRY_LOCK to stay responsive and check both
+        // cs_main availability AND chain tip recency (tip within 5 minutes).
         {
             bool notified_user = false;
             while (!m_stopRequested.load()) {
@@ -570,9 +570,9 @@ void MiningPage::miningThreadFunc()
                 if (m_submitThread.joinable()) {
                     if (m_submitResult && !m_submitResult->done.load()) {
                         if (!notified_user) {
-                            LogPrintf("Mining: Waiting for node to validate our block...\n");
+                            LogPrintf("Mining: Submitting block to node...\n");
                             QMetaObject::invokeMethod(this, [this]() {
-                                logMessage("Node validating our block (~2 min for post-fork blocks)...");
+                                logMessage("Submitting block to network...");
                             }, Qt::QueuedConnection);
                             notified_user = true;
                         }
@@ -633,22 +633,28 @@ void MiningPage::miningThreadFunc()
                             // All known blocks validated — safe to mine
                             break;
                         }
-                        if (!notified_user) {
-                            int blocksLeft = headerHeight - chainHeight;
-                            LogPrintf("Mining: Chain at height %d, peers at %d (%d blocks behind), waiting...\n",
-                                      chainHeight, headerHeight, blocksLeft);
-                            QMetaObject::invokeMethod(this, [this, chainHeight, headerHeight]() {
+                        // Always update sync progress when we get cs_main — shows
+                        // the block count ticking up so the user knows it's working.
+                        int blocksLeft = headerHeight - chainHeight;
+                        int estMinutes = (blocksLeft * 31) / 60;
+                        LogPrintf("Mining: Chain at height %d, peers at %d (%d blocks behind), waiting...\n",
+                                  chainHeight, headerHeight, blocksLeft);
+                        QMetaObject::invokeMethod(this, [this, chainHeight, headerHeight, blocksLeft, estMinutes]() {
+                            if (estMinutes > 0) {
+                                logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining, ~%4 min)...")
+                                    .arg(chainHeight).arg(headerHeight).arg(blocksLeft).arg(estMinutes));
+                            } else {
                                 logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining)...")
-                                    .arg(chainHeight).arg(headerHeight).arg(headerHeight - chainHeight));
-                            }, Qt::QueuedConnection);
-                            notified_user = true;
-                        }
+                                    .arg(chainHeight).arg(headerHeight).arg(blocksLeft));
+                            }
+                        }, Qt::QueuedConnection);
+                        notified_user = true;
                     }
                 } else {
                     if (!notified_user) {
                         LogPrintf("Mining: cs_main locked (block validation in progress), waiting...\n");
                         QMetaObject::invokeMethod(this, [this]() {
-                            logMessage("Waiting for node to finish validating blocks...");
+                            logMessage("Validating incoming block (mining paused)...");
                         }, Qt::QueuedConnection);
                         notified_user = true;
                     }
@@ -659,7 +665,7 @@ void MiningPage::miningThreadFunc()
             if (notified_user) {
                 LogPrintf("Mining: Node ready, proceeding to create block template\n");
                 QMetaObject::invokeMethod(this, [this]() {
-                    logMessage("Node synced, starting to mine.");
+                    logMessage("Blockchain synced. Preparing block template...");
                 }, Qt::QueuedConnection);
             }
         }
@@ -668,9 +674,7 @@ void MiningPage::miningThreadFunc()
 
         try {
             // Create a new block template from the current chain tip
-            LogPrintf("Mining: Requesting block template...\n");
             auto tmpl = mining->createNewBlock({.coinbase_output_script = coinbase_script});
-            LogPrintf("Mining: Got block template\n");
             if (!tmpl) {
                 if (m_stopRequested.load()) break;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -683,9 +687,7 @@ void MiningPage::miningThreadFunc()
             // Set PoW parameters — shift computed from intensity, fork-aware
             uint16_t forkMinShift = MIN_SHIFT;
             {
-                LogPrintf("Mining: Acquiring cs_main for GetMinShift...\n");
                 LOCK(cs_main);
-                LogPrintf("Mining: cs_main acquired for GetMinShift\n");
                 const CBlockIndex* pindexPrev = ctx->chainman->m_blockman.LookupBlockIndex(block.hashPrevBlock);
                 if (pindexPrev) {
                     forkMinShift = ctx->chainman->GetConsensus().GetMinShift(pindexPrev->nHeight + 1);
@@ -777,9 +779,12 @@ void MiningPage::miningThreadFunc()
                             return;
                         }
                     }
-                    // ProcessNewBlock validates PoW internally (CheckBlock -> CheckProofOfWork).
-                    // No redundant CheckProofOfWork here — saves 2+ min of fast_nextprime
-                    // on 12K-bit primes. The mining engine already verified the proof.
+                    // Mark block as pre-checked so ProcessNewBlock skips the expensive
+                    // CheckProofOfWork (fast_nextprime: ~9s GPU, ~31s gwnum, ~78s GMP)
+                    // under cs_main. The mining engine already verified the gap meets
+                    // difficulty. Without this, cs_main is held for the full duration,
+                    // blocking all RPC and UI updates.
+                    block_copy->fChecked = true;
                     auto block_ptr = std::make_shared<const CBlock>(*block_copy);
                     LogPrintf("Mining: Submitting block height %d via ProcessNewBlock...\n", nBlockHeight);
                     if (ctx->chainman->ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {

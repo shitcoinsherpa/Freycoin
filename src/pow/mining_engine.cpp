@@ -23,6 +23,7 @@
  */
 
 #include <pow/mining_engine.h>
+#include <pow/gpu_coordinator.h>
 #include <common/args.h>
 #include <pow/combined_sieve.h>
 #include <pow/avx512_primality.h>
@@ -957,14 +958,19 @@ void MiningPipeline::gpu_worker() {
             gpu_queue.pop();
         }
 
-        // Run GPU Fermat test on the appropriate backend
+        // Run GPU Fermat test on the appropriate backend.
+        // Shared lock: allows concurrent mining but yields to exclusive
+        // validation lock (fast_nextprime GPU path) to avoid contention.
         std::vector<uint8_t> results(batch.count);
-        if (tier == MiningTier::CPU_CUDA) {
-            cuda_fermat_batch(results.data(), batch.candidates.data(),
-                              batch.count, batch.bits);
-        } else {
-            opencl_fermat_batch(results.data(), batch.candidates.data(),
-                                batch.count, batch.bits);
+        {
+            std::shared_lock<std::shared_mutex> gpu_lock(g_gpu_access);
+            if (tier == MiningTier::CPU_CUDA) {
+                cuda_fermat_batch(results.data(), batch.candidates.data(),
+                                  batch.count, batch.bits);
+            } else {
+                opencl_fermat_batch(results.data(), batch.candidates.data(),
+                                    batch.count, batch.bits);
+            }
         }
 
         // Process results
@@ -1239,14 +1245,19 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
         // Run GPU Fermat primality pre-filter on THIS device.
         // CUDA: PTX handles ≤352-bit, CGBN handles >352-bit (post-fork).
         // OpenCL: fixed kernels for ≤352-bit, cooperative kernel for >352-bit.
-        if (tier == MiningTier::CPU_CUDA) {
-            cuda_fermat_batch(request->results.data(),
-                              request->batch.candidates.data(),
-                              request->batch.count, request->batch.bits);
-        } else {
-            opencl_fermat_batch_device(dev, request->results.data(),
-                                       request->batch.candidates.data(),
-                                       request->batch.count, request->batch.bits);
+        // Shared lock: allows concurrent mining but yields to exclusive
+        // validation lock (fast_nextprime GPU path) to avoid contention.
+        {
+            std::shared_lock<std::shared_mutex> gpu_lock(g_gpu_access);
+            if (tier == MiningTier::CPU_CUDA) {
+                cuda_fermat_batch(request->results.data(),
+                                  request->batch.candidates.data(),
+                                  request->batch.count, request->batch.bits);
+            } else {
+                opencl_fermat_batch_device(dev, request->results.data(),
+                                           request->batch.candidates.data(),
+                                           request->batch.count, request->batch.bits);
+            }
         }
 
         // Signal the submitting CPU thread that results are ready
@@ -1505,10 +1516,15 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                     // Submit to a GPU worker (round-robin across devices)
                     submit_gpu_request(request);
 
-                    // Wait for GPU to finish this batch
+                    // Wait for GPU to finish this batch (or shutdown).
+                    // Use wait_for to periodically check stop_requested,
+                    // ensuring clean shutdown even if GPU is blocked.
                     {
                         std::unique_lock<std::mutex> lock(request->mtx);
-                        request->cv.wait(lock, [&]{ return request->done.load(); });
+                        while (!request->done.load() && !stop_requested.load()) {
+                            request->cv.wait_for(lock, std::chrono::milliseconds(200));
+                        }
+                        if (stop_requested) break;
                     }
 
                     par_tests.fetch_add(candidates.size(), std::memory_order_relaxed);

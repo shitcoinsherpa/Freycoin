@@ -21,6 +21,7 @@ add_library(freycoin_pow STATIC EXCLUDE_FROM_ALL
     pow.cpp
     fast_nextprime.h
     fast_nextprime.cpp
+    gpu_coordinator.h
     wheel_tables.h
     wheel_tables.cpp
     simd_presieve.h
@@ -43,6 +44,7 @@ target_link_libraries(freycoin_pow
         core_interface
         MPFR::MPFR
         GMP::GMP
+        ${CMAKE_DL_LIBS}
         $<TARGET_NAME_IF_EXISTS:freycoin_gpu>
     PUBLIC
         bitcoin_crypto

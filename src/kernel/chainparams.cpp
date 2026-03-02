@@ -153,7 +153,6 @@ public:
         vSeeds.emplace_back("seed1.freycoin.tech");
         vSeeds.emplace_back("seed2.freycoin.tech");
         vSeeds.emplace_back("seed3.freycoin.tech");
-        vFixedSeeds.clear();  // Until VPS IPs are hardcoded
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -235,7 +234,6 @@ public:
         assert(consensus.hashGenesisBlock == uint256{"6716f28b571cf6b4f40ab00d454bae73cf7c30270197fed22369fccb762027eb"});
         assert(genesis.hashMerkleRoot == uint256{"3d88cf475c00c0a831fb98c7816aa8ad8dae0edcaca6d012cbb4cef3bc6402d5"});
 
-        vFixedSeeds.clear();
         vSeeds.clear();
         vSeeds.emplace_back("testseed1.freycoin.tech");
         vSeeds.emplace_back("testseed2.freycoin.tech");
