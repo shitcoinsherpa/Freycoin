@@ -59,6 +59,8 @@ static constexpr size_t GPU_THRESHOLD_BITS = 2000;
 static std::vector<unsigned> g_primes;
 static std::once_flag g_primes_init;
 static bool g_gpu_available = false;
+static float g_intensity = 1.0f;
+static unsigned g_effective_seg = SEG;
 
 static void InitSievePrimes()
 {
@@ -80,10 +82,12 @@ static void InitSievePrimes()
 static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
 {
     std::call_once(g_primes_init, InitSievePrimes);
+    const unsigned eff_seg = g_effective_seg;
 
     auto t_start = std::chrono::steady_clock::now();
     size_t bits = mpz_sizeinbase(n, 2);
-    LogMsg("GpuNextPrime called: %zu bits, %zu sieve primes\n", bits, g_primes.size());
+    LogMsg("GpuNextPrime called: %zu bits, %zu sieve primes, seg=%u (intensity=%.2f)\n",
+           bits, g_primes.size(), eff_seg, g_intensity);
 
     mpz_t base;
     mpz_init_set(base, n);
@@ -99,17 +103,17 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
         rems[pi] = mpz_fdiv_ui(base, g_primes[pi]);
     }
 
-    // Candidate array for GPU batch
-    std::vector<mpz_t> candidates(SEG);
-    for (unsigned i = 0; i < SEG; i++) mpz_init(candidates[i]);
+    // Candidate array for GPU batch — sized to effective segment
+    std::vector<mpz_t> candidates(eff_seg);
+    for (unsigned i = 0; i < eff_seg; i++) mpz_init(candidates[i]);
 
-    char sieve[SEG];
-    std::vector<uint8_t> gpu_results(SEG);
+    std::vector<char> sieve(eff_seg);
+    std::vector<uint8_t> gpu_results(eff_seg);
     int ret = -1;
 
     for (unsigned seg = 0; ; seg++) {
         // Sieve this segment
-        std::memset(sieve, 1, SEG);
+        std::memset(sieve.data(), 1, eff_seg);
         for (size_t pi = 0; pi < g_primes.size(); pi++) {
             unsigned p = g_primes[pi];
             if (p == 2) continue;
@@ -121,16 +125,16 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
             // Intermediate (p - r) * inv2 can be up to ~500000 * 250000 = ~125 billion
             // MUST use 64-bit arithmetic (overflows 32-bit unsigned long on Windows)
             uint64_t si = (r == 0) ? 0 : ((static_cast<uint64_t>(p) - r) % p * inv2) % p;
-            for (uint64_t idx = si; idx < SEG; idx += p) {
+            for (uint64_t idx = si; idx < eff_seg; idx += p) {
                 sieve[idx] = 0;
             }
         }
 
         // Collect survivors
         int n_survivors = 0;
-        for (unsigned i = 0; i < SEG; i++) {
+        for (unsigned i = 0; i < eff_seg; i++) {
             if (!sieve[i]) continue;
-            uint64_t off = 2ULL * (static_cast<uint64_t>(SEG) * seg + i);
+            uint64_t off = 2ULL * (static_cast<uint64_t>(eff_seg) * seg + i);
             mpz_set(candidates[n_survivors], base);
             if (off <= ULONG_MAX) {
                 mpz_add_ui(candidates[n_survivors], candidates[n_survivors],
@@ -148,13 +152,13 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
         }
 
         if (seg == 0) {
-            LogMsg("  seg 0: %d survivors out of %u\n", n_survivors, SEG);
+            LogMsg("  seg 0: %d survivors out of %u\n", n_survivors, eff_seg);
         }
 
         if (n_survivors == 0) {
             for (size_t pi = 0; pi < g_primes.size(); pi++) {
                 unsigned p = g_primes[pi];
-                rems[pi] = (rems[pi] + (2ULL * SEG) % p) % p;
+                rems[pi] = (rems[pi] + (2ULL * eff_seg) % p) % p;
             }
             continue;
         }
@@ -226,12 +230,12 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
         // Advance remainders
         for (size_t pi = 0; pi < g_primes.size(); pi++) {
             unsigned p = g_primes[pi];
-            rems[pi] = (rems[pi] + (2ULL * SEG) % p) % p;
+            rems[pi] = (rems[pi] + (2ULL * eff_seg) % p) % p;
         }
     }
 
 cleanup:
-    for (unsigned i = 0; i < SEG; i++) mpz_clear(candidates[i]);
+    for (unsigned i = 0; i < eff_seg; i++) mpz_clear(candidates[i]);
     mpz_clear(base);
     return ret;
 }
@@ -256,6 +260,16 @@ int gpu_nextprime_init(int device_id)
         LogMsg("  GPU init failed (rc=%d)\n", rc);
     }
     return rc;
+}
+
+void gpu_nextprime_set_intensity(float intensity)
+{
+    if (intensity < 0.05f) intensity = 0.05f;
+    if (intensity > 1.0f) intensity = 1.0f;
+    g_intensity = intensity;
+    g_effective_seg = std::max(1024u, static_cast<unsigned>(SEG * intensity));
+    LogMsg("gpu_nextprime_set_intensity: %.2f (effective segment: %u)\n",
+           intensity, g_effective_seg);
 }
 
 int gpu_nextprime(mpz_ptr result, mpz_srcptr n)

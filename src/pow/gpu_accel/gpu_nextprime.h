@@ -17,6 +17,9 @@ int gpu_nextprime_init(int device_id);
 /** Find the next prime after n using GPU batch BPSW. Returns 0 on success. */
 int gpu_nextprime(mpz_ptr result, mpz_srcptr n);
 
+/** Set GPU intensity for nextprime (0.05–1.0). Lower = less GPU load. */
+void gpu_nextprime_set_intensity(float intensity);
+
 /** Release GPU resources. */
 void gpu_nextprime_cleanup(void);
 

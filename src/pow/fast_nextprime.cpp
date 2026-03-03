@@ -86,7 +86,11 @@ static void InitGpuNextprime()
     int rc = gpu_nextprime_init(0);
     if (rc == 0) {
         g_gpu_available = true;
-        LogPrintf("GPU nextprime: initialized successfully\n");
+        // Default to 25% intensity for block validation — fast enough
+        // (~15s vs gwnum's ~31s at 12K bits) without pegging the GPU at 100%.
+        // Mining engine uses its own GPU path at full intensity.
+        gpu_nextprime_set_intensity(0.25f);
+        LogPrintf("GPU nextprime: initialized successfully (validation intensity: 25%%)\n");
     } else {
         g_gpu_available = false;
         LogPrintf("GPU nextprime: init failed (rc=%d), using fallback\n", rc);
