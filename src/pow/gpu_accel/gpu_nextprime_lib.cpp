@@ -17,6 +17,7 @@
 #include <mutex>
 #include <vector>
 #include <chrono>
+#include <thread>
 #include <gmp.h>
 
 extern "C" {
@@ -175,10 +176,21 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
             for (int batch_start = 0; batch_start < n_survivors; batch_start += TDR_SAFE_BATCH) {
                 int batch_count = std::min(TDR_SAFE_BATCH, n_survivors - batch_start);
 
+                auto batch_t0 = std::chrono::steady_clock::now();
                 int rc = gpu_batch_primality(
                     gpu_results.data() + batch_start,
                     candidates.data() + batch_start,
                     batch_count);
+
+                // Throttle: sleep proportional to GPU time to achieve target intensity.
+                // At intensity 0.25, sleep 3x the batch duration (25% busy, 75% idle).
+                if (rc == 0 && g_intensity < 0.99f) {
+                    auto batch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - batch_t0).count();
+                    int sleep_ms = static_cast<int>(batch_ms * (1.0f / g_intensity - 1.0f));
+                    if (sleep_ms > 0)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+                }
 
                 if (rc != 0) {
                     LogMsg("  GPU BPSW sub-batch failed (rc=%d) at offset %d, GMP fallback\n",
