@@ -17,13 +17,11 @@
 
 #ifdef _WIN32
 #include <malloc.h> // _aligned_malloc / _aligned_free
-#include <windows.h>
-#else
-#include <dlfcn.h>
 #endif
 
 #include <logging.h>
 #include <pow/gpu_coordinator.h>
+#include <pow/gpu_accel/gpu_nextprime.h>
 
 #ifdef HAVE_GWNUM
 #include <gwnum.h>
@@ -72,67 +70,27 @@ static constexpr size_t GWNUM_THRESHOLD_BITS = 2000;
 // GPU library threshold — same as gwnum, GPU has overhead below this
 static constexpr size_t GPU_THRESHOLD_BITS = 2000;
 
-// ─── GPU shared library (dlopen/LoadLibrary) ───────────────────────────────
+// ─── GPU batch BPSW nextprime (statically linked) ───────────────────────────
 //
-// If libgpu_nextprime.so / gpu_nextprime.dll is present alongside the binary,
-// we load it at first call and dispatch to GPU batch BPSW (~9s at 12K bits).
-// If absent or init fails, we silently fall back to gwnum → GMP.
-
-using gpu_nextprime_init_fn    = int  (*)(int);
-using gpu_nextprime_fn         = int  (*)(mpz_ptr, mpz_srcptr);
-using gpu_nextprime_cleanup_fn = void (*)();
+// GPU batch BPSW via CUDA Driver API (~9s at 12K bits vs ~31s gwnum).
+// If no NVIDIA GPU is present, init fails gracefully and we fall back to gwnum → GMP.
 
 // GPU access coordinator — defined here, declared extern in gpu_coordinator.h
 std::shared_mutex g_gpu_access;
 
-static std::once_flag           g_gpu_init;
-static gpu_nextprime_fn         g_gpu_nextprime = nullptr;
-static gpu_nextprime_cleanup_fn g_gpu_cleanup   = nullptr;
+static std::once_flag g_gpu_init;
+static bool           g_gpu_available = false;
 
-static void LoadGpuLibrary()
+static void InitGpuNextprime()
 {
-#ifdef _WIN32
-    HMODULE lib = LoadLibraryA("gpu_nextprime.dll");
-    if (!lib) {
-        LogPrintf("GPU nextprime: gpu_nextprime.dll not found, using fallback\n");
-        return;
-    }
-    auto init_fn = reinterpret_cast<gpu_nextprime_init_fn>(
-        GetProcAddress(lib, "gpu_nextprime_init"));
-    g_gpu_nextprime = reinterpret_cast<gpu_nextprime_fn>(
-        GetProcAddress(lib, "gpu_nextprime"));
-    g_gpu_cleanup = reinterpret_cast<gpu_nextprime_cleanup_fn>(
-        GetProcAddress(lib, "gpu_nextprime_cleanup"));
-#else
-    void* lib = dlopen("libgpu_nextprime.so", RTLD_NOW);
-    if (!lib) {
-        LogPrintf("GPU nextprime: libgpu_nextprime.so not found (%s), using fallback\n", dlerror());
-        return;
-    }
-    auto init_fn = reinterpret_cast<gpu_nextprime_init_fn>(
-        dlsym(lib, "gpu_nextprime_init"));
-    g_gpu_nextprime = reinterpret_cast<gpu_nextprime_fn>(
-        dlsym(lib, "gpu_nextprime"));
-    g_gpu_cleanup = reinterpret_cast<gpu_nextprime_cleanup_fn>(
-        dlsym(lib, "gpu_nextprime_cleanup"));
-#endif
-
-    if (!init_fn || !g_gpu_nextprime || !g_gpu_cleanup) {
-        LogPrintf("GPU nextprime: library loaded but missing symbols, using fallback\n");
-        g_gpu_nextprime = nullptr;
-        g_gpu_cleanup = nullptr;
-        return;
-    }
-
-    int rc = init_fn(0);
-    if (rc != 0) {
+    int rc = gpu_nextprime_init(0);
+    if (rc == 0) {
+        g_gpu_available = true;
+        LogPrintf("GPU nextprime: initialized successfully\n");
+    } else {
+        g_gpu_available = false;
         LogPrintf("GPU nextprime: init failed (rc=%d), using fallback\n", rc);
-        g_gpu_nextprime = nullptr;
-        g_gpu_cleanup = nullptr;
-        return;
     }
-
-    LogPrintf("GPU nextprime: loaded successfully\n");
 }
 
 static std::once_flag g_primes_init;
@@ -296,12 +254,12 @@ static void GwnumNextPrime(mpz_t result, const mpz_t n)
 
 void fast_nextprime(mpz_t result, const mpz_t n)
 {
-    // Try GPU library first (dlopen'd once on first call).
+    // Try GPU batch BPSW first (statically linked, init'd once on first call).
     // Exclusive lock pauses mining GPU kernels to avoid CUDA contention.
-    std::call_once(g_gpu_init, LoadGpuLibrary);
-    if (g_gpu_nextprime && mpz_sizeinbase(n, 2) >= GPU_THRESHOLD_BITS) {
+    std::call_once(g_gpu_init, InitGpuNextprime);
+    if (g_gpu_available && mpz_sizeinbase(n, 2) >= GPU_THRESHOLD_BITS) {
         std::unique_lock<std::shared_mutex> gpu_lock(g_gpu_access);
-        if (g_gpu_nextprime(result, n) == 0) return;
+        if (gpu_nextprime(result, n) == 0) return;
     }
 
 #ifdef HAVE_GWNUM
