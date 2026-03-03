@@ -154,6 +154,8 @@ public:
         vSeeds.emplace_back("seed2.freycoin.tech");
         vSeeds.emplace_back("seed3.freycoin.tech");
 
+        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
+
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
 
@@ -237,6 +239,8 @@ public:
         vSeeds.clear();
         vSeeds.emplace_back("testseed1.freycoin.tech");
         vSeeds.emplace_back("testseed2.freycoin.tech");
+
+        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_test), std::end(chainparams_seed_test));
 
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
