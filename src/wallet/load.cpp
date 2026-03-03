@@ -148,6 +148,28 @@ bool LoadWallets(WalletContext& context)
             NotifyWalletLoaded(context, pwallet);
             AddWallet(context, pwallet);
         }
+
+        // Auto-create a default wallet on first run so new users don't have to
+        // create one manually during IBD (which deadlocks on slow machines).
+        if (GetWallets(context).empty() && !context.args->GetBoolArg("-nowallet", false)) {
+            chain.initMessage(_("Creating default wallet…"));
+            DatabaseOptions options;
+            DatabaseStatus status;
+            ReadDatabaseArgs(*context.args, options);
+            options.require_create = true;
+            options.create_flags = WALLET_FLAG_DESCRIPTORS;
+            bilingual_str error;
+            std::vector<bilingual_str> warnings;
+            std::shared_ptr<CWallet> pwallet = CreateWallet(context, "" /*name*/, /*load_on_start=*/true, options, status, error, warnings);
+            if (pwallet) {
+                NotifyWalletLoaded(context, pwallet);
+                AddWallet(context, pwallet);
+                LogPrintf("Auto-created default wallet\n");
+            } else {
+                LogPrintf("Failed to auto-create default wallet: %s\n", error.original);
+            }
+        }
+
         return true;
     } catch (const std::runtime_error& e) {
         chain.initError(Untranslated(e.what()));
