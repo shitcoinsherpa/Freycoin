@@ -17,6 +17,7 @@
 #include <pow/mining_engine.h>
 #include <pow/pow.h>
 #include <pow/pow_processor.h>
+#include <pow/fast_nextprime.h>
 #include <gpu/opencl_loader.h>
 #include <gpu/opencl_fermat.h>
 #include <gpu/cuda_loader.h>
@@ -110,6 +111,11 @@ MiningPage::MiningPage(QWidget *parent) :
     statsTimer = new QTimer(this);
     connect(statsTimer, &QTimer::timeout, this, &MiningPage::updateStats);
 
+    // Shutdown polling timer — checks if mining thread has exited
+    m_shutdownTimer = new QTimer(this);
+    m_shutdownTimer->setInterval(100);
+    connect(m_shutdownTimer, &QTimer::timeout, this, &MiningPage::checkThreadFinished);
+
     // Connect slider to spinbox
     connect(ui->sliderCPUCores, &QSlider::valueChanged, ui->spinCPUCores, &QSpinBox::setValue);
     connect(ui->spinCPUCores, QOverload<int>::of(&QSpinBox::valueChanged), ui->sliderCPUCores, &QSlider::setValue);
@@ -126,6 +132,11 @@ MiningPage::MiningPage(QWidget *parent) :
 
 MiningPage::~MiningPage()
 {
+    // Stop the shutdown polling timer
+    if (m_shutdownTimer) {
+        m_shutdownTimer->stop();
+    }
+
     // Ensure mining stops and thread exits before destruction
     m_stopRequested = true;
     if (m_engine) {
@@ -520,6 +531,23 @@ void MiningPage::miningThreadFunc()
     m_engine = std::make_unique<MiningEngine>(tier, m_numThreads);
     m_engine->set_gpu_intensity(m_gpuIntensity);
 
+    // Warm up gwnum's global state (shareable sincos mutex) with a single-
+    // threaded call before workers launch.  gwnum's share_sincos_data() has a
+    // racy mutex init — multiple threads calling gwsetup simultaneously on
+    // first use double-initialize the mutex, corrupting the heap.
+    // The dummy must be >= 2000 bits to hit the gwnum code path (below that
+    // fast_nextprime falls back to GMP's mpz_nextprime and never touches gwnum).
+    {
+        mpz_t dummy_n, dummy_r;
+        mpz_init(dummy_n);
+        mpz_ui_pow_ui(dummy_n, 2, 2048);  // 2^2048 — a 2049-bit number
+        mpz_nextprime(dummy_n, dummy_n);   // find an actual prime near 2^2048
+        mpz_init(dummy_r);
+        fast_nextprime(dummy_r, dummy_n);  // THIS now triggers gwnum init
+        mpz_clear(dummy_r);
+        mpz_clear(dummy_n);
+    }
+
     QMetaObject::invokeMethod(this, [this]() {
         logMessage(QString("Mining engine: %1 (%2 threads, intensity %3)")
             .arg(m_engine->get_hardware_info())
@@ -529,19 +557,120 @@ void MiningPage::miningThreadFunc()
 
     // Mining loop — create block templates and mine them
     while (!m_stopRequested.load()) {
-        // Pause mining if node enters IBD (e.g. reorg or resync)
-        if (ctx->chainman->IsInitialBlockDownload()) {
-            QMetaObject::invokeMethod(this, [this]() {
-                logMessage("Pausing mining — blockchain is syncing...");
-            }, Qt::QueuedConnection);
-            while (!m_stopRequested.load() && ctx->chainman->IsInitialBlockDownload()) {
-                std::this_thread::sleep_for(std::chrono::seconds(5));
+        // Wait until the node is fully caught up before mining.
+        // Post-fork block validation calls fast_nextprime on 12K-bit numbers,
+        // holding cs_main for ~9s (GPU lib), ~31s (gwnum), or ~78s (GMP).
+        // If the node is syncing blocks from peers, createNewBlock() would
+        // block indefinitely. Use TRY_LOCK to stay responsive and check both
+        // cs_main availability AND chain tip recency (tip within 5 minutes).
+        {
+            bool notified_user = false;
+            while (!m_stopRequested.load()) {
+                // Wait for any previous async submit to finish.
+                if (m_submitThread.joinable()) {
+                    if (m_submitResult && !m_submitResult->done.load()) {
+                        if (!notified_user) {
+                            LogPrintf("Mining: Submitting block to node...\n");
+                            QMetaObject::invokeMethod(this, [this]() {
+                                logMessage("Submitting block to network...");
+                            }, Qt::QueuedConnection);
+                            notified_user = true;
+                        }
+                        std::this_thread::sleep_for(std::chrono::seconds(2));
+                        continue;
+                    }
+                    m_submitThread.join();
+                    // Process submit result (safe `this` access — we're on the mining thread)
+                    if (m_submitResult) {
+                        if (m_submitResult->accepted) {
+                            m_blocksFound++;
+                            uint64_t gap = m_submitResult->gap;
+                            double merit = m_submitResult->merit;
+                            if (static_cast<uint32_t>(gap) > m_bestGap) {
+                                m_bestGap = static_cast<uint32_t>(gap);
+                                m_bestMerit = merit;
+                            }
+                            LogPrintf("Mining: BLOCK ACCEPTED! Gap=%llu Merit=%.4f Total=%llu\n",
+                                      gap, merit, m_blocksFound);
+                            QMetaObject::invokeMethod(this, [this, gap, merit]() {
+                                logMessage(QString("BLOCK ACCEPTED! Gap=%1 Merit=%2 Total: %3")
+                                    .arg(gap).arg(merit, 0, 'f', 4).arg(m_blocksFound));
+                            }, Qt::QueuedConnection);
+                        } else if (m_submitResult->stale) {
+                            LogPrintf("Mining: Block was stale\n");
+                            QMetaObject::invokeMethod(this, [this]() {
+                                logMessage("Block was stale — another miner found one first");
+                            }, Qt::QueuedConnection);
+                        } else {
+                            LogPrintf("Mining: Block was rejected\n");
+                            QMetaObject::invokeMethod(this, [this]() {
+                                logMessage("Block rejected by node");
+                            }, Qt::QueuedConnection);
+                        }
+                        m_submitResult.reset();
+                    }
+                    notified_user = false;
+                }
+
+                TRY_LOCK(cs_main, locked);
+                if (locked) {
+                    if (ctx->chainman->IsInitialBlockDownload()) {
+                        if (!notified_user) {
+                            LogPrintf("Mining: Node is in initial block download, waiting...\n");
+                            QMetaObject::invokeMethod(this, [this]() {
+                                logMessage("Waiting for blockchain sync to complete...");
+                            }, Qt::QueuedConnection);
+                            notified_user = true;
+                        }
+                    } else {
+                        // Check if we've validated all known headers from peers.
+                        // Tip age is unreliable on low-hashrate chains where 30+ min
+                        // between blocks is normal.
+                        int chainHeight = ctx->chainman->ActiveChain().Height();
+                        const CBlockIndex* bestHeader = ctx->chainman->m_best_header;
+                        int headerHeight = bestHeader ? bestHeader->nHeight : chainHeight;
+                        if (chainHeight >= headerHeight) {
+                            // All known blocks validated — safe to mine
+                            break;
+                        }
+                        // Always update sync progress when we get cs_main — shows
+                        // the block count ticking up so the user knows it's working.
+                        int blocksLeft = headerHeight - chainHeight;
+                        int estMinutes = (blocksLeft * 31) / 60;
+                        LogPrintf("Mining: Chain at height %d, peers at %d (%d blocks behind), waiting...\n",
+                                  chainHeight, headerHeight, blocksLeft);
+                        QMetaObject::invokeMethod(this, [this, chainHeight, headerHeight, blocksLeft, estMinutes]() {
+                            if (estMinutes > 0) {
+                                logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining, ~%4 min)...")
+                                    .arg(chainHeight).arg(headerHeight).arg(blocksLeft).arg(estMinutes));
+                            } else {
+                                logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining)...")
+                                    .arg(chainHeight).arg(headerHeight).arg(blocksLeft));
+                            }
+                        }, Qt::QueuedConnection);
+                        notified_user = true;
+                    }
+                } else {
+                    if (!notified_user) {
+                        LogPrintf("Mining: cs_main locked (block validation in progress), waiting...\n");
+                        QMetaObject::invokeMethod(this, [this]() {
+                            logMessage("Validating incoming block (mining paused)...");
+                        }, Qt::QueuedConnection);
+                        notified_user = true;
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::seconds(2));
             }
             if (m_stopRequested.load()) break;
-            QMetaObject::invokeMethod(this, [this]() {
-                logMessage("Sync complete, resuming mining.");
-            }, Qt::QueuedConnection);
+            if (notified_user) {
+                LogPrintf("Mining: Node ready, proceeding to create block template\n");
+                QMetaObject::invokeMethod(this, [this]() {
+                    logMessage("Blockchain synced. Preparing block template...");
+                }, Qt::QueuedConnection);
+            }
         }
+
+        if (m_stopRequested.load()) break;
 
         try {
             // Create a new block template from the current chain tip
@@ -622,44 +751,53 @@ void MiningPage::miningThreadFunc()
 
             if (m_stopRequested.load()) break;
 
-            // Process the found solution
+            // Process the found solution — submit asynchronously to avoid cs_main contention
             if (processor.found) {
                 block.nNonce = processor.found_nonce;
                 block.nShift = processor.found_shift;
                 block.nAdd = processor.found_add;
 
-                // Determine block height for fork-aware PoW check
-                int nBlockHeight = -1;
-                {
-                    LOCK(cs_main);
-                    const CBlockIndex* pindexPrev = ctx->chainman->m_blockman.LookupBlockIndex(block.hashPrevBlock);
-                    if (pindexPrev) nBlockHeight = pindexPrev->nHeight + 1;
-                }
-                // Verify before submitting
-                if (CheckProofOfWork(block, nBlockHeight, ctx->chainman->GetConsensus())) {
-                    auto block_ptr = std::make_shared<const CBlock>(std::move(block));
-                    if (ctx->chainman->ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {
-                        m_blocksFound++;
-                        uint64_t gap = processor.found_gap;
-                        double merit = processor.found_merit;
-                        if (static_cast<uint32_t>(gap) > m_bestGap) {
-                            m_bestGap = static_cast<uint32_t>(gap);
-                            m_bestMerit = merit;
+                uint64_t found_gap = processor.found_gap;
+                double found_merit = processor.found_merit;
+                auto block_copy = std::make_shared<CBlock>(block);
+
+                auto result = std::make_shared<SubmitResult>();
+                m_submitResult = result;
+                m_submitThread = std::thread([block_copy, ctx, result, found_gap, found_merit]() {
+                    // No `this` capture — safe even if MiningPage is destroyed during submit
+                    int nBlockHeight = -1;
+                    {
+                        LOCK(cs_main);
+                        const CBlockIndex* pindexPrev = ctx->chainman->m_blockman.LookupBlockIndex(block_copy->hashPrevBlock);
+                        if (pindexPrev) nBlockHeight = pindexPrev->nHeight + 1;
+                        const CBlockIndex* tip = ctx->chainman->ActiveChain().Tip();
+                        if (tip && tip->GetBlockHash() != block_copy->hashPrevBlock) {
+                            LogPrintf("Mining: Block stale (height %d, tip now %d) — discarded\n",
+                                      nBlockHeight, tip->nHeight);
+                            result->stale = true;
+                            result->done.store(true);
+                            return;
                         }
-                        QMetaObject::invokeMethod(this, [this, gap, merit]() {
-                            logMessage(QString("BLOCK FOUND! Gap=%1 Merit=%2 Total: %3")
-                                .arg(gap).arg(merit, 0, 'f', 4).arg(m_blocksFound));
-                        }, Qt::QueuedConnection);
-                    } else {
-                        QMetaObject::invokeMethod(this, [this]() {
-                            logMessage("Block found but rejected by ProcessNewBlock");
-                        }, Qt::QueuedConnection);
                     }
-                } else {
-                    QMetaObject::invokeMethod(this, [this]() {
-                        logMessage("WARNING: Mined block failed CheckProofOfWork");
-                    }, Qt::QueuedConnection);
-                }
+                    // Mark block as pre-checked so ProcessNewBlock skips the expensive
+                    // CheckProofOfWork (fast_nextprime: ~9s GPU, ~31s gwnum, ~78s GMP)
+                    // under cs_main. The mining engine already verified the gap meets
+                    // difficulty. Without this, cs_main is held for the full duration,
+                    // blocking all RPC and UI updates.
+                    block_copy->fChecked = true;
+                    auto block_ptr = std::make_shared<const CBlock>(*block_copy);
+                    LogPrintf("Mining: Submitting block height %d via ProcessNewBlock...\n", nBlockHeight);
+                    if (ctx->chainman->ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {
+                        result->accepted = true;
+                        result->gap = found_gap;
+                        result->merit = found_merit;
+                        LogPrintf("Mining: BLOCK ACCEPTED! Height=%d Gap=%llu Merit=%.4f\n",
+                                  nBlockHeight, found_gap, found_merit);
+                    } else {
+                        LogPrintf("Mining: Block REJECTED by ProcessNewBlock (height %d)\n", nBlockHeight);
+                    }
+                    result->done.store(true);
+                });
             }
 
             // Update stats
@@ -675,7 +813,24 @@ void MiningPage::miningThreadFunc()
         }
     }
 
+    // Clean up submit thread — give ProcessNewBlock time to finish before detaching
+    if (m_submitThread.joinable()) {
+        if (m_submitResult && !m_submitResult->done.load()) {
+            auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (!m_submitResult->done.load() && std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+        if (m_submitResult && !m_submitResult->done.load()) {
+            LogPrintf("Mining: Detaching submit thread (still validating after 5s timeout)\n");
+            m_submitThread.detach();
+        } else {
+            m_submitThread.join();
+        }
+    }
+
     m_engine.reset();
+    m_threadFinished = true;
 }
 
 void MiningPage::startMining()
@@ -698,17 +853,6 @@ void MiningPage::startMining()
         return;
     }
 
-    // Block mining during initial block download — mining before sync
-    // completes would create a local fork at pre-fork difficulty
-    if (clientModel) {
-        node::NodeContext* ctx = clientModel->node().context();
-        if (ctx && ctx->chainman && ctx->chainman->IsInitialBlockDownload()) {
-            QMessageBox::warning(this, tr("Mining"),
-                tr("Cannot mine while syncing. Please wait for the blockchain to fully synchronize before starting mining."));
-            return;
-        }
-    }
-
     // Get thread count
     m_numThreads = ui->spinCPUCores->value();
 
@@ -723,13 +867,15 @@ void MiningPage::startMining()
 
     logMessage(QString("Starting mining with %1 thread(s)...").arg(m_numThreads));
 
-    // Join any previous mining thread before starting a new one
+    // Previous thread should already be joined by checkThreadFinished()
     if (m_miningThread.joinable()) {
-        m_miningThread.join();
+        logMessage("Previous mining session still stopping, please wait");
+        return;
     }
 
     m_isMining = true;
     m_stopRequested = false;
+    m_threadFinished = false;
     miningTimer.start();
     statsTimer->start(1000); // Update every second
 
@@ -758,9 +904,30 @@ void MiningPage::stopMining()
     }
 
     statsTimer->stop();
-    updateUIState();
+
+    // Disable both buttons while the mining thread winds down
+    ui->buttonStartMining->setEnabled(false);
+    ui->buttonStopMining->setEnabled(false);
+
+    // Poll until the mining thread has exited, then join it
+    m_shutdownTimer->start();
+
     Q_EMIT miningStopped();
+}
+
+void MiningPage::checkThreadFinished()
+{
+    if (!m_threadFinished.load()) return;
+
+    m_shutdownTimer->stop();
+
+    if (m_miningThread.joinable()) {
+        m_miningThread.join(); // instant — thread already exited
+    }
+    m_threadFinished = false;
+
     logMessage("Mining stopped");
+    updateUIState();
 }
 
 void MiningPage::updateStats()

@@ -85,6 +85,7 @@ private Q_SLOTS:
     void on_sliderGPUIntensity_valueChanged(int value);
 
     void updateStats();
+    void checkThreadFinished();
 
 private:
     Ui::MiningPage *ui;
@@ -114,7 +115,18 @@ private:
     // Mining engine (owned by mining thread)
     std::unique_ptr<MiningEngine> m_engine;
     std::atomic<bool> m_stopRequested{false};
+    std::atomic<bool> m_threadFinished{false};
     std::thread m_miningThread;
+    std::thread m_submitThread; // async block submission (avoids cs_main contention)
+    struct SubmitResult {
+        std::atomic<bool> done{false};
+        bool accepted{false};
+        bool stale{false};
+        uint64_t gap{0};
+        double merit{0.0};
+    };
+    std::shared_ptr<SubmitResult> m_submitResult;
+    QTimer *m_shutdownTimer{nullptr};
 
     // Hardware detection
     void detectCPU();

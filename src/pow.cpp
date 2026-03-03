@@ -10,6 +10,7 @@
 #include <chain.h>
 #include <crypto/sha256.h>
 #include <pow/fast_nextprime.h>
+#include <pow/pow_common.h>
 #include <primitives/block.h>
 #include <uint256.h>
 #include <util/check.h>
@@ -17,12 +18,6 @@
 #include <gmp.h>
 #include <mpfr.h>
 #include <cstring>
-
-/**
- * 2^48 - fixed-point precision for difficulty/merit calculations.
- * 1.0 merit = 0x0001_0000_0000_0000
- */
-static constexpr uint64_t TWO_POW48 = 1ULL << 48;
 
 /**
  * MPFR precision for all computations (256 bits = ~77 decimal digits).
@@ -59,25 +54,6 @@ static void mpfr_ln_fixed(mpz_t result, const mpz_t src, uint32_t precision)
 }
 
 /**
- * Extract a uint64_t from an mpz_t, handling both 32-bit and 64-bit platforms.
- */
-static uint64_t mpz_get_uint64(const mpz_t value)
-{
-    if (mpz_fits_ulong_p(value)) {
-        return mpz_get_ui(value);
-    }
-    if (mpz_sizeinbase(value, 2) <= 64) {
-        mpz_t high;
-        mpz_init(high);
-        mpz_fdiv_q_2exp(high, value, 32);
-        uint64_t result = (static_cast<uint64_t>(mpz_get_ui(high)) << 32) | mpz_get_ui(value);
-        mpz_clear(high);
-        return result;
-    }
-    return 0;
-}
-
-/**
  * Calculate merit of a prime gap.
  * merit = gap_size / ln(start), returned as fixed-point * 2^48.
  *
@@ -101,7 +77,7 @@ static uint64_t CalculateMerit(const mpz_t start, const mpz_t end)
     mpz_mul_2exp(merit, gap, 96);
     mpz_fdiv_q(merit, merit, ln_start);
 
-    uint64_t result = mpz_get_uint64(merit);
+    uint64_t result = mpz_get_ui64(merit);
 
     mpz_clear(gap);
     mpz_clear(ln_start);
@@ -164,7 +140,7 @@ static uint64_t CalculateDifficulty(const mpz_t start, const mpz_t end)
     mpz_mul_2exp(min_gap_merit, min_gap_merit, 96);
     mpz_fdiv_q(min_gap_merit, min_gap_merit, ln_start);
 
-    uint64_t min_gap_distance_merit = mpz_get_uint64(min_gap_merit);
+    uint64_t min_gap_distance_merit = mpz_get_ui64(min_gap_merit);
     if (min_gap_distance_merit == 0) min_gap_distance_merit = 1;
 
     mpz_clear(ln_start);
@@ -368,7 +344,7 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
     mpz_t mpz_log_actual_z;
     mpz_init(mpz_log_actual_z);
     mpfr_get_z(mpz_log_actual_z, mpfr_ln, MPFR_RNDN);
-    uint64_t log_actual = mpz_get_uint64(mpz_log_actual_z);
+    uint64_t log_actual = mpz_get_ui64(mpz_log_actual_z);
     mpz_clear(mpz_log_actual_z);
 
     // Compute ln(target_spacing) * 2^48 using MPFR
@@ -379,7 +355,7 @@ uint64_t CalculateNextWorkRequired(uint64_t nDifficulty, int64_t nActualTimespan
     mpz_t mpz_log_target_z;
     mpz_init(mpz_log_target_z);
     mpfr_get_z(mpz_log_target_z, mpfr_ln, MPFR_RNDN);
-    uint64_t log_target = mpz_get_uint64(mpz_log_target_z);
+    uint64_t log_target = mpz_get_ui64(mpz_log_target_z);
     mpz_clear(mpz_log_target_z);
 
     mpfr_clear(mpfr_actual);

@@ -59,6 +59,7 @@
 #include <node/mempool_persist_args.h>
 #include <node/miner.h>
 #include <pow/mining_engine.h>
+#include <pow/fast_nextprime.h>
 #include <pow.h>
 #include <key_io.h>
 #include <addresstype.h>
@@ -1388,6 +1389,20 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
 
     ChainstateManager& chainman = *Assert(node.chainman);
 
+    // Warm up gwnum's global state (shareable sincos mutex) before workers
+    // launch. gwnum's share_sincos_data() has a racy mutex init — multiple
+    // threads calling gwsetup simultaneously on first use corrupt the heap.
+    {
+        mpz_t dummy_n, dummy_r;
+        mpz_init(dummy_n);
+        mpz_ui_pow_ui(dummy_n, 2, 2048);
+        mpz_nextprime(dummy_n, dummy_n);
+        mpz_init(dummy_r);
+        fast_nextprime(dummy_r, dummy_n);
+        mpz_clear(dummy_r);
+        mpz_clear(dummy_n);
+    }
+
     // Create persistent engine reused across block templates (like Qt miner).
     // Auto-detects GPU hardware. GPU thread starts on first mine_parallel
     // and persists across blocks — no init/teardown per block.
@@ -1515,9 +1530,9 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
         if (!processor.found) continue;
 
         // Mark block as pre-checked so ProcessNewBlock skips the expensive
-        // CheckProofOfWork (fast_nextprime ~31s) under cs_main. The miner already
-        // validated the gap meets difficulty. Without this, cs_main is held for ~31s
-        // per block, completely blocking RPC for the entire duration.
+        // CheckProofOfWork (fast_nextprime: ~9s GPU, ~31s gwnum, ~78s GMP)
+        // under cs_main. The miner already validated the gap meets difficulty.
+        // Without this, cs_main is held for the duration, blocking RPC.
         block.fChecked = true;
         auto block_ptr = std::make_shared<const CBlock>(std::move(block));
         if (chainman.ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {

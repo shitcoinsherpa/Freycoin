@@ -153,7 +153,8 @@ public:
         vSeeds.emplace_back("seed1.freycoin.tech");
         vSeeds.emplace_back("seed2.freycoin.tech");
         vSeeds.emplace_back("seed3.freycoin.tech");
-        vFixedSeeds.clear();  // Until VPS IPs are hardcoded
+
+        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 
         fDefaultConsistencyChecks = false;
         m_is_mockable_chain = false;
@@ -235,10 +236,11 @@ public:
         assert(consensus.hashGenesisBlock == uint256{"6716f28b571cf6b4f40ab00d454bae73cf7c30270197fed22369fccb762027eb"});
         assert(genesis.hashMerkleRoot == uint256{"3d88cf475c00c0a831fb98c7816aa8ad8dae0edcaca6d012cbb4cef3bc6402d5"});
 
-        vFixedSeeds.clear();
         vSeeds.clear();
         vSeeds.emplace_back("testseed1.freycoin.tech");
         vSeeds.emplace_back("testseed2.freycoin.tech");
+
+        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_test), std::end(chainparams_seed_test));
 
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
