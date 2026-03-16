@@ -179,6 +179,91 @@ struct MiningStats {
 };
 
 /**
+ * Thread-safe validation statistics (for profiling CheckProofOfWork)
+ */
+struct ValidationStats {
+    std::atomic<uint64_t> blocks_validated{0};
+    std::atomic<uint64_t> total_checkpow_us{0};
+    std::atomic<uint64_t> total_primality_us{0};
+    std::atomic<uint64_t> total_nextprime_us{0};
+    std::atomic<uint64_t> total_difficulty_us{0};
+    std::atomic<uint64_t> tier_gpu{0};
+    std::atomic<uint64_t> tier_gwnum{0};
+    std::atomic<uint64_t> tier_gmp{0};
+    std::atomic<uint64_t> gpu_lock_wait_us{0};
+    std::atomic<uint64_t> gpu_lock_hold_us{0};
+    // Fine-grained fast_nextprime profiling
+    std::atomic<uint64_t> total_sieve_init_us{0};
+    std::atomic<uint64_t> total_sieve_segment_us{0};
+    std::atomic<uint64_t> total_fermat_count{0};
+    std::atomic<uint64_t> total_fermat_us{0};
+    std::atomic<uint64_t> total_bpsw_confirm_us{0};
+    std::atomic<uint64_t> total_survivors{0};
+
+    struct Snapshot {
+        uint64_t blocks_validated;
+        uint64_t total_checkpow_us;
+        uint64_t total_primality_us;
+        uint64_t total_nextprime_us;
+        uint64_t total_difficulty_us;
+        uint64_t tier_gpu;
+        uint64_t tier_gwnum;
+        uint64_t tier_gmp;
+        uint64_t gpu_lock_wait_us;
+        uint64_t gpu_lock_hold_us;
+        uint64_t total_sieve_init_us;
+        uint64_t total_sieve_segment_us;
+        uint64_t total_fermat_count;
+        uint64_t total_fermat_us;
+        uint64_t total_bpsw_confirm_us;
+        uint64_t total_survivors;
+    };
+
+    Snapshot snapshot() const {
+        return {
+            blocks_validated.load(std::memory_order_relaxed),
+            total_checkpow_us.load(std::memory_order_relaxed),
+            total_primality_us.load(std::memory_order_relaxed),
+            total_nextprime_us.load(std::memory_order_relaxed),
+            total_difficulty_us.load(std::memory_order_relaxed),
+            tier_gpu.load(std::memory_order_relaxed),
+            tier_gwnum.load(std::memory_order_relaxed),
+            tier_gmp.load(std::memory_order_relaxed),
+            gpu_lock_wait_us.load(std::memory_order_relaxed),
+            gpu_lock_hold_us.load(std::memory_order_relaxed),
+            total_sieve_init_us.load(std::memory_order_relaxed),
+            total_sieve_segment_us.load(std::memory_order_relaxed),
+            total_fermat_count.load(std::memory_order_relaxed),
+            total_fermat_us.load(std::memory_order_relaxed),
+            total_bpsw_confirm_us.load(std::memory_order_relaxed),
+            total_survivors.load(std::memory_order_relaxed),
+        };
+    }
+
+    void reset() {
+        blocks_validated = 0;
+        total_checkpow_us = 0;
+        total_primality_us = 0;
+        total_nextprime_us = 0;
+        total_difficulty_us = 0;
+        tier_gpu = 0;
+        tier_gwnum = 0;
+        tier_gmp = 0;
+        gpu_lock_wait_us = 0;
+        gpu_lock_hold_us = 0;
+        total_sieve_init_us = 0;
+        total_sieve_segment_us = 0;
+        total_fermat_count = 0;
+        total_fermat_us = 0;
+        total_bpsw_confirm_us = 0;
+        total_survivors = 0;
+    }
+};
+
+/** Global validation stats, accumulated by CheckProofOfWork and fast_nextprime */
+extern ValidationStats g_validation_stats;
+
+/**
  * SIMD capability levels
  */
 enum class SIMDLevel {

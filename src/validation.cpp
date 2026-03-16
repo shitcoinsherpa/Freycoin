@@ -3829,7 +3829,7 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
-static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, int nHeight = -1, bool fCheckPOW = true)
+static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, int nHeight = -1, bool fCheckPOW = true, PrimeGapData* out_gap = nullptr)
 {
     // Skip PoW validation for genesis block (hashPrevBlock is null)
     // Genesis block hash is verified separately against consensusParams.hashGenesisBlock
@@ -3839,7 +3839,7 @@ static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& st
 
     // Check proof of work matches claimed amount (prime gap validation)
     // nHeight=-1 means context-free check (accepts union of pre/post-fork ranges)
-    if (fCheckPOW && !CheckProofOfWork(block, nHeight, consensusParams))
+    if (fCheckPOW && !CheckProofOfWork(block, nHeight, consensusParams, out_gap))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "invalid-gap", "prime gap proof of work failed");
 
     return true;
@@ -4193,6 +4193,7 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
     // Check for duplicate
     uint256 hash = block.GetHash();
     BlockMap::iterator miSelf{m_blockman.m_block_index.find(hash)};
+    PrimeGapData gap_data;
     if (hash != GetConsensus().hashGenesisBlock) {
         if (miSelf != m_blockman.m_block_index.end()) {
             // Block header is already known.
@@ -4222,12 +4223,28 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
             return false;
         }
 
-        if (!CheckBlockHeader(block, state, GetConsensus(), /*nHeight=*/pindexPrev->nHeight + 1, checkPoW)) {
+        if (!CheckBlockHeader(block, state, GetConsensus(), /*nHeight=*/pindexPrev->nHeight + 1, checkPoW, &gap_data)) {
             LogDebug(BCLog::VALIDATION, "%s: Consensus::CheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
             return false;
         }
     }
     CBlockIndex* pindex{m_blockman.AddToBlockIndex(block, m_best_header)};
+
+    // Cache gap data computed during PoW validation so getblock RPC is instant
+    if (gap_data.gap > 0 && !pindex->m_pow_cached) {
+        pindex->m_cached_gap = gap_data.gap;
+        pindex->m_cached_merit = gap_data.merit;
+        pindex->m_cached_start_hex = gap_data.start_hex;
+        pindex->m_cached_end_hex = gap_data.end_hex;
+        pindex->m_pow_cached = true;
+
+        // Persist to LevelDB so cache survives restart
+        if (m_blockman.m_block_tree_db) {
+            m_blockman.m_block_tree_db->WriteGapCache(
+                pindex->GetBlockHash(), gap_data.gap, gap_data.merit,
+                gap_data.start_hex, gap_data.end_hex);
+        }
+    }
 
     if (ppindex)
         *ppindex = pindex;
@@ -4241,15 +4258,20 @@ bool ChainstateManager::ProcessNewBlockHeaders(std::span<const CBlockHeader> hea
     AssertLockNotHeld(cs_main);
     {
         LOCK(cs_main);
+        const auto t_batch_start = std::chrono::steady_clock::now();
+
         // PoW Check in Freycoin is quite expensive and makes Initial Sync very long, recognize existing Batches of Headers and don't check the PoW for them.
         bool knownHeaderBatch(false);
         if (headers.size() == MAX_HEADERS_RESULTS) {
             if (GetParams().Checkpoints().isKnownHeaderBatch(headers, m_best_header->nHeight + 1))
                 knownHeaderBatch = true;
         }
+
+        unsigned pow_checks = 0;
         for (const CBlockHeader& header : headers) {
             CBlockIndex *pindex = nullptr; // Use a temp pindex instead of ppindex to avoid a const_cast
             bool accepted{AcceptBlockHeader(header, state, &pindex, !knownHeaderBatch)};
+            if (!knownHeaderBatch) pow_checks++;
             CheckBlockIndex();
 
             if (!accepted) {
@@ -4258,6 +4280,15 @@ bool ChainstateManager::ProcessNewBlockHeaders(std::span<const CBlockHeader> hea
             if (ppindex) {
                 *ppindex = pindex;
             }
+        }
+
+        const auto t_batch_end = std::chrono::steady_clock::now();
+        const auto batch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_batch_end - t_batch_start).count();
+        if (batch_ms > 100 || pow_checks > 0) {
+            LogDebug(BCLog::POW, "ProcessNewBlockHeaders: %zu headers, %u PoW checks%s, took %lld ms\n",
+                     headers.size(), pow_checks,
+                     knownHeaderBatch ? " (batch skipped)" : "",
+                     batch_ms);
         }
     }
     if (NotifyHeaderTip()) {
@@ -4394,9 +4425,9 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
         if (new_block) *new_block = false;
         BlockValidationState state;
 
-        // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
-        // Therefore, the following critical section must include the CheckBlock() call as well.
-        LOCK(cs_main);
+        // Use WAIT_LOCK for a named lock guard so we can REVERSE_LOCK during
+        // expensive PoW verification, keeping RPC and peers responsive.
+        WAIT_LOCK(cs_main, cs_main_lock);
 
         // Bypass PoW Check if Ancestor of Assumed Valid Block.
         bool fPoWChecks = true;
@@ -4416,11 +4447,29 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
             }
         }
 
-        // Skipping AcceptBlock() for CheckBlock() failures means that we will never mark a block as invalid if
-        // CheckBlock() fails.  This is protective against consensus failure if there are any unknown forms of block
-        // malleability that cause CheckBlock() to fail; see e.g. CVE-2012-2459 and
-        // https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-February/016697.html.  Because CheckBlock() is
-        // not very expensive, the anti-DoS benefits of caching failure (of a definitely-invalid block) are not substantial.
+        // Prime gap PoW verification (CheckProofOfWork -> fast_nextprime) can
+        // take 30-90+ seconds on CPU without GPU acceleration. Release cs_main
+        // during the expensive check so RPC and peer connections stay responsive.
+        // Mining code already sets fChecked=true before calling ProcessNewBlock;
+        // this handles blocks received from peers.
+        // Safe: only this thread accesses this block object at this point, and
+        // the check is context-free (no chain state dependency beyond params).
+        if (fPoWChecks && !block->fChecked) {
+            const auto& consensusParams = GetConsensus();
+            {
+                REVERSE_LOCK(cs_main_lock, cs_main);
+                // CheckBlock verifies PoW + merkle root + size limits.
+                // On success, sets block->fChecked = true (mutable).
+                BlockValidationState pre_state;
+                CheckBlock(*block, pre_state, consensusParams, /*fCheckPOW=*/true, /*fCheckMerkleRoot=*/true);
+                // If pre-check fails, the check below will repeat under cs_main
+                // for proper error handling and block rejection.
+            }
+            // cs_main reacquired
+        }
+
+        // If fChecked was set by the pre-check above (or by mining code),
+        // CheckBlock returns immediately - no expensive PoW re-verification.
         bool ret = CheckBlock(*block, state, GetConsensus(), fPoWChecks);
         if (ret) {
             // Store to disk

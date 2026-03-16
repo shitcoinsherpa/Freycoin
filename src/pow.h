@@ -10,10 +10,19 @@
 
 #include <consensus/params.h>
 #include <cstdint>
+#include <string>
 
 class CBlockHeader;
 class CBlockIndex;
 class uint256;
+
+/** Computed prime gap data from CheckProofOfWork, used to populate CBlockIndex cache */
+struct PrimeGapData {
+    uint64_t gap{0};
+    double merit{0.0};
+    std::string start_hex;
+    std::string end_hex;
+};
 
 /**
  * Check whether a block satisfies the proof-of-work requirement.
@@ -26,12 +35,14 @@ class uint256;
  * 5. Compute difficulty with randomness: merit + rand(start, p2) % (2/ln(start))
  * 6. Accept if achieved difficulty >= nDifficulty
  *
- * @param[in] block    The block header to validate
- * @param[in] nHeight  Block height (-1 for context-free check: accepts both pre/post-fork ranges)
- * @param[in] params   Consensus parameters
+ * @param[in]  block    The block header to validate
+ * @param[in]  nHeight  Block height (-1 for context-free check: accepts both pre/post-fork ranges)
+ * @param[in]  params   Consensus parameters
+ * @param[out] out_gap  Optional: receives computed gap data to avoid recomputation
  * @return true if the proof-of-work is valid
  */
-bool CheckProofOfWork(const CBlockHeader& block, int nHeight, const Consensus::Params& params);
+bool CheckProofOfWork(const CBlockHeader& block, int nHeight, const Consensus::Params& params,
+                      PrimeGapData* out_gap = nullptr);
 
 /**
  * Calculate the next required difficulty for the block following pindexLast.

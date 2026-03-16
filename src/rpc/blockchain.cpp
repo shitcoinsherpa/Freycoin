@@ -198,8 +198,11 @@ static std::string MpzToHex(const mpz_t n)
     return result;
 }
 
-/** Compute prime gap data for a block (start prime, end prime, gap) */
-static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
+/** Compute prime gap data for a block (start prime, end prime, gap).
+ *  If block_tree_db is non-null, persist the cache to LevelDB for fast
+ *  retrieval after node restart. */
+static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result,
+                                 kernel::BlockTreeDB* block_tree_db = nullptr)
 {
     // Skip genesis block (no real PoW)
     if (blockindex.nHeight == 0) {
@@ -264,6 +267,12 @@ static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
     blockindex.m_cached_merit = real_merit;
     blockindex.m_pow_cached = true;
 
+    // Persist cache to LevelDB so it survives node restart
+    if (block_tree_db) {
+        block_tree_db->WriteGapCache(blockindex.GetBlockHash(), gap_size, real_merit,
+                                      blockindex.m_cached_start_hex, blockindex.m_cached_end_hex);
+    }
+
     // Add to result
     result.pushKV("start_prime", blockindex.m_cached_start_hex);
     result.pushKV("end_prime", blockindex.m_cached_end_hex);
@@ -277,7 +286,7 @@ static void ComputePrimeGapData(const CBlockIndex& blockindex, UniValue& result)
     mpz_clear(mpz_gap);
 }
 
-UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex)
+UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex, kernel::BlockTreeDB* block_tree_db)
 {
     // Serialize passed information without accessing chain state of the active chain!
     AssertLockNotHeld(cs_main); // For performance reasons
@@ -294,10 +303,13 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     result.pushKV("time", blockindex.nTime);
     result.pushKV("mediantime", blockindex.GetMedianTimePast());
     result.pushKV("nonce", static_cast<uint64_t>(blockindex.nNonce));
-    result.pushKV("difficulty", strprintf("%016llx", blockindex.nDifficulty));
+    // Freycoin: Return difficulty as float (nDifficulty / 2^48) for explorer
+    // compatibility. Keep hex available as difficulty_hex for internal tools.
+    result.pushKV("difficulty", static_cast<double>(blockindex.nDifficulty) / 281474976710656.0);
+    result.pushKV("difficulty_hex", strprintf("%016llx", blockindex.nDifficulty));
     result.pushKV("shift", blockindex.nShift);
     result.pushKV("adder", blockindex.nAdd.GetHex());
-    ComputePrimeGapData(blockindex, result);  // Adds gap, start_prime, end_prime, merit (real gap/ln(start))
+    ComputePrimeGapData(blockindex, result, block_tree_db);  // Adds gap, start_prime, end_prime, merit (real gap/ln(start))
     result.pushKV("chainwork", blockindex.nChainWork.GetHex());
     result.pushKV("nTx", blockindex.nTx);
 
@@ -308,9 +320,9 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
     return result;
 }
 
-UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity)
+UniValue blockToJSON(BlockManager& blockman, const CBlock& block, const CBlockIndex& tip, const CBlockIndex& blockindex, TxVerbosity verbosity, kernel::BlockTreeDB* block_tree_db)
 {
-    UniValue result = blockheaderToJSON(tip, blockindex);
+    UniValue result = blockheaderToJSON(tip, blockindex, block_tree_db);
 
     result.pushKV("strippedsize", (int)::GetSerializeSize(TX_NO_WITNESS(block)));
     result.pushKV("size", (int)::GetSerializeSize(TX_WITH_WITNESS(block)));
@@ -724,9 +736,13 @@ static RPCHelpMan getblockheader()
                             {RPCResult::Type::NUM_TIME, "time", "The block time expressed in " + UNIX_EPOCH_TIME},
                             {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
                             {RPCResult::Type::NUM, "nonce", "The nonce"},
-                            {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+                            {RPCResult::Type::NUM, "difficulty", "Block difficulty (nDifficulty / 2^48)"},
+                            {RPCResult::Type::STR_HEX, "difficulty_hex", "Block difficulty target as hex (2^48 fixed-point)"},
                             {RPCResult::Type::NUM, "shift", "Left-shift amount for prime construction"},
                             {RPCResult::Type::STR_HEX, "adder", "Adder value for prime construction"},
+                            {RPCResult::Type::STR_HEX, "start_prime", "Start prime (hash * 2^shift + adder) in hex"},
+                            {RPCResult::Type::STR_HEX, "end_prime", "Next prime after start_prime in hex"},
+                            {RPCResult::Type::NUM, "gap", "Prime gap size (end_prime - start_prime)"},
                             {RPCResult::Type::NUM, "merit", "The difficulty as merit (gap/ln(start))"},
                             {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the current chain"},
                             {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
@@ -750,11 +766,13 @@ static RPCHelpMan getblockheader()
 
     const CBlockIndex* pblockindex;
     const CBlockIndex* tip;
+    kernel::BlockTreeDB* block_tree_db;
     ChainstateManager& chainman = EnsureAnyChainman(request.context);
     {
         LOCK(cs_main);
         pblockindex = chainman.m_blockman.LookupBlockIndex(hash);
         tip = chainman.ActiveChain().Tip();
+        block_tree_db = chainman.m_blockman.m_block_tree_db.get();
     }
 
     if (!pblockindex) {
@@ -769,7 +787,7 @@ static RPCHelpMan getblockheader()
         return strHex;
     }
 
-    return blockheaderToJSON(*tip, *pblockindex);
+    return blockheaderToJSON(*tip, *pblockindex, block_tree_db);
 },
     };
 }
@@ -901,9 +919,13 @@ static RPCHelpMan getblock()
                     {RPCResult::Type::NUM_TIME, "time",       "The block time expressed in " + UNIX_EPOCH_TIME},
                     {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
                     {RPCResult::Type::NUM, "nonce", "The nonce"},
-                    {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+                    {RPCResult::Type::NUM, "difficulty", "Block difficulty (nDifficulty / 2^48)"},
+                    {RPCResult::Type::STR_HEX, "difficulty_hex", "Block difficulty target as hex (2^48 fixed-point)"},
                     {RPCResult::Type::NUM, "shift", "Left-shift amount for prime construction"},
                     {RPCResult::Type::STR_HEX, "adder", "Adder value for prime construction"},
+                    {RPCResult::Type::STR_HEX, "start_prime", "Start prime (hash * 2^shift + adder) in hex"},
+                    {RPCResult::Type::STR_HEX, "end_prime", "Next prime after start_prime in hex"},
+                    {RPCResult::Type::NUM, "gap", "Prime gap size (end_prime - start_prime)"},
                     {RPCResult::Type::NUM, "merit", "The difficulty as merit (gap/ln(start))"},
                     {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the chain up to this block (in hex)"},
                     {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
@@ -948,11 +970,13 @@ static RPCHelpMan getblock()
 
     const CBlockIndex* pblockindex;
     const CBlockIndex* tip;
+    kernel::BlockTreeDB* block_tree_db;
     ChainstateManager& chainman = EnsureAnyChainman(request.context);
     {
         LOCK(cs_main);
         pblockindex = chainman.m_blockman.LookupBlockIndex(hash);
         tip = chainman.ActiveChain().Tip();
+        block_tree_db = chainman.m_blockman.m_block_tree_db.get();
 
         if (!pblockindex) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
@@ -978,7 +1002,7 @@ static RPCHelpMan getblock()
         tx_verbosity = TxVerbosity::SHOW_DETAILS_AND_PREVOUT;
     }
 
-    return blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity);
+    return blockToJSON(chainman.m_blockman, block, *tip, *pblockindex, tx_verbosity, block_tree_db);
 },
     };
 }
@@ -1467,7 +1491,8 @@ static RPCHelpMan getresult()
 
     UniValue rv(UniValue::VOBJ);
     rv.pushKV("type", "prime gap");
-    rv.pushKV("difficulty", strprintf("%016llx", block.nDifficulty));
+    rv.pushKV("difficulty", static_cast<double>(block.nDifficulty) / 281474976710656.0);
+    rv.pushKV("difficulty_hex", strprintf("%016llx", block.nDifficulty));
     rv.pushKV("shift", block.nShift);
     rv.pushKV("adder", block.nAdd.GetHex());
     rv.pushKV("nonce", static_cast<uint64_t>(block.nNonce));
@@ -1546,7 +1571,8 @@ RPCHelpMan getblockchaininfo()
                 {RPCResult::Type::NUM, "blocks", "the height of the most-work fully-validated chain. The genesis block has height 0"},
                 {RPCResult::Type::NUM, "headers", "the current number of headers we have validated"},
                 {RPCResult::Type::STR, "bestblockhash", "the hash of the currently best block"},
-                {RPCResult::Type::STR_HEX, "difficulty", "Block difficulty target (2^48 fixed-point)"},
+                {RPCResult::Type::NUM, "difficulty", "Block difficulty (nDifficulty / 2^48)"},
+                {RPCResult::Type::STR_HEX, "difficulty_hex", "Block difficulty target as hex (2^48 fixed-point)"},
                 {RPCResult::Type::NUM, "merit", "The current difficulty as merit (gap/ln(start))"},
                 {RPCResult::Type::NUM_TIME, "time", "The block time expressed in " + UNIX_EPOCH_TIME},
                 {RPCResult::Type::NUM_TIME, "mediantime", "The median block time expressed in " + UNIX_EPOCH_TIME},
@@ -1580,7 +1606,8 @@ RPCHelpMan getblockchaininfo()
     obj.pushKV("blocks", height);
     obj.pushKV("headers", chainman.m_best_header ? chainman.m_best_header->nHeight : -1);
     obj.pushKV("bestblockhash", tip.GetBlockHash().GetHex());
-    obj.pushKV("difficulty", strprintf("%016llx", tip.nDifficulty));
+    obj.pushKV("difficulty", static_cast<double>(tip.nDifficulty) / 281474976710656.0);
+    obj.pushKV("difficulty_hex", strprintf("%016llx", tip.nDifficulty));
     obj.pushKV("merit", ComputeRealMerit(tip));
     obj.pushKV("time", tip.GetBlockTime());
     obj.pushKV("mediantime", tip.GetMedianTimePast());

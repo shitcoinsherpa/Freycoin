@@ -27,6 +27,7 @@
 #include <policy/ephemeral_policy.h>
 #include <pow.h>
 #include <pow/mining_engine.h>
+#include <pow/pow_common.h>
 #include <pow/pow_processor.h>
 #include <rpc/blockchain.h>
 #include <rpc/mining.h>
@@ -122,6 +123,33 @@ static RPCHelpMan getnetworkminingpower()
                 RPCExamples{
                     HelpExampleCli("getnetworkminingpower", "")
             + HelpExampleRpc("getnetworkminingpower", "")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    ChainstateManager& chainman = EnsureAnyChainman(request.context);
+    LOCK(cs_main);
+    return GetNetworkMiningPower(self.Arg<int>("nblocks"), self.Arg<int>("height"), chainman.ActiveChain());
+},
+    };
+}
+
+// Freycoin: Alias for explorer compatibility. btc-rpc-explorer calls
+// getnetworkhashps and crashes if it's missing (issue #85).
+static RPCHelpMan getnetworkhashps()
+{
+    return RPCHelpMan{
+        "getnetworkhashps",
+        "Alias for getnetworkminingpower (explorer compatibility).\n"
+        "Returns the estimated network mining power based on the last n blocks.\n",
+                {
+                    {"nblocks", RPCArg::Type::NUM, RPCArg::Default{120}, "The number of blocks."},
+                    {"height", RPCArg::Type::NUM, RPCArg::Default{-1}, "To estimate at the time of the given height."},
+                },
+                RPCResult{
+                    RPCResult::Type::NUM, "", "Mining power estimate"},
+                RPCExamples{
+                    HelpExampleCli("getnetworkhashps", "")
+            + HelpExampleRpc("getnetworkhashps", "")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -555,8 +583,8 @@ static RPCHelpMan getmininginfo()
                         {RPCResult::Type::NUM, "blocks", "The current block"},
                         {RPCResult::Type::NUM, "currentblockweight", /*optional=*/true, "The block weight (including reserved weight for block header, txs count and coinbase tx) of the last assembled block (only present if a block was ever assembled)"},
                         {RPCResult::Type::NUM, "currentblocktx", /*optional=*/true, "The number of block transactions (excluding coinbase) of the last assembled block (only present if a block was ever assembled)"},
-                        {RPCResult::Type::STR_HEX, "bits", "The current nBits, integer representation of the block difficulty target"},
-                        {RPCResult::Type::NUM, "difficulty", "The current difficulty"},
+                        {RPCResult::Type::NUM, "difficulty", "The current difficulty (nDifficulty / 2^48)"},
+                        {RPCResult::Type::STR_HEX, "difficulty_hex", "The current difficulty target as hex (2^48 fixed-point)"},
                         {RPCResult::Type::NUM, "networkminingpower", "The network mining power"},
                         {RPCResult::Type::NUM, "pooledtx", "The size of the mempool"},
                         {RPCResult::Type::STR_AMOUNT, "blockmintxfee", "Minimum feerate of packages selected for block inclusion in " + CURRENCY_UNIT + "/kvB"},
@@ -564,8 +592,8 @@ static RPCHelpMan getmininginfo()
                         {RPCResult::Type::OBJ, "next", "The next block",
                         {
                             {RPCResult::Type::NUM, "height", "The next height"},
-                            {RPCResult::Type::STR_HEX, "bits", "The next target nBits"},
-                            {RPCResult::Type::NUM, "difficulty", "The next difficulty"},
+                            {RPCResult::Type::NUM, "difficulty", "The next difficulty (nDifficulty / 2^48)"},
+                            {RPCResult::Type::STR_HEX, "difficulty_hex", "The next difficulty target as hex"},
                         }},
                         RPCResult{RPCResult::Type::ARR, "warnings", "any network and blockchain warnings",
                         {
@@ -589,8 +617,8 @@ static RPCHelpMan getmininginfo()
     obj.pushKV("blocks",           active_chain.Height());
     if (BlockAssembler::m_last_block_weight) obj.pushKV("currentblockweight", *BlockAssembler::m_last_block_weight);
     if (BlockAssembler::m_last_block_num_txs) obj.pushKV("currentblocktx", *BlockAssembler::m_last_block_num_txs);
-    obj.pushKV("bits", strprintf("%08x", tip.nDifficulty));
     obj.pushKV("difficulty", GetDifficulty(tip));
+    obj.pushKV("difficulty_hex", strprintf("%016llx", tip.nDifficulty));
     obj.pushKV("networkminingpower", getnetworkminingpower().HandleRequest(request));
     obj.pushKV("pooledtx",         (uint64_t)mempool.size());
     BlockAssembler::Options assembler_options;
@@ -603,8 +631,8 @@ static RPCHelpMan getmininginfo()
     NextEmptyBlockIndex(tip, chainman.GetConsensus(), next_index);
 
     next.pushKV("height", next_index.nHeight);
-    next.pushKV("bits", strprintf("%08x", next_index.nDifficulty));
     next.pushKV("difficulty", GetDifficulty(next_index));
+    next.pushKV("difficulty_hex", strprintf("%016llx", next_index.nDifficulty));
     obj.pushKV("next", next);
     obj.pushKV("warnings", node::GetWarningsForRpc(*CHECK_NONFATAL(node.warnings)));
     return obj;
@@ -1211,11 +1239,124 @@ static RPCHelpMan submitheader()
     };
 }
 
+static RPCHelpMan getpowstats()
+{
+    return RPCHelpMan{
+        "getpowstats",
+        "Returns proof-of-work profiling statistics for both validation and mining.\n"
+        "Useful for profiling and identifying bottlenecks in PoW verification.",
+        {},
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::OBJ, "validation", "Block validation PoW statistics",
+                {
+                    {RPCResult::Type::NUM, "blocks_validated", "Number of blocks validated with full PoW check"},
+                    {RPCResult::Type::NUM, "total_checkpow_ms", "Total time in CheckProofOfWork (ms)"},
+                    {RPCResult::Type::NUM, "avg_checkpow_ms", "Average time per CheckProofOfWork call (ms)"},
+                    {RPCResult::Type::NUM, "total_primality_ms", "Total time in mpz_probab_prime_p (ms)"},
+                    {RPCResult::Type::NUM, "total_nextprime_ms", "Total time in fast_nextprime (ms)"},
+                    {RPCResult::Type::NUM, "total_difficulty_ms", "Total time in CalculateDifficulty (ms)"},
+                    {RPCResult::Type::NUM, "tier_gpu", "Number of validations using GPU path"},
+                    {RPCResult::Type::NUM, "tier_gwnum", "Number of validations using gwnum path"},
+                    {RPCResult::Type::NUM, "tier_gmp", "Number of validations using GMP fallback"},
+                    {RPCResult::Type::NUM, "gpu_lock_wait_ms", "Total time waiting for GPU exclusive lock (ms)"},
+                    {RPCResult::Type::NUM, "gpu_lock_hold_ms", "Total time holding GPU exclusive lock (ms)"},
+                    {RPCResult::Type::NUM, "sieve_init_ms", "Total time in grouped-product sieve init (ms)"},
+                    {RPCResult::Type::NUM, "sieve_segment_ms", "Total time in sieve segment marking (ms)"},
+                    {RPCResult::Type::NUM, "mr_tests", "Total number of Miller-Rabin tests performed"},
+                    {RPCResult::Type::NUM, "mr_test_ms", "Total time in gwnum Miller-Rabin tests (ms)"},
+                    {RPCResult::Type::NUM, "bpsw_confirm_ms", "Total time in GMP BPSW confirmation (ms)"},
+                    {RPCResult::Type::NUM, "sieve_survivors", "Total sieve survivors tested"},
+                }},
+                {RPCResult::Type::OBJ, "mining", "Mining engine statistics",
+                {
+                    {RPCResult::Type::NUM, "primes_found", "Number of primes found"},
+                    {RPCResult::Type::NUM, "tests_performed", "Number of primality tests performed"},
+                    {RPCResult::Type::NUM, "gaps_found", "Number of qualifying gaps found"},
+                    {RPCResult::Type::NUM, "nonces_tested", "Number of nonces tested"},
+                    {RPCResult::Type::NUM, "sieve_runs", "Number of sieve segment runs"},
+                    {RPCResult::Type::NUM, "cache_misses", "Number of cache misses"},
+                    {RPCResult::Type::NUM, "time_sieving_ms", "Total time sieving (ms)"},
+                    {RPCResult::Type::NUM, "time_testing_ms", "Total time in primality testing (ms)"},
+                }},
+            }},
+        RPCExamples{
+            HelpExampleCli("getpowstats", "")
+    + HelpExampleRpc("getpowstats", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    // Validation stats
+    auto vs = g_validation_stats.snapshot();
+
+    UniValue validation(UniValue::VOBJ);
+    validation.pushKV("blocks_validated", vs.blocks_validated);
+    validation.pushKV("total_checkpow_ms", (int64_t)(vs.total_checkpow_us / 1000));
+    validation.pushKV("avg_checkpow_ms", vs.blocks_validated > 0 ? (int64_t)(vs.total_checkpow_us / vs.blocks_validated / 1000) : 0);
+    validation.pushKV("total_primality_ms", (int64_t)(vs.total_primality_us / 1000));
+    validation.pushKV("total_nextprime_ms", (int64_t)(vs.total_nextprime_us / 1000));
+    validation.pushKV("total_difficulty_ms", (int64_t)(vs.total_difficulty_us / 1000));
+    validation.pushKV("tier_gpu", vs.tier_gpu);
+    validation.pushKV("tier_gwnum", vs.tier_gwnum);
+    validation.pushKV("tier_gmp", vs.tier_gmp);
+    validation.pushKV("gpu_lock_wait_ms", (int64_t)(vs.gpu_lock_wait_us / 1000));
+    validation.pushKV("gpu_lock_hold_ms", (int64_t)(vs.gpu_lock_hold_us / 1000));
+    validation.pushKV("sieve_init_ms", (int64_t)(vs.total_sieve_init_us / 1000));
+    validation.pushKV("sieve_segment_ms", (int64_t)(vs.total_sieve_segment_us / 1000));
+    validation.pushKV("mr_tests", vs.total_fermat_count);
+    validation.pushKV("mr_test_ms", (int64_t)(vs.total_fermat_us / 1000));
+    validation.pushKV("bpsw_confirm_ms", (int64_t)(vs.total_bpsw_confirm_us / 1000));
+    validation.pushKV("sieve_survivors", vs.total_survivors);
+
+    // Mining stats — the mining engine is created per-RPC call in GenerateBlock,
+    // so persistent stats are not available here. Show zeros as placeholder.
+    UniValue mining(UniValue::VOBJ);
+    mining.pushKV("primes_found", 0);
+    mining.pushKV("tests_performed", 0);
+    mining.pushKV("gaps_found", 0);
+    mining.pushKV("nonces_tested", 0);
+    mining.pushKV("sieve_runs", 0);
+    mining.pushKV("cache_misses", 0);
+    mining.pushKV("time_sieving_ms", 0);
+    mining.pushKV("time_testing_ms", 0);
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("validation", validation);
+    result.pushKV("mining", mining);
+    return result;
+},
+    };
+}
+
+static RPCHelpMan resetpowstats()
+{
+    return RPCHelpMan{
+        "resetpowstats",
+        "Resets all PoW profiling counters to zero.\n"
+        "Useful for isolating measurements between profiling runs.",
+        {},
+        RPCResult{RPCResult::Type::NONE, "", ""},
+        RPCExamples{
+            HelpExampleCli("resetpowstats", "")
+    + HelpExampleRpc("resetpowstats", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    g_validation_stats.reset();
+    return UniValue::VNULL;
+},
+    };
+}
+
 void RegisterMiningRPCCommands(CRPCTable& t)
 {
     static const CRPCCommand commands[]{
         {"mining", &getnetworkminingpower},
+        {"mining", &getnetworkhashps},
         {"mining", &getmininginfo},
+        {"mining", &getpowstats},
+        {"mining", &resetpowstats},
         {"mining", &prioritisetransaction},
         {"mining", &getprioritisedtransactions},
         {"mining", &getblocktemplate},

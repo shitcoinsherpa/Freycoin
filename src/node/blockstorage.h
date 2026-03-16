@@ -61,6 +61,15 @@ public:
     bool ReadFlag(const std::string& name, bool& fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex, const util::SignalInterrupt& interrupt)
         EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
+    /** Persist gap cache entry to LevelDB (key 'g' + hash) */
+    bool WriteGapCache(const uint256& hash, uint64_t gap, double merit,
+                       const std::string& start_hex, const std::string& end_hex);
+    /** Read gap cache entry from LevelDB */
+    bool ReadGapCache(const uint256& hash, uint64_t& gap, double& merit,
+                      std::string& start_hex, std::string& end_hex);
+    /** Load all gap cache entries from LevelDB into CBlockIndex objects */
+    void LoadGapCaches(std::function<CBlockIndex*(const uint256&)> lookupBlockIndex);
 };
 } // namespace kernel
 

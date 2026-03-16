@@ -38,8 +38,13 @@ util::Result<void> ApplyArgsManOptions(const ArgsManager& args, ChainstateManage
         }
     }
 
-    if (args.IsArgNegated("-assumevalid"))
+    if (args.IsArgNegated("-assumevalid")) {
         opts.assumed_valid_block = uint256::ZERO;
+    } else if (auto value{args.GetArg("-assumevalid")}) {
+        if (auto parsed{uint256::FromUserHex(*value)}) {
+            opts.assumed_valid_block = *parsed;
+        }
+    }
 
     if (auto value{args.GetIntArg("-maxtipage")}) opts.max_tip_age = std::chrono::seconds{*value};
 

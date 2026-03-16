@@ -35,7 +35,7 @@ private:
 public:
     /** Do not connect to peers with clock off by more than this amount.
      *  Raise a warning if it is found that the difference between system and network time is larger. */
-    static constexpr std::chrono::seconds MAX_TIME_OFFSET{300};
+    static constexpr std::chrono::seconds MAX_TIME_OFFSET{3600};
 
     /** Add a new time offset sample. */
     void Add(std::chrono::seconds offset) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);

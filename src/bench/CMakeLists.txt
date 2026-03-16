@@ -42,12 +42,14 @@ add_executable(bench_freycoin
   peer_eviction.cpp
   poly1305.cpp
   pool.cpp
+  pow_pipeline.cpp
   prevector.cpp
   random.cpp
   readwriteblock.cpp
   rollingbloom.cpp
   rpc_blockchain.cpp
   rpc_mempool.cpp
+  sieve.cpp
   sign_transaction.cpp
   streams_findbyte.cpp
   strencodings.cpp

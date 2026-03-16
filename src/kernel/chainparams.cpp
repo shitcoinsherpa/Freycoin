@@ -152,7 +152,7 @@ public:
 
         vSeeds.emplace_back("seed1.freycoin.tech");
         vSeeds.emplace_back("seed2.freycoin.tech");
-        vSeeds.emplace_back("seed3.freycoin.tech");
+        // seed3 removed: was duplicate of seed2 (both resolved to Toronto)
 
         vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_main), std::end(chainparams_seed_main));
 

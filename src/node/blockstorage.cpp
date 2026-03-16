@@ -46,6 +46,7 @@
 namespace kernel {
 static constexpr uint8_t DB_BLOCK_FILES{'f'};
 static constexpr uint8_t DB_BLOCK_INDEX{'b'};
+static constexpr uint8_t DB_GAP_CACHE{'g'};
 static constexpr uint8_t DB_FLAG{'F'};
 static constexpr uint8_t DB_REINDEX_FLAG{'R'};
 static constexpr uint8_t DB_LAST_BLOCK{'l'};
@@ -104,6 +105,72 @@ bool BlockTreeDB::ReadFlag(const std::string& name, bool& fValue)
     }
     fValue = ch == uint8_t{'1'};
     return true;
+}
+
+/** Serializable gap cache entry for LevelDB persistence.
+ *  Merit is stored as fixed-point uint64_t (value * 1e8) since Bitcoin Core
+ *  serialization doesn't support double. */
+struct DiskGapCache {
+    uint64_t gap{0};
+    uint64_t merit_fixed{0};  // merit * 1e8
+    std::string start_hex;
+    std::string end_hex;
+
+    SERIALIZE_METHODS(DiskGapCache, obj)
+    {
+        READWRITE(obj.gap, obj.merit_fixed, obj.start_hex, obj.end_hex);
+    }
+};
+
+bool BlockTreeDB::WriteGapCache(const uint256& hash, uint64_t gap, double merit,
+                                 const std::string& start_hex, const std::string& end_hex)
+{
+    DiskGapCache cache{gap, static_cast<uint64_t>(merit * 1e8), start_hex, end_hex};
+    return Write(std::make_pair(DB_GAP_CACHE, hash), cache);
+}
+
+bool BlockTreeDB::ReadGapCache(const uint256& hash, uint64_t& gap, double& merit,
+                                std::string& start_hex, std::string& end_hex)
+{
+    DiskGapCache cache;
+    if (!Read(std::make_pair(DB_GAP_CACHE, hash), cache)) {
+        return false;
+    }
+    gap = cache.gap;
+    merit = static_cast<double>(cache.merit_fixed) / 1e8;
+    start_hex = cache.start_hex;
+    end_hex = cache.end_hex;
+    return true;
+}
+
+void BlockTreeDB::LoadGapCaches(std::function<CBlockIndex*(const uint256&)> lookupBlockIndex)
+{
+    std::unique_ptr<CDBIterator> pcursor(NewIterator());
+    pcursor->Seek(std::make_pair(DB_GAP_CACHE, uint256()));
+    int loaded = 0;
+    while (pcursor->Valid()) {
+        std::pair<uint8_t, uint256> key;
+        if (pcursor->GetKey(key) && key.first == DB_GAP_CACHE) {
+            DiskGapCache cache;
+            if (pcursor->GetValue(cache)) {
+                CBlockIndex* pindex = lookupBlockIndex(key.second);
+                if (pindex) {
+                    pindex->m_cached_gap = cache.gap;
+                    pindex->m_cached_merit = static_cast<double>(cache.merit_fixed) / 1e8;
+                    pindex->m_cached_start_hex = cache.start_hex;
+                    pindex->m_cached_end_hex = cache.end_hex;
+                    pindex->m_pow_cached = true;
+                    ++loaded;
+                }
+            }
+            pcursor->Next();
+        } else {
+            break;
+        }
+    }
+    if (loaded > 0) {
+        LogPrintf("Loaded %d gap cache entries from disk\n", loaded);
+    }
 }
 
 bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex, const util::SignalInterrupt& interrupt)
@@ -405,6 +472,11 @@ bool BlockManager::LoadBlockIndex(const std::optional<uint256>& snapshot_blockha
             GetConsensus(), [this](const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) { return this->InsertBlockIndex(hash); }, m_interrupt)) {
         return false;
     }
+
+    // Freycoin: Load persisted gap cache entries into CBlockIndex objects
+    m_block_tree_db->LoadGapCaches([this](const uint256& hash) -> CBlockIndex* {
+        return this->LookupBlockIndex(hash);
+    });
 
     if (snapshot_blockhash) {
         const std::optional<AssumeutxoData> maybe_au_data = GetParams().AssumeutxoForBlockhash(*snapshot_blockhash);

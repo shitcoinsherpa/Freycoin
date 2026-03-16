@@ -20,6 +20,8 @@
 # Previous releases and staging
 /releases
 /release-staging
+/release-bins
+/release
 
 # cargo default target dir
 target/

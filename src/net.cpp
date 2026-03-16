@@ -2604,7 +2604,9 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, std
             // 60 seconds for any of those sources to populate addrman.
             bool add_fixed_seeds_now = false;
             // It is cheapest to check if enough time has passed first.
-            if (GetTime<std::chrono::seconds>() > start + std::chrono::seconds{3}) {
+            // Freycoin: Give DNS seeds 15 seconds before falling back to fixed seeds.
+            // Upstream uses 60s; previous Freycoin used 3s which was too aggressive.
+            if (GetTime<std::chrono::seconds>() > start + std::chrono::seconds{15}) {
                 add_fixed_seeds_now = true;
                 LogPrintf("Adding fixed seeds as addrman is still empty for at least one reachable network\n");
             }

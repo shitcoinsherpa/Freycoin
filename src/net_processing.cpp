@@ -154,10 +154,13 @@ static const unsigned int NODE_NETWORK_LIMITED_MIN_BLOCKS = 288;
 static const unsigned int NODE_NETWORK_LIMITED_ALLOW_CONN_BLOCKS = 144;
 /** Average delay between local address broadcasts */
 static constexpr auto AVG_LOCAL_ADDRESS_BROADCAST_INTERVAL{24h};
-/** Average delay between peer address broadcasts */
-static constexpr auto AVG_ADDRESS_BROADCAST_INTERVAL{30s};
-/** Delay between rotating the peers we relay a particular address to */
-static constexpr auto ROTATE_ADDR_RELAY_DEST_INTERVAL{24h};
+/** Average delay between peer address broadcasts.
+ *  Freycoin: Reduced from 30s to 10s for faster propagation in small networks. */
+static constexpr auto AVG_ADDRESS_BROADCAST_INTERVAL{10s};
+/** Delay between rotating the peers we relay a particular address to.
+ *  Freycoin: Reduced from 24h to 1h — 24h rotation means bad relay targets
+ *  persist for an entire day, which is fatal in a 20-node network. */
+static constexpr auto ROTATE_ADDR_RELAY_DEST_INTERVAL{1h};
 /** Average delay between trickled inventory transmissions for inbound peers.
  *  Blocks and peers with NetPermissionFlags::NoBan permission bypass this. */
 static constexpr auto INBOUND_INVENTORY_BROADCAST_INTERVAL{5s};
@@ -1602,6 +1605,13 @@ ServiceFlags PeerManagerImpl::GetDesirableServiceFlags(ServiceFlags services) co
             return ServiceFlags(NODE_NETWORK_LIMITED | NODE_WITNESS);
         }
     }
+    // Freycoin: In small networks (<50 nodes), most peers may be syncing
+    // simultaneously and only offer NODE_NETWORK_LIMITED. Accept limited
+    // peers during IBD to break the service flag deadlock where all nodes
+    // demand NODE_NETWORK but none can offer it until synced.
+    if (m_chainman.IsInitialBlockDownload()) {
+        return ServiceFlags(NODE_NETWORK_LIMITED | NODE_WITNESS);
+    }
     return ServiceFlags(NODE_NETWORK | NODE_WITNESS);
 }
 
@@ -2086,10 +2096,11 @@ void PeerManagerImpl::RelayAddress(NodeId originator,
                                 .Write(hash_addr)
                                 .Write(time_addr)};
 
-    // Relay reachable addresses to 2 peers. Unreachable addresses are relayed randomly to 1 or 2 peers.
-    unsigned int nRelayNodes = (fReachable || (hasher.Finalize() & 1)) ? 2 : 1;
+    // Freycoin: Relay reachable addresses to 4 peers (upstream: 2). In a
+    // small network, 2-peer relay is insufficient for reliable propagation.
+    unsigned int nRelayNodes = (fReachable || (hasher.Finalize() & 1)) ? 4 : 2;
 
-    std::array<std::pair<uint64_t, Peer*>, 2> best{{{0, nullptr}, {0, nullptr}}};
+    std::array<std::pair<uint64_t, Peer*>, 4> best{{{0, nullptr}, {0, nullptr}, {0, nullptr}, {0, nullptr}}};
     assert(nRelayNodes <= best.size());
 
     LOCK(m_peer_mutex);
@@ -3246,12 +3257,17 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             m_num_preferred_download_peers += state->fPreferredDownload;
         }
 
-        // Attempt to initialize address relay for outbound peers and use result
+        // Attempt to initialize address relay for all peers and use result
         // to decide whether to send GETADDR, so that we don't send it to
-        // inbound or outbound block-relay-only peers.
+        // block-relay-only peers.
+        // Freycoin: Also initialize for inbound peers immediately. Upstream
+        // defers inbound relay until the peer sends an addr-related message
+        // (PR #21528), but this creates addr black holes in small networks.
         bool send_getaddr{false};
-        if (!pfrom.IsInboundConn()) {
-            send_getaddr = SetupAddressRelay(pfrom, *peer);
+        send_getaddr = SetupAddressRelay(pfrom, *peer);
+        // Only actively request addresses from outbound peers
+        if (pfrom.IsInboundConn()) {
+            send_getaddr = false;
         }
         if (send_getaddr) {
             // Do a one-time address fetch to help populate/update our addrman.
@@ -3576,7 +3592,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
             ++num_proc;
             const bool reachable{g_reachable_nets.Contains(addr)};
-            if (addr.nTime > current_a_time - 10min && !peer->m_getaddr_sent && vAddr.size() <= 10 && addr.IsRoutable()) {
+            // Freycoin: Widen relay window from 10min to 60min. In small networks
+            // with infrequent connections, most address timestamps may be stale.
+            if (addr.nTime > current_a_time - 60min && !peer->m_getaddr_sent && vAddr.size() <= 10 && addr.IsRoutable()) {
                 // Relay to a limited number of other nodes
                 RelayAddress(pfrom.GetId(), addr, reachable);
             }
@@ -4939,7 +4957,10 @@ void PeerManagerImpl::MaybeSendAddr(CNode& node, Peer& peer, std::chrono::micros
 
     LOCK(peer.m_addr_send_times_mutex);
     // Periodically advertise our local address to the peer.
-    if (fListen && !m_chainman.IsInitialBlockDownload() &&
+    // Freycoin: Allow self-advertisement during IBD. In small networks,
+    // peers must learn about each other even while syncing. The address
+    // is valid regardless of sync state.
+    if (fListen &&
         peer.m_next_local_addr_send < current_time) {
         // If we've sent before, clear the bloom filter for the peer, so that our
         // self-announcement will actually go out.

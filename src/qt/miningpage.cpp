@@ -614,42 +614,33 @@ void MiningPage::miningThreadFunc()
 
                 TRY_LOCK(cs_main, locked);
                 if (locked) {
-                    if (ctx->chainman->IsInitialBlockDownload()) {
-                        if (!notified_user) {
-                            LogPrintf("Mining: Node is in initial block download, waiting...\n");
-                            QMetaObject::invokeMethod(this, [this]() {
-                                logMessage("Waiting for blockchain sync to complete...");
-                            }, Qt::QueuedConnection);
-                            notified_user = true;
-                        }
-                    } else {
-                        // Check if we've validated all known headers from peers.
-                        // Tip age is unreliable on low-hashrate chains where 30+ min
-                        // between blocks is normal.
-                        int chainHeight = ctx->chainman->ActiveChain().Height();
-                        const CBlockIndex* bestHeader = ctx->chainman->m_best_header;
-                        int headerHeight = bestHeader ? bestHeader->nHeight : chainHeight;
-                        if (chainHeight >= headerHeight) {
-                            // All known blocks validated — safe to mine
-                            break;
-                        }
-                        // Always update sync progress when we get cs_main — shows
-                        // the block count ticking up so the user knows it's working.
-                        int blocksLeft = headerHeight - chainHeight;
-                        int estMinutes = (blocksLeft * 31) / 60;
-                        LogPrintf("Mining: Chain at height %d, peers at %d (%d blocks behind), waiting...\n",
-                                  chainHeight, headerHeight, blocksLeft);
-                        QMetaObject::invokeMethod(this, [this, chainHeight, headerHeight, blocksLeft, estMinutes]() {
-                            if (estMinutes > 0) {
-                                logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining, ~%4 min)...")
-                                    .arg(chainHeight).arg(headerHeight).arg(blocksLeft).arg(estMinutes));
-                            } else {
-                                logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining)...")
-                                    .arg(chainHeight).arg(headerHeight).arg(blocksLeft));
-                            }
-                        }, Qt::QueuedConnection);
-                        notified_user = true;
+                    // Check if we've validated all known headers from peers.
+                    // Do NOT gate on IsInitialBlockDownload() — on a young/low-hashrate
+                    // chain the tip can be >24h old simply because no one has mined.
+                    // Mining is what produces new blocks, so blocking it on tip age
+                    // creates a deadlock. The header comparison is the correct check.
+                    int chainHeight = ctx->chainman->ActiveChain().Height();
+                    const CBlockIndex* bestHeader = ctx->chainman->m_best_header;
+                    int headerHeight = bestHeader ? bestHeader->nHeight : chainHeight;
+                    if (chainHeight >= headerHeight) {
+                        // All known blocks validated — safe to mine
+                        break;
                     }
+                    // Show sync progress so the user sees block count ticking up.
+                    int blocksLeft = headerHeight - chainHeight;
+                    int estMinutes = (blocksLeft * 31) / 60;
+                    LogPrintf("Mining: Chain at height %d, peers at %d (%d blocks behind), waiting...\n",
+                              chainHeight, headerHeight, blocksLeft);
+                    QMetaObject::invokeMethod(this, [this, chainHeight, headerHeight, blocksLeft, estMinutes]() {
+                        if (estMinutes > 0) {
+                            logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining, ~%4 min)...")
+                                .arg(chainHeight).arg(headerHeight).arg(blocksLeft).arg(estMinutes));
+                        } else {
+                            logMessage(QString("Syncing blocks: %1 / %2 (%3 remaining)...")
+                                .arg(chainHeight).arg(headerHeight).arg(blocksLeft));
+                        }
+                    }, Qt::QueuedConnection);
+                    notified_user = true;
                 } else {
                     if (!notified_user) {
                         LogPrintf("Mining: cs_main locked (block validation in progress), waiting...\n");

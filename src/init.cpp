@@ -1411,14 +1411,37 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
     LogPrintf("Mining: Hardware tier: %s\n", engine.get_hardware_info());
 
     while (!chainman.m_interrupt) {
-        // Wait for initial block download to complete before mining
-        if (chainman.IsInitialBlockDownload()) {
-            LogPrintf("Mining: Waiting for blockchain sync to complete...\n");
-            while (!chainman.m_interrupt && chainman.IsInitialBlockDownload()) {
-                UninterruptibleSleep(std::chrono::seconds{10});
+        // Wait until we've validated all known headers before mining.
+        // Do NOT gate on IsInitialBlockDownload() — on a young/low-hashrate
+        // chain the tip can be >24h old because no one has mined recently.
+        // Mining is what produces new blocks; blocking it on tip age deadlocks.
+        {
+            bool needs_sync = false;
+            {
+                LOCK(cs_main);
+                const CBlockIndex* bestHeader = chainman.m_best_header;
+                int chainHeight = chainman.ActiveChain().Height();
+                int headerHeight = bestHeader ? bestHeader->nHeight : chainHeight;
+                if (chainHeight < headerHeight) {
+                    LogPrintf("Mining: Chain at height %d, best header at %d — syncing blocks before mining...\n",
+                              chainHeight, headerHeight);
+                    needs_sync = true;
+                }
             }
-            if (chainman.m_interrupt) break;
-            LogPrintf("Mining: Sync complete, starting to mine.\n");
+            if (needs_sync) {
+                while (!chainman.m_interrupt) {
+                    {
+                        LOCK(cs_main);
+                        int chainHeight = chainman.ActiveChain().Height();
+                        const CBlockIndex* bestHeader = chainman.m_best_header;
+                        int headerHeight = bestHeader ? bestHeader->nHeight : chainHeight;
+                        if (chainHeight >= headerHeight) break;
+                    }
+                    UninterruptibleSleep(std::chrono::seconds{10});
+                }
+                if (chainman.m_interrupt) break;
+                LogPrintf("Mining: Sync complete, starting to mine.\n");
+            }
         }
 
         // Create a new block template
