@@ -280,6 +280,7 @@ void Interrupt(NodeContext& node)
     InterruptREST();
     InterruptTorControl();
     InterruptMapPort();
+    InterruptPow();
     if (node.connman)
         node.connman->Interrupt();
     for (auto* index : node.indexes) {

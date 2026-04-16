@@ -332,7 +332,7 @@ void MiningPage::detectGPU()
                 QString vendor = QString::fromUtf8(buffer).trimmed();
                 if (vendor == "0x1002") {
                     QString cardPath = QString("/sys/class/drm/card%1/device").arg(cardIdx);
-                    std::ifstream nameFile((cardPath + "/product_name").toStdString());
+                    std::ifstream nameFile(QString(cardPath + "/product_name").toStdString());
                     std::string cardName = "AMD Radeon GPU";
                     if (nameFile.is_open()) {
                         std::getline(nameFile, cardName);

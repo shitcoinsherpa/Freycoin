@@ -30,7 +30,7 @@ get_directory_property(precious_variables CACHE_VARIABLES)
 #=============================
 set(CLIENT_NAME "Freycoin Core")
 set(CLIENT_VERSION_MONTH 2511)
-set(CLIENT_VERSION_REVISION 5)
+set(CLIENT_VERSION_REVISION 6)
 set(CLIENT_VERSION_RC 0)
 set(CLIENT_VERSION_IS_RELEASE "true")
 set(COPYRIGHT_YEAR "2026")

@@ -48,4 +48,13 @@ void fast_nextprime(mpz_t result, const mpz_t n);
  */
 bool fast_is_fermat_prp(const mpz_t n);
 
+/** Signal the parallel MR worker pool to abort at its next check point. */
+void InterruptPow();
+
+/** Clear the interrupt flag (call before restarting validation after a pause). */
+void ResetPowInterrupt();
+
+/** True if InterruptPow() has been called since the last ResetPowInterrupt(). */
+bool IsPowInterrupted();
+
 #endif // FREYCOIN_POW_FAST_NEXTPRIME_H
