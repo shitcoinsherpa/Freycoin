@@ -1120,6 +1120,20 @@ static RPCHelpMan getblocktemplate()
     result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
     result.pushKV("shift", block.nShift);
 
+    // Freycoin extensions: consensus-bound metadata so external miners can
+    // operate the prime-gap PoW correctly across forks without hard-coding
+    // chainparams. All values are fork-aware via GetMinShift / GetMaxShift /
+    // GetDifficultyMin.
+    {
+        const int nNextHeight = pindexPrev->nHeight + 1;
+        result.pushKV("pow_kind", "prime_gap");
+        result.pushKV("min_shift", static_cast<int>(consensusParams.GetMinShift(nNextHeight)));
+        result.pushKV("max_shift", static_cast<int>(consensusParams.GetMaxShift(nNextHeight)));
+        result.pushKV("min_difficulty",
+                      strprintf("%016llx",
+                                static_cast<long long>(consensusParams.GetDifficultyMin(nNextHeight))));
+    }
+
     if (!block_template->getCoinbaseCommitment().empty()) {
         result.pushKV("default_witness_commitment", HexStr(block_template->getCoinbaseCommitment()));
     }

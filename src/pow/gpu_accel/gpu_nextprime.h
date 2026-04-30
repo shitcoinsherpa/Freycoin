@@ -23,6 +23,21 @@ void gpu_nextprime_set_intensity(float intensity);
 /** Release GPU resources. */
 void gpu_nextprime_cleanup(void);
 
+/** Telemetry: cumulative GPU kernel launches since process start.
+ *  Use deltas across mining template iterations to verify the GPU is doing
+ *  real work — nvidia-smi samples at ~1Hz and routinely misses sub-second
+ *  FFT bursts, so on healthy nodes it can falsely appear "idle". */
+unsigned long long gpu_nextprime_kernel_launches(void);
+
+/** Telemetry: cumulative GPU candidates batched (sum of batch sizes). */
+unsigned long long gpu_nextprime_candidates_tested(void);
+
+/** Telemetry: cumulative GPU wall time, milliseconds. */
+unsigned long long gpu_nextprime_gpu_time_ms(void);
+
+/** Telemetry: cumulative GPU PRP hits (probably-prime, before GMP confirm). */
+unsigned long long gpu_nextprime_prp_hits(void);
+
 #ifdef __cplusplus
 }
 #endif

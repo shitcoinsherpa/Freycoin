@@ -21,7 +21,11 @@
 /releases
 /release-staging
 /release-bins
-/release
+# /release is tracked for build/smoke scripts; binary output dirs are
+# gitignored explicitly below (release/linux/, release/win64/) and the
+# checksum file is gitignored as a build artifact.
+release/SHA256SUMS.txt
+release/build-release
 
 # cargo default target dir
 target/
@@ -46,3 +50,5 @@ ANN_THREAD.md
 .python-version
 check_merit.ps1
 freycoin-testnet.bat
+release/linux/
+release/win64/

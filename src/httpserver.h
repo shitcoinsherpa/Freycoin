@@ -16,14 +16,23 @@ class SignalInterrupt;
 
 /**
  * The default value for `-rpcthreads`. This number of threads will be created at startup.
+ *
+ * Lowered from upstream's 16 to 4 because the WorkQueue + libevent dispatch
+ * pattern wakes ALL worker threads on every queue notification ('thundering
+ * herd'). On a low-vCPU node with several persistent keepalive RPC clients
+ * (explorer, miner, watchtower) the storm becomes the dominant CPU cost.
+ * 4 threads handle >1000 req/s, more than enough for typical operators.
+ * Override with -rpcthreads=N if you actually need more.
  */
-static const int DEFAULT_HTTP_THREADS=16;
+static const int DEFAULT_HTTP_THREADS=4;
 
 /**
  * The default value for `-rpcworkqueue`. This is the maximum depth of the work queue,
  * we don't allocate this number of work queue items upfront.
+ *
+ * Lowered from upstream's 64 to 16 to match the lower thread default.
  */
-static const int DEFAULT_HTTP_WORKQUEUE=64;
+static const int DEFAULT_HTTP_WORKQUEUE=16;
 
 static const int DEFAULT_HTTP_SERVER_TIMEOUT=30;
 

@@ -60,6 +60,7 @@
 #include <node/miner.h>
 #include <pow/mining_engine.h>
 #include <pow/fast_nextprime.h>
+#include <pow/gpu_accel/gpu_nextprime.h>
 #include <pow.h>
 #include <key_io.h>
 #include <addresstype.h>
@@ -1114,6 +1115,101 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     return true;
 }
 
+/**
+ * Datadir preflight: clear stale pidfile/cookie from a SIGKILLed prior run,
+ * and detect ownership mismatch (a `sudo freycoind` orphan having created
+ * root-owned files that block the unprivileged daemon).
+ *
+ * Returns true to proceed, false (with InitError already emitted) to abort.
+ * Side effect: may unlink dir/freycoind.pid and dir/.cookie if they're stale.
+ *
+ * Called from AppInitSanityChecks BEFORE LockDirectories so that the lock
+ * failure path is no longer the catch-all for stale state.
+ */
+static bool DataDirPreflight(const fs::path& dir)
+{
+    // 1) Stale pid clean-up: if freycoind.pid exists in the datadir, read the
+    //    PID and check whether that process is alive. If not, drop the file.
+    const fs::path pid_path = dir / "freycoind.pid";
+    bool cleared_stale_pid = false;
+    std::error_code ec;
+    if (std::filesystem::exists(pid_path.std_path(), ec)) {
+        std::ifstream pid_file{pid_path.std_path()};
+        long stale_pid = 0;
+        if (pid_file >> stale_pid && stale_pid > 0) {
+            bool alive = false;
+#ifdef WIN32
+            HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(stale_pid));
+            if (h) { alive = (WaitForSingleObject(h, 0) == WAIT_TIMEOUT); CloseHandle(h); }
+#else
+            alive = (kill(static_cast<pid_t>(stale_pid), 0) == 0) || (errno == EPERM);
+#endif
+            pid_file.close();
+            if (!alive) {
+                if (fs::remove(pid_path, ec)) {
+                    LogPrintf("Datadir preflight: cleared stale freycoind.pid (PID %ld no longer running)\n", stale_pid);
+                    cleared_stale_pid = true;
+                } else if (ec) {
+                    return InitError(strprintf(_("Stale freycoind.pid (PID %d) found but cannot be removed: %s. Delete it manually and retry."), stale_pid, ec.message()));
+                }
+            }
+        }
+    }
+
+    // 2) Stale cookie clean-up: only safe when we just confirmed the prior
+    //    daemon is dead (otherwise a live daemon owns this cookie).
+    if (cleared_stale_pid) {
+        const fs::path cookie_path = dir / ".cookie";
+        if (std::filesystem::exists(cookie_path.std_path(), ec)) {
+            if (fs::remove(cookie_path, ec)) {
+                LogPrintf("Datadir preflight: cleared stale .cookie left by prior daemon\n");
+            }
+        }
+    }
+
+#ifndef WIN32
+    // 3) Ownership / writability check. Detects the orphan-as-root pattern
+    //    where a previous `sudo freycoind` left files un-writable by the
+    //    unprivileged user systemd later runs us as.
+    struct stat dir_st{};
+    const std::string dir_utf8 = dir.utf8string();
+    if (stat(dir_utf8.c_str(), &dir_st) == 0) {
+        const uid_t my_uid = geteuid();
+        const gid_t my_gid = getegid();
+        // Sample a couple of likely-stable files in addition to the dir itself.
+        std::vector<fs::path> probe = {dir};
+        for (const char* leaf : {".lock", "blocks", "chainstate", "settings.json"}) {
+            const fs::path p = dir / leaf;
+            if (std::filesystem::exists(p.std_path(), ec)) probe.push_back(p);
+        }
+        for (const auto& p : probe) {
+            const std::string p_utf8 = p.utf8string();
+            struct stat st{};
+            if (stat(p_utf8.c_str(), &st) != 0) continue;
+            // Only flag if we both don't own the file AND lack write access.
+            // Group-readable / world-writable files are fine.
+            if (st.st_uid != my_uid && st.st_gid != my_gid) {
+                if (access(p_utf8.c_str(), W_OK) != 0) {
+                    return InitError(strprintf(_(
+                        "Datadir contains files we cannot write. %s is owned by uid=%d gid=%d "
+                        "but we are running as uid=%d gid=%d. This usually means a previous "
+                        "`sudo freycoind` left root-owned files behind. Fix with:\n"
+                        "    sudo chown -R %d:%d %s\n"
+                        "Then retry."),
+                        fs::PathToString(p),
+                        static_cast<int>(st.st_uid), static_cast<int>(st.st_gid),
+                        static_cast<int>(my_uid), static_cast<int>(my_gid),
+                        static_cast<int>(my_uid), static_cast<int>(my_gid),
+                        fs::PathToString(dir)));
+                }
+            }
+        }
+    }
+#endif
+
+    return true;
+}
+
 static bool LockDirectory(const fs::path& dir, bool probeOnly)
 {
     // Make sure only a single process is using the directory.
@@ -1144,6 +1240,11 @@ bool AppInitSanityChecks(const kernel::Context& kernel)
     if (!ECC_InitSanityCheck()) {
         return InitError(strprintf(_("Elliptic curve cryptography sanity check failure. %s is shutting down."), CLIENT_NAME));
     }
+
+    // Datadir preflight: clear stale pid/cookie from a SIGKILLed prior run
+    // and detect the orphan-as-root ownership pattern BEFORE the lock probe,
+    // so the lock-failure error path stops being the false-alarm catch-all.
+    if (!DataDirPreflight(gArgs.GetDataDirNet())) return false;
 
     // Probe the directory locks to give an early error message, if possible
     // We cannot hold the directory locks here, as the forking for daemon() hasn't yet happened,
@@ -1545,25 +1646,145 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
         LogPrintf("Mining: Block template at height=%d difficulty=%016llx\n",
                   tip->nHeight + 1, static_cast<long long>(block.nDifficulty));
 
+        // Tip-change watchdog: if a new block arrives via the network while
+        // we're grinding this template, the template is stale — every nonce we
+        // try after that point is wasted CPU/GPU. Wake on the kernel
+        // notification CV (set whenever ActiveChain.Tip() advances), compare
+        // against our template's prev_hash, and request_stop() the engine so
+        // mine_parallel returns. Outer loop then rebuilds against the new tip.
+        const uint256 template_prev_hash = block.hashPrevBlock;
+        std::atomic<bool> tip_changed_during_mine{false};
+        std::atomic<bool> watchdog_exit{false};
+        auto& kernel_notifications = *Assert(node.notifications);
+        std::thread watchdog([&]() {
+            util::ThreadRename("miner-watchdog");
+            WAIT_LOCK(kernel_notifications.m_tip_block_mutex, lock);
+            kernel_notifications.m_tip_block_cv.wait(lock, [&]() EXCLUSIVE_LOCKS_REQUIRED(kernel_notifications.m_tip_block_mutex) {
+                if (watchdog_exit.load(std::memory_order_acquire)) return true;
+                if (chainman.m_interrupt) return true;
+                const auto tip_block = kernel_notifications.TipBlock();
+                if (tip_block && *tip_block != template_prev_hash) {
+                    tip_changed_during_mine.store(true, std::memory_order_release);
+                    return true;
+                }
+                return false;
+            });
+            // Either tip changed, daemon shutting down, or we got the all-clear
+            // from the main thread (engine already returned with a found block).
+            // In all interrupting cases, request_stop is idempotent.
+            if (tip_changed_during_mine.load(std::memory_order_acquire) || chainman.m_interrupt) {
+                engine.request_stop();
+            }
+        });
+
+        // Snapshot GPU telemetry counters so we can log this template's GPU
+        // delta after mine_parallel returns. Operators have repeatedly asked
+        // "is the GPU even being used?" because nvidia-smi at 1Hz misses the
+        // sub-second FFT bursts. These counters are cumulative and atomic, so
+        // a non-zero delta is positive proof of kernel launches per template.
+        const unsigned long long gpu_launches_pre   = gpu_nextprime_kernel_launches();
+        const unsigned long long gpu_candidates_pre = gpu_nextprime_candidates_tested();
+        const unsigned long long gpu_ms_pre         = gpu_nextprime_gpu_time_ms();
+        const unsigned long long gpu_prp_pre        = gpu_nextprime_prp_hits();
+        const auto template_t0 = std::chrono::steady_clock::now();
+
         // Mine with the persistent engine (GPU stays initialized across blocks)
         engine.mine_parallel(header_template, NONCE_OFFSET, shift,
                             block.nDifficulty, 0, &processor);
 
+        // Mining returned (found / aborted / shutdown). Tell watchdog to exit
+        // and notify the CV so it wakes if it's still waiting.
+        watchdog_exit.store(true, std::memory_order_release);
+        WITH_LOCK(kernel_notifications.m_tip_block_mutex, kernel_notifications.m_tip_block_cv.notify_all());
+        watchdog.join();
+
+        // GPU telemetry delta — emit even when the engine returned with no
+        // candidate (tip change / shutdown), because zero kernel launches on
+        // a long-running template is precisely the symptom we want visible.
+        {
+            const unsigned long long d_launches   = gpu_nextprime_kernel_launches()   - gpu_launches_pre;
+            const unsigned long long d_candidates = gpu_nextprime_candidates_tested() - gpu_candidates_pre;
+            const unsigned long long d_gpu_ms     = gpu_nextprime_gpu_time_ms()       - gpu_ms_pre;
+            const unsigned long long d_prp        = gpu_nextprime_prp_hits()          - gpu_prp_pre;
+            const auto wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - template_t0).count();
+            const long long wall_ll = static_cast<long long>(wall_ms);
+            const long long busy_pct = (wall_ll > 0)
+                ? (static_cast<long long>(d_gpu_ms) * 100 / wall_ll) : 0;
+            LogPrintf("Mining: GPU telemetry — launches=%llu candidates=%llu prp=%llu "
+                      "gpu_ms=%llu wall_ms=%lld busy=%lld%%\n",
+                      d_launches, d_candidates, d_prp,
+                      d_gpu_ms, wall_ll, busy_pct);
+        }
+
         if (chainman.m_interrupt) break;
+
+        if (tip_changed_during_mine.load(std::memory_order_acquire) && !processor.found) {
+            LogPrintf("Mining: Tip advanced past height=%d — rebuilding template against new tip\n",
+                      tip->nHeight + 1);
+            continue;
+        }
 
         if (!processor.found) continue;
 
+        // Even if we found a candidate, verify our prev_hash still matches the
+        // active tip before submitting. If the network advanced while our last
+        // squarings were finishing, ProcessNewBlock would reject this block as
+        // building on a stale parent — log it as a missed race rather than a
+        // generic rejection so it's diagnosable in production.
+        {
+            LOCK(cs_main);
+            const CBlockIndex* current_tip = chainman.ActiveChain().Tip();
+            if (current_tip && current_tip->GetBlockHash() != template_prev_hash) {
+                LogPrintf("Mining: Found block at height=%d but tip advanced during search "
+                          "(prev=%s, tip=%s) — discarding, rebuilding\n",
+                          tip->nHeight + 1,
+                          template_prev_hash.GetHex(),
+                          current_tip->GetBlockHash().GetHex());
+                continue;
+            }
+        }
+
+        // Authoritative pre-flight check.
+        //
+        // The mining engine uses min_gap = target_size(start, target_difficulty)
+        // as a fast acceptance criterion. That heuristic is correct for the
+        // bulk of the difficulty range, but at the boundary the validator's
+        // CalculateMerit (MPFR-precise ln) can compute a merit slightly below
+        // the miner's integer-approximation prediction. When that happens the
+        // miner submits a block that ProcessNewBlock rejects with
+        // 'invalid-gap, prime gap proof of work failed'. Worse, the
+        // fChecked=true shortcut would let it through locally on the miner's
+        // own node while the rest of the network rejected it — orphaning
+        // any miner who lost the race.
+        //
+        // Run the authoritative CheckProofOfWork against our own block here.
+        // If it passes, fChecked=true is genuinely safe (we just verified)
+        // and ProcessNewBlock can skip the duplicate work under cs_main.
+        // If it fails, log the merit/difficulty miss and abandon — better
+        // to lose a near-miss locally than have the network orphan us.
+        const int nNextHeight_check = tip->nHeight + 1;
+        PrimeGapData gap_data;
+        if (!CheckProofOfWork(block, nNextHeight_check, chainman.GetConsensus(), &gap_data)) {
+            LogPrintf("Mining: NEAR-MISS — engine reported a valid gap but authoritative "
+                      "CheckProofOfWork rejected it (height=%d shift=%u). This is a "
+                      "miner/validator threshold drift; abandoning candidate.\n",
+                      nNextHeight_check, block.nShift);
+            continue;
+        }
+
         // Mark block as pre-checked so ProcessNewBlock skips the expensive
         // CheckProofOfWork (fast_nextprime: ~9s GPU, ~31s gwnum, ~78s GMP)
-        // under cs_main. The miner already validated the gap meets difficulty.
-        // Without this, cs_main is held for the duration, blocking RPC.
+        // under cs_main. We just verified above, so this is now genuinely safe.
         block.fChecked = true;
         auto block_ptr = std::make_shared<const CBlock>(std::move(block));
         if (chainman.ProcessNewBlock(block_ptr, /*force_processing=*/true, nullptr)) {
-            LogPrintf("Mining: Found block! hash=%s height=%d\n",
-                      block_ptr->GetHash().GetHex(), tip->nHeight + 1);
+            LogPrintf("Mining: Found block! hash=%s height=%d gap=%lu merit=%.4f\n",
+                      block_ptr->GetHash().GetHex(), tip->nHeight + 1,
+                      gap_data.gap, gap_data.merit);
         } else {
-            LogPrintf("Mining: Block rejected by ProcessNewBlock\n");
+            LogPrintf("Mining: Block rejected by ProcessNewBlock (post-CheckPoW). "
+                      "Likely tip race or mempool conflict.\n");
         }
     }
 

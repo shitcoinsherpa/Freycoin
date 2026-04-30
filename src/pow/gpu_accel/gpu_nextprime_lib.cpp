@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdarg>
 #include <climits>
+#include <atomic>
 #include <mutex>
 #include <vector>
 #include <chrono>
@@ -62,6 +63,14 @@ static std::once_flag g_primes_init;
 static bool g_gpu_available = false;
 static float g_intensity = 1.0f;
 static unsigned g_effective_seg = SEG;
+
+// Telemetry counters — incremented per kernel launch so the daemon can prove
+// the GPU is actually being used (operators can't tell from nvidia-smi alone:
+// 1Hz sampling routinely misses sub-second FFT bursts).
+static std::atomic<unsigned long long> g_kernel_launches{0};
+static std::atomic<unsigned long long> g_candidates_tested{0};
+static std::atomic<unsigned long long> g_gpu_ms_total{0};
+static std::atomic<unsigned long long> g_prp_hits{0};
 
 static void InitSievePrimes()
 {
@@ -181,13 +190,23 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
                     gpu_results.data() + batch_start,
                     candidates.data() + batch_start,
                     batch_count);
+                auto batch_dur_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - batch_t0).count();
+
+                // Telemetry: record this launch regardless of rc. A failed launch
+                // still consumed driver/queue time and is worth observing.
+                g_kernel_launches.fetch_add(1, std::memory_order_relaxed);
+                g_candidates_tested.fetch_add(static_cast<unsigned long long>(batch_count),
+                                              std::memory_order_relaxed);
+                if (batch_dur_ms > 0) {
+                    g_gpu_ms_total.fetch_add(static_cast<unsigned long long>(batch_dur_ms),
+                                             std::memory_order_relaxed);
+                }
 
                 // Throttle: sleep proportional to GPU time to achieve target intensity.
                 // At intensity 0.25, sleep 3x the batch duration (25% busy, 75% idle).
                 if (rc == 0 && g_intensity < 0.99f) {
-                    auto batch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - batch_t0).count();
-                    int sleep_ms = static_cast<int>(batch_ms * (1.0f / g_intensity - 1.0f));
+                    int sleep_ms = static_cast<int>(batch_dur_ms * (1.0f / g_intensity - 1.0f));
                     if (sleep_ms > 0)
                         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
                 }
@@ -211,8 +230,13 @@ static int GpuNextPrime(mpz_ptr result, mpz_srcptr n)
                 }
 
                 // Count PRP results in this sub-batch
+                int sub_prp = 0;
                 for (int i = batch_start; i < batch_start + batch_count; i++) {
-                    if (gpu_results[i]) total_prp++;
+                    if (gpu_results[i]) { total_prp++; sub_prp++; }
+                }
+                if (sub_prp > 0) {
+                    g_prp_hits.fetch_add(static_cast<unsigned long long>(sub_prp),
+                                         std::memory_order_relaxed);
                 }
 
                 // Check this sub-batch for confirmed primes
@@ -310,6 +334,26 @@ void gpu_nextprime_cleanup(void)
         ecpp_gpu_shim_cleanup();
         g_gpu_available = false;
     }
+}
+
+unsigned long long gpu_nextprime_kernel_launches(void)
+{
+    return g_kernel_launches.load(std::memory_order_relaxed);
+}
+
+unsigned long long gpu_nextprime_candidates_tested(void)
+{
+    return g_candidates_tested.load(std::memory_order_relaxed);
+}
+
+unsigned long long gpu_nextprime_gpu_time_ms(void)
+{
+    return g_gpu_ms_total.load(std::memory_order_relaxed);
+}
+
+unsigned long long gpu_nextprime_prp_hits(void)
+{
+    return g_prp_hits.load(std::memory_order_relaxed);
 }
 
 } // extern "C"

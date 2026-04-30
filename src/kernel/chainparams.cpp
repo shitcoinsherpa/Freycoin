@@ -113,7 +113,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].threshold = 3024; // 75%
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].period = 4032;
 
-        consensus.nMinimumChainWork = uint256{}; // Will be set after mainnet launch
+        // Chain work at assumedValidBlockHeight=10000 (mainnet, refreshed v2511.7)
+        // Pinning this prevents low-work fork peers from feeding us a stale chain.
+        // Refresh together with kernel/checkpointdata.h via
+        // scripts/extract_header_batches.py each release.
+        consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000000000000c09b005eb9b0"};
 
         // Network message magic (Freycoin mainnet)
         pchMessageStart[0] = 0xf7;

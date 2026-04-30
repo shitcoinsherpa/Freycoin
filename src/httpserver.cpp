@@ -406,7 +406,48 @@ static bool HTTPBindAddresses(struct evhttp* http)
             }
             boundSockets.push_back(bind_handle);
         } else {
-            LogPrintf("Binding RPC on address %s port %i failed.\n", i->first, i->second);
+            // libevent's evhttp_bind_socket_with_handle discards errno before we
+            // can read it. Re-probe with a plain socket()/bind() so the operator
+            // gets something actionable instead of just "failed".
+            std::string diag = "(no further detail; libevent did not surface errno)";
+            const char* host_cstr = i->first.empty() ? "0.0.0.0" : i->first.c_str();
+            struct addrinfo hints{};
+            hints.ai_family = AF_UNSPEC;
+            hints.ai_socktype = SOCK_STREAM;
+            hints.ai_flags = AI_NUMERICHOST | AI_PASSIVE;
+            struct addrinfo* res = nullptr;
+            if (getaddrinfo(host_cstr, nullptr, &hints, &res) == 0 && res) {
+                evutil_socket_t s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+                if (s != static_cast<evutil_socket_t>(INVALID_SOCKET)) {
+                    if (res->ai_family == AF_INET) {
+                        ((sockaddr_in*)res->ai_addr)->sin_port = htons(i->second);
+                    } else if (res->ai_family == AF_INET6) {
+                        ((sockaddr_in6*)res->ai_addr)->sin6_port = htons(i->second);
+                    }
+                    if (bind(s, res->ai_addr, res->ai_addrlen) == 0) {
+                        diag = "(re-probe succeeded — likely a libevent-internal error; check 'ulimit -n' for fd exhaustion)";
+                    } else {
+                        const int e = errno;
+                        switch (e) {
+                            case EADDRINUSE:
+                                diag = strprintf("port %i is already in use. Another freycoind may be running — `pgrep -fa freycoind` and `ss -tlnp | grep %i`. If a stale freycoind.pid exists in the datadir, remove it.", i->second, i->second);
+                                break;
+                            case EACCES:
+                                diag = strprintf("permission denied on port %i. Privileged ports (<1024) need root or CAP_NET_BIND_SERVICE.", i->second);
+                                break;
+                            case EADDRNOTAVAIL:
+                                diag = strprintf("address '%s' is not a local interface. Check `ip addr` for available bind addresses.", host_cstr);
+                                break;
+                            default:
+                                diag = strprintf("errno=%i (%s)", e, strerror(e));
+                                break;
+                        }
+                    }
+                    EVUTIL_CLOSESOCKET(s);
+                }
+                freeaddrinfo(res);
+            }
+            LogPrintf("Binding RPC on address %s port %i failed: %s\n", i->first, i->second, diag);
         }
     }
     return !boundSockets.empty();
@@ -501,6 +542,13 @@ static std::vector<std::thread> g_thread_http_workers;
 void StartHTTPServer()
 {
     int rpcThreads = std::max((long)gArgs.GetIntArg("-rpcthreads", DEFAULT_HTTP_THREADS), 1L);
+    const unsigned int hw = std::max(1u, std::thread::hardware_concurrency());
+    if (rpcThreads > static_cast<int>(2u * hw)) {
+        LogPrintf("WARNING: -rpcthreads=%d is more than 2x hardware_concurrency (%u). The "
+                  "WorkQueue dispatch pattern wakes all worker threads per request; on a "
+                  "small box with persistent RPC clients this can dominate CPU. Consider "
+                  "lowering -rpcthreads.\n", rpcThreads, hw);
+    }
     LogInfo("Starting HTTP server with %d worker threads\n", rpcThreads);
     g_thread_http = std::thread(ThreadHTTP, eventBase);
 
