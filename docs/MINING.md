@@ -8,13 +8,14 @@ real failure mode somebody hit.
 
 1. [Prerequisites](#prerequisites)
 2. [Quick start](#quick-start)
-3. [Building from source (portable, recommended)](#building-from-source-portable-recommended)
-4. [Configuration (`freycoin.conf`)](#configuration-freycoinconf)
-5. [GPU mining](#gpu-mining)
-6. [Verifying the GPU is actually working](#verifying-the-gpu-is-actually-working)
-7. [Multi-instance setups](#multi-instance-setups)
-8. [Troubleshooting](#troubleshooting)
-9. [Known good environments](#known-good-environments)
+3. [Bootstrap from a synced snapshot](#bootstrap-from-a-synced-snapshot)
+4. [Building from source (portable, recommended)](#building-from-source-portable-recommended)
+5. [Configuration (`freycoin.conf`)](#configuration-freycoinconf)
+6. [GPU mining](#gpu-mining)
+7. [Verifying the GPU is actually working](#verifying-the-gpu-is-actually-working)
+8. [Multi-instance setups](#multi-instance-setups)
+9. [Troubleshooting](#troubleshooting)
+10. [Known good environments](#known-good-environments)
 
 ---
 
@@ -37,18 +38,24 @@ see [Building from source](#building-from-source-portable-recommended).
 # 1. Pick a datadir owned by YOUR user, not root
 mkdir -p ~/.freycoin
 
-# 2. Run the daemon
+# 2. (RECOMMENDED) skip the verification grind with a bootstrap snapshot
+#    — see "Bootstrap from a synced snapshot" below for why this matters.
+curl -L -o /tmp/bootstrap.tar.gz \
+    https://github.com/shitcoinsherpa/Freycoin/releases/download/v2511.7/freycoin-bootstrap-v2511.7-h13819.tar.gz
+tar -xzf /tmp/bootstrap.tar.gz -C ~/.freycoin
+
+# 3. Run the daemon
 ./freycoind -datadir=$HOME/.freycoin -daemon
 
-# 3. Wait for sync (will print progress every block)
+# 4. Wait for sync (will print progress every block)
 ./freycoin-cli -datadir=$HOME/.freycoin getblockchaininfo
 
-# 4. Get a mining address
+# 5. Get a mining address
 ./freycoin-cli -datadir=$HOME/.freycoin createwallet "miner"
 ADDR=$(./freycoin-cli -datadir=$HOME/.freycoin getnewaddress)
 echo "Mining to: $ADDR"
 
-# 5. Start mining
+# 6. Start mining
 ./freycoin-cli -datadir=$HOME/.freycoin stop
 ./freycoind -datadir=$HOME/.freycoin -daemon \
     -gen=1 -mineraddress=$ADDR -genproclimit=4 -gpuintensity=80
@@ -57,6 +64,95 @@ echo "Mining to: $ADDR"
 That's it. The miner runs in the background; templates rebuild automatically
 on every new tip arrival; valid blocks are submitted as soon as they're found
 (see [Troubleshooting](#troubleshooting) if blocks are found but rejected).
+
+## Bootstrap from a synced snapshot
+
+**Without a bootstrap, a fresh node can spend hours to days just verifying
+the chain.** Each block past the assumed-valid checkpoint (currently height
+10000) requires full prime-gap PoW verification. At today's difficulty
+(shift ≈ 12000) that's 30–60 seconds *per block* on a 2-vCPU box. While
+verification holds `cs_main`, `getblockchaininfo` and `getblocktemplate`
+will appear to time out.
+
+A bootstrap snapshot is a tarred copy of `blocks/`, `chainstate/`, and
+`indexes/` taken from a fully-synced node. After extraction the daemon
+starts at near-tip and only verifies the small number of blocks produced
+since the snapshot was taken.
+
+### Use the bootstrap
+
+```bash
+# Clean datadir (or merge with existing — extracting will overwrite blocks/,
+# chainstate/, indexes/ so you don't want existing wallet.dat replaced —
+# but those live elsewhere)
+mkdir -p ~/.freycoin
+
+# Download the latest bootstrap (height in the filename matches its snapshot point)
+curl -L -O \
+    https://github.com/shitcoinsherpa/Freycoin/releases/download/v2511.7/freycoin-bootstrap-v2511.7-h13819.tar.gz
+curl -L -O \
+    https://github.com/shitcoinsherpa/Freycoin/releases/download/v2511.7/freycoin-bootstrap-v2511.7-h13819.tar.gz.sha256
+
+# Verify integrity
+sha256sum -c freycoin-bootstrap-v2511.7-h13819.tar.gz.sha256
+
+# Extract into your datadir
+tar -xzf freycoin-bootstrap-v2511.7-h13819.tar.gz -C ~/.freycoin
+
+# Start the daemon — it'll do a small leveldb-recovery pass and then catch up
+# the blocks since the snapshot was taken (typically minutes, not hours)
+./freycoind -datadir=$HOME/.freycoin -daemon
+```
+
+### What's in the bootstrap
+
+```
+blocks/blk*.dat     # Raw block files (~70 MB at h13819)
+blocks/index/       # LevelDB block index
+chainstate/         # LevelDB UTXO set (~1 MB)
+indexes/            # txindex + other optional indexes
+```
+
+The bootstrap does NOT contain:
+
+- `wallet.dat` / `wallets/` — your wallets are yours, never bundled
+- `peers.dat` — peer addresses are auto-discovered
+- `freycoin.conf` — your config is yours
+- `debug.log` — start fresh
+
+### When to refresh the bootstrap
+
+If the chain has advanced more than a few hundred blocks since the bootstrap
+was published, downloading a fresher one is faster than catching up from the
+old one. New bootstraps are published as release assets per Freycoin release
+(or interim point-releases when significant time has passed).
+
+### Building your own bootstrap
+
+If you have a fully-synced node and want to publish/share a bootstrap, the
+process is identical to what produced the official one:
+
+```bash
+# 1. Clean shutdown (CRITICAL — required for LevelDB consistency)
+freycoin-cli stop
+# wait for daemon to actually exit
+while pgrep -f "freycoind.*$DATADIR" > /dev/null; do sleep 1; done
+
+# 2. Tar the chain artifacts (NOT wallets, peers.dat, conf, debug.log)
+HEIGHT=$(some_method_to_read_height)   # or note it from getblockcount before stop
+cd $DATADIR
+tar -czf /tmp/freycoin-bootstrap-v2511.7-h$HEIGHT.tar.gz blocks chainstate indexes
+
+# 3. Generate checksum
+sha256sum /tmp/freycoin-bootstrap-v2511.7-h$HEIGHT.tar.gz \
+    > /tmp/freycoin-bootstrap-v2511.7-h$HEIGHT.tar.gz.sha256
+
+# 4. Restart your daemon
+freycoind -datadir=$DATADIR -daemon
+```
+
+The chain is small enough (~70 MB at h13819) that the tar takes under a
+second. Daemon downtime is just the clean-stop window (typically 30–120s).
 
 ## Building from source (portable, recommended)
 
@@ -259,6 +355,41 @@ self-healing on healthy peers.
 If `headers == blocks` and progress is 1.0 but the daemon insists it's
 syncing, you've hit a peer-discovery problem — see the BIP155 seed format fix
 in v2511.3.
+
+### "getblockchaininfo times out / RPC busy / VERIFYING_OR_BUSY for many minutes"
+
+This is **expected behavior on a fresh node above the assumed-valid checkpoint**
+(currently height 10000). Each block past 10000 must be fully prime-gap
+verified, which holds `cs_main` for 30–60 seconds per block at current
+difficulty (shift ≈ 12000). While `cs_main` is held, RPC calls that require
+it (including `getblockchaininfo`, `getblocktemplate`) appear to time out.
+
+**Fix: use a bootstrap snapshot.** See [Bootstrap from a synced snapshot](#bootstrap-from-a-synced-snapshot)
+above. This is the recommended path for *any* fresh node, miner or not — even
+a 50-block gap can take 30+ minutes of unresponsive RPC to verify on a 2-vCPU
+box.
+
+If you've already started a fresh sync without a bootstrap, you have two
+options:
+
+1. **Wait it out.** Tail `debug.log` for `UpdateTip` lines — each one is one
+   block verified. The daemon is working, just busy. RPC will become
+   responsive again once the verification queue drains.
+2. **Stop, replace with bootstrap, restart.** Your wallet stays intact:
+   ```bash
+   freycoin-cli stop
+   # Wait for the daemon to actually exit
+   while pgrep -f freycoind > /dev/null; do sleep 1; done
+   # Wipe stale chain artifacts; KEEP wallet.dat / wallets/
+   rm -rf ~/.freycoin/blocks ~/.freycoin/chainstate ~/.freycoin/indexes
+   # Drop in fresh snapshot
+   tar -xzf freycoin-bootstrap-v2511.7-h13819.tar.gz -C ~/.freycoin
+   # Restart
+   freycoind -datadir=$HOME/.freycoin -daemon
+   ```
+
+A future release will raise `assumeValidBlockHeight` to a more recent block
+so this verification grind only applies to the most recent days, not weeks.
 
 ### "ProcessNewBlock: AcceptBlock FAILED (invalid-gap, prime gap proof of work failed)"
 
