@@ -216,6 +216,7 @@ add_library(freycoin_node STATIC EXCLUDE_FROM_ALL
   node/abort.cpp
   node/blockmanager_args.cpp
   node/blockstorage.cpp
+  node/bootstrap.cpp
   node/caches.cpp
   node/chainstate.cpp
   node/chainstatemanager_args.cpp

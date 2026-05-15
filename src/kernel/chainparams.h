@@ -110,6 +110,9 @@ public:
     const MessageStartChars& MessageStart() const { return pchMessageStart; }
     uint16_t GetDefaultPort() const { return nDefaultPort; }
     std::vector<int> GetAvailableSnapshotHeights() const;
+    /** Hosted bootstrap tarball URL for sync-from-bootstrap.
+     *  Empty string = no hosted bootstrap available for this network. */
+    const std::string& BootstrapURL() const { return m_bootstrap_url; }
 
     const CBlock& GenesisBlock() const { return genesis; }
     /** Default value for -checkmempool and -checkblockindex argument */
@@ -187,6 +190,7 @@ protected:
     CheckpointData checkpointData;
     std::vector<AssumeutxoData> m_assumeutxo_data;
     ChainTxData chainTxData;
+    std::string m_bootstrap_url;
 };
 
 std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& pchMessageStart);

@@ -102,10 +102,17 @@ fi
 
 banner "2. --version returns expected version"
 ver="$("${FREYCOIND}" --version 2>&1 | head -1 || true)"
-if [[ "${ver}" == *"v2511.7"* ]] || [[ "${ver}" == *"2511.7"* ]]; then
-    ok "version line: ${ver}"
+# Match the actual revision against the binary's reported version. We extract
+# the revision from CMakeLists.txt and only accept a build whose reported
+# version contains the same MAJOR.REVISION. This avoids hardcoded versions
+# rotting per release.
+expected_rev="$(grep -E '^set\(CLIENT_VERSION_REVISION ' "${REPO_ROOT}/CMakeLists.txt" | awk -F'[() ]+' '{print $3}')"
+expected_month="$(grep -E '^set\(CLIENT_VERSION_MONTH '    "${REPO_ROOT}/CMakeLists.txt" | awk -F'[() ]+' '{print $3}')"
+expected_version="${expected_month}.${expected_rev}"
+if [[ -n "${ver}" ]] && [[ "${ver}" == *"${expected_version}"* ]]; then
+    ok "version line: ${ver} (matches CMakeLists ${expected_version})"
 elif [[ -n "${ver}" ]]; then
-    fail "unexpected version line: ${ver}"
+    fail "version mismatch: binary reports '${ver}' but CMakeLists has ${expected_version}"
 else
     fail "freycoind --version produced no output"
 fi

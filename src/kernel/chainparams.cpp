@@ -167,6 +167,11 @@ public:
 
         m_assumeutxo_data = {};
 
+        // Hosted bootstrap tarball — operator infrastructure auto-updates this.
+        // Daemon downloads when -syncfrombootstrap is invoked. Sidecar SHA256
+        // file is fetched from <url>.sha256 and verified before extraction.
+        m_bootstrap_url = "https://freycoin.tech/bootstrap/latest.tar.gz";
+
         chainTxData = ChainTxData{
             .nTime    = 0,
             .tx_count = 0,

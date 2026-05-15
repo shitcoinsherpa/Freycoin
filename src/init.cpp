@@ -62,6 +62,7 @@
 #include <pow/fast_nextprime.h>
 #include <pow/gpu_accel/gpu_nextprime.h>
 #include <pow.h>
+#include <node/bootstrap.h>
 #include <key_io.h>
 #include <addresstype.h>
 #include <node/peerman_args.h>
@@ -510,6 +511,13 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
     argsman.AddArg("-includeconf=<file>", "Specify additional configuration file, relative to the -datadir path (only useable from configuration file, not command line)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-allowignoredconf", strprintf("For backwards compatibility, treat an unused %s file in the datadir as a warning, not an error.", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-loadblock=<file>", "Imports blocks from external file on startup", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-syncfrombootstrap",
+        "Trigger sync-from-bootstrap: download the hosted snapshot tarball for this network, "
+        "verify SHA256 against the sidecar, write a marker, and request shutdown. On the next "
+        "startup, the daemon backs up existing blocks/chainstate/indexes to "
+        ".bootstrap-backup/<timestamp>/, extracts the snapshot, and continues. Wallets, peers.dat, "
+        "and freycoin.conf are never touched. One-shot: marker is consumed on success.",
+        ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-maxmempool=<n>", strprintf("Keep the transaction memory pool below <n> megabytes (default: %u)", DEFAULT_MAX_MEMPOOL_SIZE_MB), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-mempoolexpiry=<n>", strprintf("Do not keep transactions in the mempool longer than <n> hours (default: %u)", DEFAULT_MEMPOOL_EXPIRY_HOURS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-minimumchainwork=<hex>", strprintf("Minimum work assumed to exist on a valid chain in hex (default: %s, testnet: %s)", defaultChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnetChainParams->GetConsensus().nMinimumChainWork.GetHex()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
@@ -1245,6 +1253,17 @@ bool AppInitSanityChecks(const kernel::Context& kernel)
     // and detect the orphan-as-root ownership pattern BEFORE the lock probe,
     // so the lock-failure error path stops being the false-alarm catch-all.
     if (!DataDirPreflight(gArgs.GetDataDirNet())) return false;
+
+    // Bootstrap preflight: if a sync-from-bootstrap operation is pending
+    // (marker written by a prior run that called `-syncfrombootstrap`), apply
+    // it now — back up existing chain dirs, allowlist-extract the staged
+    // tarball, clear the marker. Wallet/conf/peers untouched.
+    if (!node::MaybeApplyStagedBootstrap(gArgs.GetDataDirNet())) {
+        return InitError(strprintf(_("Bootstrap apply failed. See debug.log for details. "
+                                      "Existing chain artifacts have been restored from "
+                                      "%s."),
+                                    fs::PathToString(gArgs.GetDataDirNet() / ".bootstrap-backup")));
+    }
 
     // Probe the directory locks to give an early error message, if possible
     // We cannot hold the directory locks here, as the forking for daemon() hasn't yet happened,
@@ -2182,6 +2201,27 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     assert(!node.mempool);
     assert(!node.chainman);
+
+    // -syncfrombootstrap=1 triggers Phase A: download + verify + write marker,
+    // then request shutdown. The actual extract happens during the NEXT
+    // startup's preflight (MaybeApplyStagedBootstrap). This avoids extracting
+    // over an already-open LevelDB.
+    if (args.GetBoolArg("-syncfrombootstrap", false)) {
+        const std::string& url = chainparams.BootstrapURL();
+        if (url.empty()) {
+            return InitError(_("Sync-from-bootstrap is not configured for this network "
+                                "(BootstrapURL is empty in chainparams)."));
+        }
+        LogPrintf("Bootstrap: -syncfrombootstrap=1 set; staging tarball from %s\n", url);
+        auto status = node::StageBootstrap(args.GetDataDirNet(), url, nullptr);
+        if (status.phase != node::BootstrapPhase::DOWNLOADED) {
+            return InitError(strprintf(_("Sync-from-bootstrap staging failed: %s"), status.error));
+        }
+        LogPrintf("Bootstrap: staged successfully. Requesting clean shutdown — restart the daemon "
+                  "to apply.\n");
+        (Assert(node.shutdown_request))();
+        return true;  // skip the rest of init; extract happens on next start
+    }
 
     bool do_reindex{args.GetBoolArg("-reindex", false)};
     const bool do_reindex_chainstate{args.GetBoolArg("-reindex-chainstate", false)};

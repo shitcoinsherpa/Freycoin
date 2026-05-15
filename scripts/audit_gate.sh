@@ -139,11 +139,29 @@ fi
 
 banner "Stage 5: Source-tree sanity"
 
-# Confirm version bump landed
-if grep -q "set(CLIENT_VERSION_REVISION 7)" "${REPO_ROOT}/CMakeLists.txt"; then
-    ok "CMakeLists.txt CLIENT_VERSION_REVISION = 7"
+# Confirm version bump landed (v2511.8)
+if grep -q "set(CLIENT_VERSION_REVISION 8)" "${REPO_ROOT}/CMakeLists.txt"; then
+    ok "CMakeLists.txt CLIENT_VERSION_REVISION = 8"
 else
-    fail "CMakeLists.txt CLIENT_VERSION_REVISION is not 7 — version bump missing"
+    fail "CMakeLists.txt CLIENT_VERSION_REVISION is not 8 — version bump missing"
+fi
+
+# v2511.8: confirm bootstrap engine is in source
+if [[ -f "${REPO_ROOT}/src/node/bootstrap.cpp" ]] && [[ -f "${REPO_ROOT}/src/node/bootstrap.h" ]]; then
+    ok "src/node/bootstrap.{h,cpp} present (v2511.8 sync-from-bootstrap)"
+else
+    fail "src/node/bootstrap.{h,cpp} missing — v2511.8 fix not in source"
+fi
+if grep -q 'BootstrapURL' "${REPO_ROOT}/src/kernel/chainparams.h" && \
+   grep -q 'm_bootstrap_url *=' "${REPO_ROOT}/src/kernel/chainparams.cpp"; then
+    ok "BootstrapURL plumbed in chainparams"
+else
+    fail "BootstrapURL not plumbed in chainparams — v2511.8 fix incomplete"
+fi
+if grep -q 'MaybeApplyStagedBootstrap' "${REPO_ROOT}/src/init.cpp"; then
+    ok "init.cpp wires MaybeApplyStagedBootstrap"
+else
+    fail "init.cpp missing MaybeApplyStagedBootstrap — v2511.8 fix incomplete"
 fi
 
 # Confirm new RPC fields in mining.cpp
