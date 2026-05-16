@@ -49,6 +49,42 @@ int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
                       uint32_t count, int bits);
 
 /**
+ * Run batch Fermat primality test on GPU (asynchronous, stream-scoped).
+ *
+ * Launches the kernel and async memcpys on the provided stream and returns
+ * immediately. The caller is responsible for synchronizing the stream (via
+ * cuda_fermat_stream_sync() or a cuLaunchHostFunc completion callback)
+ * before reading h_results.
+ *
+ * For maximum throughput, h_primes and h_results SHOULD point at page-locked
+ * host memory allocated via cuda_fermat_host_alloc(). Without pinning, the
+ * async memcpys silently degrade to synchronous behavior.
+ *
+ * @param stream  Caller-managed stream (opaque CUstream cast to void*).
+ *                Pass nullptr for the default null-stream (sync) behavior.
+ * @return 0 on success, -1 on error (work may still be in flight on stream)
+ */
+int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
+                             uint32_t count, int bits, void* stream);
+
+/** Stream lifecycle (CUstream cast to/from void*). */
+void* cuda_fermat_stream_create(void);
+void  cuda_fermat_stream_destroy(void* stream);
+int   cuda_fermat_stream_sync(void* stream);
+int   cuda_fermat_stream_idle(void* stream);
+
+/**
+ * Register host completion callback. Fires on a CUDA-internal thread after
+ * the preceding stream work completes. Returns -1 if the driver predates
+ * CUDA 10 (no cuLaunchHostFunc). Caller must keep userdata alive until cb.
+ */
+int   cuda_fermat_stream_on_complete(void* stream, void (*cb)(void*), void* userdata);
+
+/** Page-locked host memory for async memcpy. */
+void* cuda_fermat_host_alloc(size_t bytes);
+void  cuda_fermat_host_free(void* p);
+
+/**
  * Get number of available CUDA devices.
  * @return Number of CUDA-capable GPUs, 0 if none
  */

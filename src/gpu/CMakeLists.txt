@@ -20,6 +20,8 @@ add_library(freycoin_gpu STATIC EXCLUDE_FROM_ALL
     cuda_fermat.h
     cuda_fermat_driver.cpp
     cgbn_fermat.h
+    pinned_pool.h
+    pinned_pool.cpp
 )
 
 # Platform-specific dynamic linking support

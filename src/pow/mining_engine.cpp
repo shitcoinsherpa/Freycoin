@@ -36,6 +36,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <stdexcept>
 #include <thread>
 
@@ -51,6 +52,22 @@
 #include <gpu/opencl_fermat.h>
 #include <gpu/cuda_loader.h>
 #include <gpu/cuda_fermat.h>
+
+/*============================================================================
+ * GPURequest lifecycle (v2511.9)
+ *
+ * The async producer pipeline carries a deep copy of the producer's
+ * interval-k state inside the request so the BPSW-confirm step can run
+ * after the producer has moved on. mpz_t needs explicit init/clear.
+ *============================================================================*/
+
+GPURequest::GPURequest() {
+    mpz_init(async_mpz_start);
+}
+
+GPURequest::~GPURequest() {
+    mpz_clear(async_mpz_start);
+}
 
 /*============================================================================
  * Utility macros
@@ -1227,6 +1244,22 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
     worker->initialized = true;
     gpu_initialized = true;  // At least one GPU is ready
 
+    // v2511.9: create a per-worker CUDA stream. Kernel launches and async
+    // memcpys ride this stream, and synchronization uses cuStreamSynchronize
+    // — NOT cuCtxSynchronize, which would block ALL pending GPU work in the
+    // process (including the validation path's GPU BPSW).
+    //
+    // If the driver predates CUDA 4.0 (no cuStreamCreate), this returns
+    // nullptr and we fall back to the null-stream + cuCtxSync behavior. The
+    // async API gracefully accepts nullptr and degrades.
+    if (tier == MiningTier::CPU_CUDA) {
+        worker->cuda_stream = cuda_fermat_stream_create();
+        if (worker->cuda_stream) {
+            LogPrintf("Mining: GPU worker %d using CUDA stream %p\n",
+                      dev, worker->cuda_stream);
+        }
+    }
+
     // Process batches until the engine is destroyed (gpu_shutdown).
     // Between mine_parallel calls the thread idles on the condition variable.
     while (!gpu_shutdown) {
@@ -1247,18 +1280,35 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
         // OpenCL: fixed kernels for ≤352-bit, cooperative kernel for >352-bit.
         // Shared lock: allows concurrent mining but yields to exclusive
         // validation lock (fast_nextprime GPU path) to avoid contention.
+        auto t_sync_start = std::chrono::steady_clock::now();
         {
             std::shared_lock<std::shared_mutex> gpu_lock(g_gpu_access);
             if (tier == MiningTier::CPU_CUDA) {
-                cuda_fermat_batch(request->results.data(),
-                                  request->batch.candidates.data(),
-                                  request->batch.count, request->batch.bits);
+                // v2511.9: prefer the stream-aware async API. Even when the
+                // producer is sync, going through the per-worker stream
+                // means our cuStreamSynchronize call only waits for THIS
+                // worker's batch, not the entire CUDA context.
+                if (worker->cuda_stream) {
+                    cuda_fermat_batch_async(request->results.data(),
+                                            request->batch.candidates.data(),
+                                            request->batch.count, request->batch.bits,
+                                            worker->cuda_stream);
+                    cuda_fermat_stream_sync(worker->cuda_stream);
+                } else {
+                    cuda_fermat_batch(request->results.data(),
+                                      request->batch.candidates.data(),
+                                      request->batch.count, request->batch.bits);
+                }
             } else {
                 opencl_fermat_batch_device(dev, request->results.data(),
                                            request->batch.candidates.data(),
                                            request->batch.count, request->batch.bits);
             }
         }
+        auto t_sync_end = std::chrono::steady_clock::now();
+        tel_stream_sync_ms.fetch_add(
+            std::chrono::duration_cast<std::chrono::milliseconds>(t_sync_end - t_sync_start).count(),
+            std::memory_order_relaxed);
 
         // Signal the submitting CPU thread that results are ready
         {
@@ -1266,6 +1316,12 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
             request->done = true;
         }
         request->cv.notify_one();
+    }
+
+    // Cleanup per-worker stream on shutdown
+    if (worker->cuda_stream) {
+        cuda_fermat_stream_destroy(worker->cuda_stream);
+        worker->cuda_stream = nullptr;
     }
 
     LogPrintf("Mining: GPU worker %d stopped\n", dev);
@@ -1434,6 +1490,110 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
     // batch 0: [base, base+n_threads, base+2*n_threads, base+3*n_threads]
     uint32_t nonce_base = start_nonce + thread_id;
 
+    // === v2511.9 async producer pipeline state ===
+    //
+    // Per-thread pending deque of in-flight GPU requests. Producer fires
+    // submissions without blocking and drains completions in FIFO order.
+    // Within a single interval k, completions arrive in submission order
+    // (one batch per k per segment, FIFO drain), which is what per-k gap
+    // tracking requires for correctness.
+    //
+    // MUST be drained before nonce_base advances (otherwise states[k]
+    // gets reset and the BPSW step references stale data).
+    std::deque<std::shared_ptr<GPURequest>> pending;
+    constexpr size_t MAX_IN_FLIGHT_PER_PRODUCER = 4;
+    const bool async_enabled = m_async_pipeline;
+
+    // mpz_t local to drain — allocate once per worker, reused across drains.
+    mpz_t async_mpz_candidate;
+    mpz_init(async_mpz_candidate);
+
+    // Drain handler: process one completed request's results into states[k].
+    // Returns false ONLY if processor->process() indicates "stop mining".
+    auto process_completed = [&](std::shared_ptr<GPURequest>& req) -> bool {
+        const int k = req->async_k;
+        if (k < 0 || k >= COMBINED_SIEVE_BATCH) return true;  // defensive
+        par_tests.fetch_add(req->async_offsets.size(), std::memory_order_relaxed);
+
+        for (size_t ci = 0; ci < req->async_offsets.size(); ci++) {
+            if (stop_requested) break;
+            if (ci >= req->results.size()) break;
+            if (!req->results[ci]) continue;
+
+            uint64_t offset = req->async_offsets[ci];
+            mpz_add_ui(async_mpz_candidate, req->async_mpz_start, offset);
+
+            if (tester.bpsw_test(async_mpz_candidate)) {
+                states[k].primes_found++;
+                par_primes.fetch_add(1, std::memory_order_relaxed);
+
+                if (!states[k].have_first_prime) {
+                    states[k].last_prime_offset = offset;
+                    states[k].have_first_prime = true;
+                } else {
+                    uint64_t gap = offset - states[k].last_prime_offset;
+                    if (gap >= states[k].min_gap) {
+                        states[k].valid_gaps++;
+                        mpz_set_ui(states[k].mpz_adder, states[k].last_prime_offset);
+
+                        PoW pow(states[k].mpz_hash, req->async_shift, states[k].mpz_adder,
+                                req->async_target_difficulty, req->async_nonce);
+
+                        LogPrintf("Mining: VALID PROOF found! nonce=%u gap=%llu offset=%llu\n",
+                                  req->async_nonce, (unsigned long long)gap,
+                                  (unsigned long long)states[k].last_prime_offset);
+                        if (processor) {
+                            bool continue_mining = processor->process(&pow);
+                            if (!continue_mining) {
+                                stop_requested = true;
+                                return false;
+                            }
+                        }
+                    }
+                    states[k].last_prime_offset = offset;
+                }
+            }
+        }
+        return true;
+    };
+
+    // Drain any pending requests that have already completed, without blocking.
+    auto drain_ready = [&]() -> bool {
+        while (!pending.empty()) {
+            auto& req = pending.front();
+            if (!req->done.load(std::memory_order_acquire)) break;
+            tel_drain_opportunistic.fetch_add(1, std::memory_order_relaxed);
+            if (!process_completed(req)) return false;
+            pending.pop_front();
+        }
+        return true;
+    };
+
+    // Block until the oldest pending request is done, then process it.
+    auto drain_one_blocking = [&]() -> bool {
+        if (pending.empty()) return true;
+        auto& req = pending.front();
+        {
+            std::unique_lock<std::mutex> lock(req->mtx);
+            while (!req->done.load() && !stop_requested.load()) {
+                req->cv.wait_for(lock, std::chrono::milliseconds(50));
+            }
+        }
+        if (stop_requested) return false;
+        tel_drain_blocking.fetch_add(1, std::memory_order_relaxed);
+        if (!process_completed(req)) return false;
+        pending.pop_front();
+        return true;
+    };
+
+    // Drain ALL pending. Called before nonce_base advances (states[] reset).
+    auto drain_all = [&]() -> bool {
+        while (!pending.empty()) {
+            if (!drain_one_blocking()) return false;
+        }
+        return true;
+    };
+
     while (!stop_requested) {
         // Reset sieve state for this batch of nonces
         combined_sieve.reset_segments();
@@ -1505,6 +1665,58 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
 
                 // === GPU PATH: Fermat pre-filter on GPU, BPSW confirm on CPU ===
                 if (use_gpu && candidates.size() >= 16) {
+                    // === v2511.9 ASYNC PRODUCER PIPELINE ===
+                    // Fire-and-continue: capture the producer's interval-k
+                    // state into the request so the BPSW confirm step can
+                    // run later (in drain_one_blocking / drain_ready) after
+                    // we've already moved on to the next k or segment.
+                    if (async_enabled) {
+                        // Opportunistic drain: handle any requests that the
+                        // GPU has already finished, in FIFO order. This
+                        // keeps the deque from growing while staying
+                        // off the producer's hot path.
+                        if (!drain_ready()) goto cleanup;
+
+                        // Back-pressure: if we have too many in flight,
+                        // block on the oldest. This caps memory growth and
+                        // gives the GPU a chance to drain.
+                        while (pending.size() >= MAX_IN_FLIGHT_PER_PRODUCER && !stop_requested) {
+                            tel_backpressure_stalls.fetch_add(1, std::memory_order_relaxed);
+                            if (!drain_one_blocking()) goto cleanup;
+                        }
+                        if (stop_requested) break;
+
+                        // Build request + deep-copy producer state.
+                        CandidateBatch batch;
+                        tester.prepare_batch(batch, states[k].mpz_start, candidates, actual_bits);
+
+                        auto req = std::make_shared<GPURequest>();
+                        req->batch = std::move(batch);
+                        req->results.resize(req->batch.count, 0);
+
+                        req->async_capture = true;
+                        mpz_set(req->async_mpz_start, states[k].mpz_start);  // deep copy
+                        req->async_offsets = candidates;                     // copy
+                        req->async_k = k;
+                        req->async_shift = shift;
+                        req->async_target_difficulty = target_difficulty;
+                        req->async_nonce = states[k].nonce;
+
+                        submit_gpu_request(req);
+                        pending.push_back(req);
+                        tel_async_submits.fetch_add(1, std::memory_order_relaxed);
+
+                        // Track peak in-flight depth for telemetry
+                        uint64_t cur = pending.size();
+                        uint64_t prev = tel_in_flight_max.load(std::memory_order_relaxed);
+                        while (cur > prev && !tel_in_flight_max.compare_exchange_weak(prev, cur)) {
+                            // retry CAS
+                        }
+
+                        continue;  // BPSW/gap-tracking happens in drain
+                    }
+
+                    // === SYNC GPU PATH (legacy, -miningpipeline=sync) ===
                     // Prepare batch for GPU
                     CandidateBatch batch;
                     tester.prepare_batch(batch, states[k].mpz_start, candidates, actual_bits);
@@ -1693,10 +1905,28 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                       (unsigned long long)par_primes.load(std::memory_order_relaxed));
         }
 
+        // v2511.9: drain ALL in-flight async requests before advancing
+        // nonce_base. States[] gets reinitialized at the top of the next
+        // outer-loop iteration; any pending request still referencing
+        // states[k] (e.g. mpz_hash, mpz_adder) would race against that
+        // reset. drain_all blocks on each request's completion in FIFO
+        // order, runs BPSW + gap tracking, and pops it from the deque.
+        if (async_enabled && !drain_all()) goto cleanup;
+
         nonce_base += COMBINED_SIEVE_BATCH * n_threads;
     }
 
+    // Final drain on normal exit (stop_requested NOT set). Mirrors the
+    // mid-loop drain above; if stop_requested fires, the in-flight
+    // requests are abandoned by the GPU worker thread destructor (they
+    // hold no resources that aren't shared-ptr managed).
+    if (async_enabled) {
+        drain_all();
+    }
+
 cleanup:
+    pending.clear();             // releases any leftover shared_ptr<GPURequest>
+    mpz_clear(async_mpz_candidate);
     for (int k = 0; k < COMBINED_SIEVE_BATCH; k++) {
         mpz_clear(states[k].mpz_hash);
         mpz_clear(states[k].mpz_start);

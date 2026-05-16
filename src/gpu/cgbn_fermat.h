@@ -54,6 +54,18 @@ int cgbn_fermat_batch(uint8_t *h_results,
                       uint32_t count,
                       int bits);
 
+/**
+ * v2511.9: stream-async variant of cgbn_fermat_batch.
+ * Queues H2D + kernel + DtoH on the supplied stream and returns immediately.
+ * Caller must cuda_fermat_stream_sync(stream) before reading h_results.
+ * Pass stream=nullptr to fall back to the legacy null-stream/sync behavior.
+ */
+int cgbn_fermat_batch_async(uint8_t *h_results,
+                            const uint32_t *h_primes,
+                            uint32_t count,
+                            int bits,
+                            void* stream);
+
 /** Check if CGBN PTX module is loaded and ready */
 int cgbn_is_available(void);
 

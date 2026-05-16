@@ -518,6 +518,14 @@ void SetupServerArgs(ArgsManager& argsman, bool can_listen_ipc)
         ".bootstrap-backup/<timestamp>/, extracts the snapshot, and continues. Wallets, peers.dat, "
         "and freycoin.conf are never touched. One-shot: marker is consumed on success.",
         ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-miningpipeline=<async|sync>",
+        "v2511.9: select the GPU mining pipeline. "
+        "'async' (default) — producer captures interval state into each GPU request and continues "
+        "sieve work without blocking; in-flight GPU batches are drained in FIFO order so per-k gap "
+        "tracking remains correct. Scales CPU usage with -genproclimit and keeps the GPU fed. "
+        "'sync' — legacy pre-v2511.9 behavior: producer submits one batch then blocks on the GPU "
+        "result before continuing. Safer fallback if the async path misbehaves on a specific box.",
+        ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-maxmempool=<n>", strprintf("Keep the transaction memory pool below <n> megabytes (default: %u)", DEFAULT_MAX_MEMPOOL_SIZE_MB), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-mempoolexpiry=<n>", strprintf("Do not keep transactions in the mempool longer than <n> hours (default: %u)", DEFAULT_MEMPOOL_EXPIRY_HOURS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-minimumchainwork=<hex>", strprintf("Minimum work assumed to exist on a valid chain in hex (default: %s, testnet: %s)", defaultChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnetChainParams->GetConsensus().nMinimumChainWork.GetHex()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
@@ -1503,7 +1511,7 @@ static ChainstateLoadResult InitAndLoadChainstate(
  * Continuously mines blocks using the MiningEngine, creating new block
  * templates after each successful block or when the tip changes.
  */
-static void MiningThread(NodeContext& node, const CScript& coinbase_script, int num_threads, int gpu_intensity)
+static void MiningThread(NodeContext& node, const CScript& coinbase_script, int num_threads, int gpu_intensity, bool async_pipeline)
 {
     util::ThreadRename("miner");
     LogPrintf("Mining: Starting background miner with %d thread(s)\n", num_threads);
@@ -1529,7 +1537,9 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
     // and persists across blocks — no init/teardown per block.
     MiningEngine engine(static_cast<unsigned int>(num_threads));
     engine.set_gpu_intensity(gpu_intensity);
+    engine.set_async_pipeline(async_pipeline);
     LogPrintf("Mining: Hardware tier: %s\n", engine.get_hardware_info());
+    LogPrintf("Mining: Pipeline mode: %s\n", async_pipeline ? "async (v2511.9)" : "sync (legacy)");
 
     while (!chainman.m_interrupt) {
         // Wait until we've validated all known headers before mining.
@@ -1705,6 +1715,7 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
         const unsigned long long gpu_candidates_pre = gpu_nextprime_candidates_tested();
         const unsigned long long gpu_ms_pre         = gpu_nextprime_gpu_time_ms();
         const unsigned long long gpu_prp_pre        = gpu_nextprime_prp_hits();
+        const auto async_tel_pre = engine.get_async_telemetry();
         const auto template_t0 = std::chrono::steady_clock::now();
 
         // Mine with the persistent engine (GPU stays initialized across blocks)
@@ -1730,10 +1741,24 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
             const long long wall_ll = static_cast<long long>(wall_ms);
             const long long busy_pct = (wall_ll > 0)
                 ? (static_cast<long long>(d_gpu_ms) * 100 / wall_ll) : 0;
+
+            // v2511.9: async pipeline counters (deltas per template).
+            const auto async_tel_post = engine.get_async_telemetry();
+            const unsigned long long d_submits      = async_tel_post.submits       - async_tel_pre.submits;
+            const unsigned long long d_drain_block  = async_tel_post.drain_blocking - async_tel_pre.drain_blocking;
+            const unsigned long long d_drain_opp    = async_tel_post.drain_opportunistic - async_tel_pre.drain_opportunistic;
+            const unsigned long long d_bp_stalls    = async_tel_post.backpressure_stalls - async_tel_pre.backpressure_stalls;
+            const unsigned long long d_stream_sync  = async_tel_post.stream_sync_ms - async_tel_pre.stream_sync_ms;
+            const unsigned long long in_flight_max  = async_tel_post.in_flight_max;  // cumulative peak, not delta
+
             LogPrintf("Mining: GPU telemetry — launches=%llu candidates=%llu prp=%llu "
                       "gpu_ms=%llu wall_ms=%lld busy=%lld%%\n",
                       d_launches, d_candidates, d_prp,
                       d_gpu_ms, wall_ll, busy_pct);
+            LogPrintf("Mining: Async pipeline — submits=%llu drain_opp=%llu drain_block=%llu "
+                      "bp_stalls=%llu in_flight_max=%llu stream_sync_ms=%llu\n",
+                      d_submits, d_drain_opp, d_drain_block,
+                      d_bp_stalls, in_flight_max, d_stream_sync);
         }
 
         if (chainman.m_interrupt) break;
@@ -2662,6 +2687,16 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         int gpu_intensity = args.GetIntArg("-gpuintensity", 5);
         gpu_intensity = std::clamp(gpu_intensity, 1, 10);
 
+        // v2511.9: pipeline mode — async by default, sync as safe fallback
+        const std::string pipeline_arg = args.GetArg("-miningpipeline", "async");
+        bool async_pipeline = true;
+        if (pipeline_arg == "sync") {
+            async_pipeline = false;
+        } else if (pipeline_arg != "async") {
+            return InitError(strprintf(_("Invalid -miningpipeline value '%s'. Must be 'async' or 'sync'."),
+                                       pipeline_arg));
+        }
+
         // -minetoaddress is required for headless mining
         std::string mine_to = args.GetArg("-minetoaddress", "");
         if (mine_to.empty()) {
@@ -2674,9 +2709,10 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         }
         CScript coinbase_script = GetScriptForDestination(dest);
 
-        LogPrintf("Mining: Launching background miner (%d threads, gpu_intensity=%d) to %s\n",
-                  num_threads, gpu_intensity, mine_to);
-        node.mining_thread = std::thread(MiningThread, std::ref(node), coinbase_script, num_threads, gpu_intensity);
+        LogPrintf("Mining: Launching background miner (%d threads, gpu_intensity=%d, pipeline=%s) to %s\n",
+                  num_threads, gpu_intensity, async_pipeline ? "async" : "sync", mine_to);
+        node.mining_thread = std::thread(MiningThread, std::ref(node), coinbase_script,
+                                          num_threads, gpu_intensity, async_pipeline);
     }
 
     return true;

@@ -231,17 +231,38 @@ void cuda_fermat_cleanup(void) {
     g_initialized = 0;
 }
 
-int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
-                      uint32_t count, int bits) {
+/* Per-async-batch context that owns its device buffers. Stored on the heap
+ * and freed by a cuLaunchHostFunc callback after the stream finishes the
+ * DtoH copy. Without cuLaunchHostFunc (CUDA <10), the async path falls back
+ * to a sync allocate/copy/launch/sync/copy/free cycle. */
+struct AsyncBatchCtx {
+    CUdeviceptr d_primes;
+    CUdeviceptr d_results;
+};
+
+static void async_batch_complete_cb(void* userdata) {
+    /* This runs on a CUDA-internal thread. Keep it brief and CUDA-free
+     * except for the explicit frees. cuMemFree is safe to call from
+     * a host callback. */
+    AsyncBatchCtx* ctx = (AsyncBatchCtx*)userdata;
+    if (cu_cuMemFree) {
+        if (ctx->d_results) cu_cuMemFree(ctx->d_results);
+        if (ctx->d_primes)  cu_cuMemFree(ctx->d_primes);
+    }
+    delete ctx;
+}
+
+int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
+                             uint32_t count, int bits, void* stream) {
     if (!g_initialized) return -1;
     if (count == 0) return 0;
 
-    /* Post-fork large numbers: route through CGBN (nvcc-compiled kernels).
-     * The PTX path only has 320/352-bit Montgomery math. For bits > 352,
-     * CGBN provides warp-cooperative Montgomery at arbitrary widths. */
+    /* Post-fork large numbers: route through CGBN's stream-aware async batch.
+     * Both paths use the same stream/callback contract so the GPU worker
+     * can pipeline them identically. */
     if (bits > 352) {
         if (cgbn_is_available()) {
-            return cgbn_fermat_batch(h_results, h_primes, count, bits);
+            return cgbn_fermat_batch_async(h_results, h_primes, count, bits, stream);
         }
         fprintf(stderr, "CUDA: bits=%d exceeds PTX kernel range (max 352) "
                 "and CGBN not available\n", bits);
@@ -253,7 +274,8 @@ int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
     size_t primes_size = (size_t)count * limbs * sizeof(uint32_t);
     size_t results_size = (size_t)count * sizeof(uint8_t);
 
-    /* Allocate device memory */
+    /* Allocate device memory. Pool optimization in v2511.9 axis (b) replaces
+     * this with a per-stream pre-allocated arena. */
     CUdeviceptr d_primes = 0, d_results = 0;
 
     res = cu_cuMemAlloc(&d_primes, primes_size);
@@ -269,34 +291,32 @@ int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
         return -1;
     }
 
-    /* Copy primes to device */
-    res = cu_cuMemcpyHtoD(d_primes, h_primes, primes_size);
+    CUstream s = (CUstream)stream;
+
+    /* H2D async (overlaps with prior stream's kernel under Hyper-Q) */
+    if (s && cu_cuMemcpyHtoDAsync) {
+        res = cu_cuMemcpyHtoDAsync(d_primes, h_primes, primes_size, s);
+    } else {
+        res = cu_cuMemcpyHtoD(d_primes, h_primes, primes_size);
+    }
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: cuMemcpyHtoD failed (error %d)\n", res);
+        fprintf(stderr, "CUDA: HtoD failed (error %d)\n", res);
         return -1;
     }
 
-    /* Select kernel (pre-fork sizes only) */
     CUfunction kernel = (bits <= 320) ? g_kernel_320 : g_kernel_352;
-
-    /* Launch kernel */
     unsigned int grid_x = (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-    void* kernel_params[] = {
-        &d_results,
-        &d_primes,
-        &count
-    };
+    void* kernel_params[] = { &d_results, &d_primes, &count };
 
     res = cu_cuLaunchKernel(kernel,
-                            grid_x, 1, 1,          /* grid dimensions */
-                            BLOCK_SIZE, 1, 1,       /* block dimensions */
-                            0,                      /* shared memory */
-                            nullptr,                /* stream (default) */
-                            kernel_params,          /* kernel parameters */
-                            nullptr);               /* extra */
+                            grid_x, 1, 1,
+                            BLOCK_SIZE, 1, 1,
+                            0,
+                            s,                      /* stream — null = default */
+                            kernel_params,
+                            nullptr);
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
@@ -304,28 +324,112 @@ int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
         return -1;
     }
 
-    /* Synchronize and copy results back */
-    res = cu_cuCtxSynchronize();
+    /* DtoH async — the caller MUST cuStreamSynchronize(s) before reading
+     * h_results, or wait for the registered completion callback. */
+    if (s && cu_cuMemcpyDtoHAsync) {
+        res = cu_cuMemcpyDtoHAsync(h_results, d_results, results_size, s);
+    } else {
+        /* Either no stream was supplied or driver doesn't expose async.
+         * Force synchronization before reading. */
+        res = cu_cuCtxSynchronize();
+        if (res != CUDA_SUCCESS) {
+            cu_cuMemFree(d_results);
+            cu_cuMemFree(d_primes);
+            fprintf(stderr, "CUDA: cuCtxSynchronize failed (error %d)\n", res);
+            return -1;
+        }
+        res = cu_cuMemcpyDtoH(h_results, d_results, results_size);
+    }
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: cuCtxSynchronize failed (error %d)\n", res);
+        fprintf(stderr, "CUDA: DtoH failed (error %d)\n", res);
         return -1;
     }
 
-    res = cu_cuMemcpyDtoH(h_results, d_results, results_size);
-    if (res != CUDA_SUCCESS) {
+    /* If we used a real stream + have cuLaunchHostFunc, queue the free for
+     * after the stream's DtoH completes. Otherwise free synchronously now. */
+    if (s && cu_cuLaunchHostFunc) {
+        AsyncBatchCtx* ctx = new AsyncBatchCtx{d_primes, d_results};
+        res = cu_cuLaunchHostFunc(s, async_batch_complete_cb, ctx);
+        if (res != CUDA_SUCCESS) {
+            /* Callback registration failed — degrade to sync free */
+            delete ctx;
+            cu_cuStreamSynchronize(s);
+            cu_cuMemFree(d_results);
+            cu_cuMemFree(d_primes);
+        }
+    } else {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: cuMemcpyDtoH failed (error %d)\n", res);
-        return -1;
     }
-
-    /* Free device memory */
-    cu_cuMemFree(d_results);
-    cu_cuMemFree(d_primes);
-
     return 0;
+}
+
+int cuda_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
+                      uint32_t count, int bits) {
+    /* Sync wrapper: queue work on default null-stream and wait for it.
+     * Same observable behavior as before the stream API was added. */
+    int rc = cuda_fermat_batch_async(h_results, h_primes, count, bits, nullptr);
+    if (rc != 0) return rc;
+    /* When stream==nullptr, cuda_fermat_batch_async already did its own
+     * synchronization via cu_cuCtxSynchronize() or sync memcpy. Nothing
+     * more to do. */
+    return 0;
+}
+
+/* === Stream lifecycle helpers === */
+void* cuda_fermat_stream_create(void) {
+    if (!g_initialized || !cu_cuStreamCreate) return nullptr;
+    CUstream s = nullptr;
+    /* Flag 0 = CU_STREAM_DEFAULT — synchronize with the legacy null stream
+     * for ordering. Use 1 (CU_STREAM_NON_BLOCKING) if/when we want full
+     * concurrency vs. validation kernels. For now stay default-ordered to
+     * preserve correctness while sharing the context with the validation
+     * GPU path. */
+    if (cu_cuStreamCreate(&s, 0) != CUDA_SUCCESS) return nullptr;
+    return (void*)s;
+}
+
+void cuda_fermat_stream_destroy(void* stream) {
+    if (!stream || !cu_cuStreamDestroy) return;
+    cu_cuStreamDestroy((CUstream)stream);
+}
+
+int cuda_fermat_stream_sync(void* stream) {
+    if (!stream) {
+        return cu_cuCtxSynchronize ? cu_cuCtxSynchronize() : -1;
+    }
+    if (!cu_cuStreamSynchronize) return -1;
+    return cu_cuStreamSynchronize((CUstream)stream) == CUDA_SUCCESS ? 0 : -1;
+}
+
+int cuda_fermat_stream_idle(void* stream) {
+    if (!stream || !cu_cuStreamQuery) return -1;
+    CUresult r = cu_cuStreamQuery((CUstream)stream);
+    if (r == CUDA_SUCCESS) return 1;
+    /* CUDA_ERROR_NOT_READY = 600 on all known drivers; treat anything else
+     * as an error. */
+    return 0;
+}
+
+int cuda_fermat_stream_on_complete(void* stream, void (*cb)(void*), void* userdata) {
+    if (!stream || !cb || !cu_cuLaunchHostFunc) return -1;
+    return cu_cuLaunchHostFunc((CUstream)stream, cb, userdata) == CUDA_SUCCESS ? 0 : -1;
+}
+
+void* cuda_fermat_host_alloc(size_t bytes) {
+    if (!g_initialized || !cu_cuMemHostAlloc) return nullptr;
+    void* p = nullptr;
+    /* Flag 0 = CU_MEMHOSTALLOC_DEFAULT — page-locked, portable across CUDA
+     * contexts in the same process. Sufficient for async memcpy overlap. */
+    if (cu_cuMemHostAlloc(&p, bytes, 0) != CUDA_SUCCESS) return nullptr;
+    return p;
+}
+
+void cuda_fermat_host_free(void* p) {
+    if (!p || !cu_cuMemFreeHost) return;
+    cu_cuMemFreeHost(p);
 }
 
 int cuda_fermat_selftest(void) {
@@ -497,8 +601,12 @@ void cgbn_fermat_cleanup(void) {
     g_cgbn_initialized = 0;
 }
 
-int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
-                      uint32_t count, int bits) {
+/* Async CGBN batch — same pattern as cuda_fermat_batch_async() but launches
+ * the warp-cooperative CGBN kernel selected by the bit tier. Returns
+ * immediately after queueing work + DtoH on the supplied stream. Caller
+ * must cu_cuStreamSynchronize(stream) before reading h_results. */
+int cgbn_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
+                             uint32_t count, int bits, void* stream) {
     if (!g_cgbn_initialized) return -1;
     if (count == 0) return 0;
 
@@ -511,18 +619,17 @@ int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
         }
     }
     if (!tier) {
-        tier = &g_cgbn_tiers[g_cgbn_num_tiers - 1];  /* Largest tier */
+        tier = &g_cgbn_tiers[g_cgbn_num_tiers - 1];
     }
 
     int input_limbs = (bits + 31) / 32;
     int tier_limbs = tier->bits / 32;
     size_t results_size = (size_t)count * sizeof(uint8_t);
+    size_t primes_size = (size_t)count * tier_limbs * sizeof(uint32_t);
 
     CUresult res;
     CUdeviceptr d_primes = 0, d_results = 0;
 
-    /* Allocate device memory at tier's limb count (zero-padded) */
-    size_t primes_size = (size_t)count * tier_limbs * sizeof(uint32_t);
     res = cu_cuMemAlloc(&d_primes, primes_size);
     if (res != CUDA_SUCCESS) return -1;
 
@@ -532,7 +639,14 @@ int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
         return -1;
     }
 
-    /* Upload with zero-padding if input limbs < tier limbs */
+    CUstream s = (CUstream)stream;
+
+    /* Zero-pad if input limb count is below tier limbs. The padded buffer
+     * is short-lived; we copy synchronously then free it before launching
+     * the kernel so we don't have to track its lifetime across the stream.
+     * This is fine for correctness since cu_cuMemcpyHtoD blocks the host
+     * until the copy is staged into the driver's pinned bounce buffer;
+     * the device-side enqueue is still asynchronous from the host's view. */
     if (input_limbs < tier_limbs) {
         uint32_t* padded = (uint32_t*)calloc((size_t)count * tier_limbs, sizeof(uint32_t));
         if (!padded) {
@@ -545,13 +659,21 @@ int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
                    &h_primes[i * input_limbs],
                    input_limbs * sizeof(uint32_t));
         }
+        /* Use sync HtoD for the padded path — padded is on the stack and
+         * goes out of scope immediately. Async would race. */
         cu_cuMemcpyHtoD(d_primes, padded, primes_size);
         free(padded);
+    } else if (s && cu_cuMemcpyHtoDAsync) {
+        res = cu_cuMemcpyHtoDAsync(d_primes, h_primes, primes_size, s);
+        if (res != CUDA_SUCCESS) {
+            cu_cuMemFree(d_results);
+            cu_cuMemFree(d_primes);
+            return -1;
+        }
     } else {
         cu_cuMemcpyHtoD(d_primes, h_primes, primes_size);
     }
 
-    /* Launch: threads_needed = count * TPI */
     unsigned int threads_needed = count * tier->tpi;
     unsigned int grid_x = (threads_needed + CGBN_BLOCK_SIZE - 1) / CGBN_BLOCK_SIZE;
 
@@ -559,7 +681,7 @@ int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
     res = cu_cuLaunchKernel(tier->kernel,
                              grid_x, 1, 1,
                              CGBN_BLOCK_SIZE, 1, 1,
-                             0, nullptr, params, nullptr);
+                             0, s, params, nullptr);
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
@@ -567,18 +689,46 @@ int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
         return -1;
     }
 
-    res = cu_cuCtxSynchronize();
+    if (s && cu_cuMemcpyDtoHAsync) {
+        res = cu_cuMemcpyDtoHAsync(h_results, d_results, results_size, s);
+    } else {
+        res = cu_cuCtxSynchronize();
+        if (res != CUDA_SUCCESS) {
+            cu_cuMemFree(d_results);
+            cu_cuMemFree(d_primes);
+            return -1;
+        }
+        res = cu_cuMemcpyDtoH(h_results, d_results, results_size);
+    }
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
         return -1;
     }
 
-    cu_cuMemcpyDtoH(h_results, d_results, results_size);
-    cu_cuMemFree(d_results);
-    cu_cuMemFree(d_primes);
-
+    /* Queue device-memory free for after DtoH completes (CUDA 10+), or
+     * free synchronously now. */
+    if (s && cu_cuLaunchHostFunc) {
+        AsyncBatchCtx* ctx = new AsyncBatchCtx{d_primes, d_results};
+        res = cu_cuLaunchHostFunc(s, async_batch_complete_cb, ctx);
+        if (res != CUDA_SUCCESS) {
+            delete ctx;
+            cu_cuStreamSynchronize(s);
+            cu_cuMemFree(d_results);
+            cu_cuMemFree(d_primes);
+        }
+    } else {
+        cu_cuMemFree(d_results);
+        cu_cuMemFree(d_primes);
+    }
     return 0;
+}
+
+int cgbn_fermat_batch(uint8_t *h_results, const uint32_t *h_primes,
+                      uint32_t count, int bits) {
+    /* Sync wrapper: legacy null-stream behavior. cgbn_fermat_batch_async
+     * with stream==nullptr falls back to sync HtoD/launch/sync/DtoH chain. */
+    return cgbn_fermat_batch_async(h_results, h_primes, count, bits, nullptr);
 }
 
 int cuda_get_device_count(void) {

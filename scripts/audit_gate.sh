@@ -140,10 +140,10 @@ fi
 banner "Stage 5: Source-tree sanity"
 
 # Confirm version bump landed (v2511.8)
-if grep -q "set(CLIENT_VERSION_REVISION 8)" "${REPO_ROOT}/CMakeLists.txt"; then
-    ok "CMakeLists.txt CLIENT_VERSION_REVISION = 8"
+if grep -q "set(CLIENT_VERSION_REVISION 9)" "${REPO_ROOT}/CMakeLists.txt"; then
+    ok "CMakeLists.txt CLIENT_VERSION_REVISION = 9"
 else
-    fail "CMakeLists.txt CLIENT_VERSION_REVISION is not 8 — version bump missing"
+    fail "CMakeLists.txt CLIENT_VERSION_REVISION is not 9 — version bump missing"
 fi
 
 # v2511.8: confirm bootstrap engine is in source

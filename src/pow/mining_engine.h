@@ -62,8 +62,24 @@ class MiningPipeline;
 
 /**
  * GPU batch request: submitted by CPU sieve threads, processed by GPU worker.
- * Each request carries a candidate batch and a result buffer. The submitting
- * thread blocks on the condition variable until the GPU thread sets done=true.
+ *
+ * v2511.9: extended for the async producer pipeline (axes c/d/e/f). The
+ * producer captures a deep copy of its interval-k state at submission time
+ * (mpz_start COPY + offsets + k + nonce + shift + target_difficulty) so the
+ * BPSW-confirm + gap-tracking step can run AFTER the producer has moved on
+ * to the next interval or segment. The producer drains its own pending
+ * requests in FIFO submission order so that within a single k, offsets are
+ * processed strictly monotonically — which is what gap = offset - prev
+ * tracking requires for correctness.
+ *
+ * Sync path (legacy, -miningpipeline=sync OR no async-capable GPU): the
+ * producer submits, blocks on cv.wait_for, processes results immediately,
+ * never reads the async_* fields.
+ *
+ * Async path (default for GPU tiers, -miningpipeline=async): the producer
+ * fills async_* fields, submits, then continues without blocking. A
+ * separate drain step processes completed requests in FIFO submission
+ * order.
  */
 struct GPURequest {
     CandidateBatch batch;
@@ -71,6 +87,24 @@ struct GPURequest {
     std::mutex mtx;
     std::condition_variable cv;
     std::atomic<bool> done{false};
+
+    // v2511.9 async state capture. Init'd to 0/empty; populated by the
+    // producer only when running on the async path. The mpz_t is init'd
+    // in the ctor and cleared in the dtor; mpz_set() copies the producer's
+    // current interval start at submission time. Offsets are copied
+    // by value from the local candidates vector.
+    bool      async_capture{false};
+    mpz_t     async_mpz_start;
+    std::vector<uint64_t> async_offsets;
+    int       async_k{-1};
+    uint16_t  async_shift{0};
+    uint64_t  async_target_difficulty{0};
+    uint32_t  async_nonce{0};
+
+    GPURequest();
+    ~GPURequest();
+    GPURequest(const GPURequest&) = delete;
+    GPURequest& operator=(const GPURequest&) = delete;
 };
 
 /**
@@ -295,6 +329,33 @@ public:
      *  Higher = more work per nonce, better GPU utilization. Default: 5. */
     void set_gpu_intensity(int intensity);
 
+    /** v2511.9: Configure async producer pipeline.
+     *  true  = producer fires-and-continues, drains in FIFO order (default for GPU tiers)
+     *  false = producer blocks on each GPU batch (legacy behavior, safe fallback) */
+    void set_async_pipeline(bool enable) { m_async_pipeline = enable; }
+    bool get_async_pipeline() const { return m_async_pipeline; }
+
+    /** v2511.9: snapshot expanded telemetry counters. Fields are cumulative
+     *  since engine init; caller logs deltas per template. */
+    struct AsyncTelemetry {
+        uint64_t submits;
+        uint64_t drain_blocking;
+        uint64_t drain_opportunistic;
+        uint64_t in_flight_max;
+        uint64_t backpressure_stalls;
+        uint64_t stream_sync_ms;
+    };
+    AsyncTelemetry get_async_telemetry() const {
+        return {
+            tel_async_submits.load(std::memory_order_relaxed),
+            tel_drain_blocking.load(std::memory_order_relaxed),
+            tel_drain_opportunistic.load(std::memory_order_relaxed),
+            tel_in_flight_max.load(std::memory_order_relaxed),
+            tel_backpressure_stalls.load(std::memory_order_relaxed),
+            tel_stream_sync_ms.load(std::memory_order_relaxed),
+        };
+    }
+
     /** Compute minimum shift needed for a given intensity level.
      *  Ensures 2^shift / 2 >= sieve_cap so the sieve can use its full range.
      *  @param min_shift Floor for the shift (e.g. post-fork MIN_SHIFT) */
@@ -331,6 +392,12 @@ private:
 
     // GPU worker threads — one per device, persist across mine_parallel calls.
     // Initialized on first mine_parallel, destroyed with the engine.
+    //
+    // v2511.9: each worker owns a CUstream (when on CUDA tier). Kernel
+    // launches go on the worker's stream and synchronization is
+    // cuStreamSynchronize, NOT cuCtxSynchronize, so other GPU work in the
+    // process (validation path, future multi-worker setups) is not blocked
+    // by mining's per-batch sync.
     struct GPUWorker {
         int device_id;
         std::thread thread;
@@ -338,12 +405,31 @@ private:
         std::mutex mutex;
         std::condition_variable cv;
         std::atomic<bool> initialized{false};
+        // v2511.9: per-worker stream (opaque CUstream). nullptr means "use
+        // default null-stream", which preserves pre-v2511.9 behavior. Set
+        // by gpu_worker_func() once the device is initialized.
+        void* cuda_stream{nullptr};
     };
     std::vector<std::unique_ptr<GPUWorker>> gpu_workers;
     std::atomic<bool> gpu_initialized{false};  // True when at least one GPU is ready
     std::atomic<bool> gpu_shutdown{false};
     std::atomic<int> gpu_round_robin{0};  // For distributing work across GPUs
     int num_gpu_devices{0};
+
+    // v2511.9 async producer pipeline configuration. See -miningpipeline
+    // CLI flag. Default: async when GPU is available, sync otherwise.
+    bool m_async_pipeline{true};
+
+    // v2511.9 expanded telemetry for the F1 GPU-telemetry log line.
+    // All counters are cumulative since engine init; the daemon snapshots
+    // them per template and logs deltas. See logging at the top of
+    // src/init.cpp MiningThread.
+    std::atomic<uint64_t> tel_async_submits{0};
+    std::atomic<uint64_t> tel_drain_blocking{0};
+    std::atomic<uint64_t> tel_drain_opportunistic{0};
+    std::atomic<uint64_t> tel_in_flight_max{0};      // peak in-flight per drain cycle
+    std::atomic<uint64_t> tel_backpressure_stalls{0};
+    std::atomic<uint64_t> tel_stream_sync_ms{0};     // cumulative cuStreamSync wait
 
     void ensure_gpu_running();
     void gpu_worker_func(GPUWorker* worker);

@@ -52,6 +52,15 @@ pfn_cuMemAlloc           cu_cuMemAlloc = nullptr;
 pfn_cuMemFree            cu_cuMemFree = nullptr;
 pfn_cuMemcpyHtoD         cu_cuMemcpyHtoD = nullptr;
 pfn_cuMemcpyDtoH         cu_cuMemcpyDtoH = nullptr;
+pfn_cuMemcpyHtoDAsync    cu_cuMemcpyHtoDAsync = nullptr;
+pfn_cuMemcpyDtoHAsync    cu_cuMemcpyDtoHAsync = nullptr;
+pfn_cuMemHostAlloc       cu_cuMemHostAlloc = nullptr;
+pfn_cuMemFreeHost        cu_cuMemFreeHost = nullptr;
+pfn_cuStreamCreate       cu_cuStreamCreate = nullptr;
+pfn_cuStreamDestroy      cu_cuStreamDestroy = nullptr;
+pfn_cuStreamSynchronize  cu_cuStreamSynchronize = nullptr;
+pfn_cuStreamQuery        cu_cuStreamQuery = nullptr;
+pfn_cuLaunchHostFunc     cu_cuLaunchHostFunc = nullptr;
 pfn_cuLaunchKernel       cu_cuLaunchKernel = nullptr;
 pfn_cuCtxSynchronize     cu_cuCtxSynchronize = nullptr;
 
@@ -140,6 +149,19 @@ int cuda_load(void) {
     ok = resolve(g_cuda_lib, "cuLaunchKernel", (void**)&cu_cuLaunchKernel) && ok;
     ok = resolve(g_cuda_lib, "cuCtxSynchronize", (void**)&cu_cuCtxSynchronize) && ok;
 
+    // Stream + host-callback symbols (CUDA 4.0+, all NVIDIA drivers since 2011)
+    ok = resolve(g_cuda_lib, "cuStreamCreate", (void**)&cu_cuStreamCreate) && ok;
+    ok = resolve(g_cuda_lib, "cuStreamSynchronize", (void**)&cu_cuStreamSynchronize) && ok;
+    ok = resolve(g_cuda_lib, "cuStreamQuery", (void**)&cu_cuStreamQuery) && ok;
+    ok = resolve_v2(g_cuda_lib, "cuStreamDestroy", (void**)&cu_cuStreamDestroy) && ok;
+    // cuLaunchHostFunc is CUDA 10+; older drivers won't have it. Soft-fail so
+    // pre-10 drivers still get sync kernel launches via stream synchronize.
+    cu_cuLaunchHostFunc = (pfn_cuLaunchHostFunc)LIB_SYM(g_cuda_lib, "cuLaunchHostFunc");
+
+    // Pinned host memory (required for async memcpy to overlap with kernel exec)
+    ok = resolve(g_cuda_lib, "cuMemHostAlloc", (void**)&cu_cuMemHostAlloc) && ok;
+    ok = resolve(g_cuda_lib, "cuMemFreeHost", (void**)&cu_cuMemFreeHost) && ok;
+
     // Functions that HAVE _v2 variants (CUDA 3.2+ memory/context APIs)
     ok = resolve_v2(g_cuda_lib, "cuDeviceTotalMem", (void**)&cu_cuDeviceTotalMem) && ok;
     ok = resolve_v2(g_cuda_lib, "cuCtxCreate", (void**)&cu_cuCtxCreate) && ok;
@@ -149,6 +171,8 @@ int cuda_load(void) {
     ok = resolve_v2(g_cuda_lib, "cuMemFree", (void**)&cu_cuMemFree) && ok;
     ok = resolve_v2(g_cuda_lib, "cuMemcpyHtoD", (void**)&cu_cuMemcpyHtoD) && ok;
     ok = resolve_v2(g_cuda_lib, "cuMemcpyDtoH", (void**)&cu_cuMemcpyDtoH) && ok;
+    ok = resolve_v2(g_cuda_lib, "cuMemcpyHtoDAsync", (void**)&cu_cuMemcpyHtoDAsync) && ok;
+    ok = resolve_v2(g_cuda_lib, "cuMemcpyDtoHAsync", (void**)&cu_cuMemcpyDtoHAsync) && ok;
 
     if (!ok) {
         cuda_unload();
@@ -189,6 +213,15 @@ void cuda_unload(void) {
     cu_cuMemFree = nullptr;
     cu_cuMemcpyHtoD = nullptr;
     cu_cuMemcpyDtoH = nullptr;
+    cu_cuMemcpyHtoDAsync = nullptr;
+    cu_cuMemcpyDtoHAsync = nullptr;
+    cu_cuMemHostAlloc = nullptr;
+    cu_cuMemFreeHost = nullptr;
+    cu_cuStreamCreate = nullptr;
+    cu_cuStreamDestroy = nullptr;
+    cu_cuStreamSynchronize = nullptr;
+    cu_cuStreamQuery = nullptr;
+    cu_cuLaunchHostFunc = nullptr;
     cu_cuLaunchKernel = nullptr;
     cu_cuCtxSynchronize = nullptr;
 

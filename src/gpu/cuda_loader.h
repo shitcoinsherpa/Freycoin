@@ -98,6 +98,29 @@ typedef CUresult (*pfn_cuMemFree)(CUdeviceptr dptr);
 typedef CUresult (*pfn_cuMemcpyHtoD)(CUdeviceptr dstDevice, const void* srcHost, size_t ByteCount);
 typedef CUresult (*pfn_cuMemcpyDtoH)(void* dstHost, CUdeviceptr srcDevice, size_t ByteCount);
 
+// Async memory copy (requires page-locked host memory to truly overlap)
+typedef CUresult (*pfn_cuMemcpyHtoDAsync)(CUdeviceptr dstDevice, const void* srcHost,
+                                           size_t ByteCount, CUstream hStream);
+typedef CUresult (*pfn_cuMemcpyDtoHAsync)(void* dstHost, CUdeviceptr srcDevice,
+                                           size_t ByteCount, CUstream hStream);
+
+// Page-locked host memory (required for async memcpy to overlap with kernel exec)
+typedef CUresult (*pfn_cuMemHostAlloc)(void** pp, size_t bytesize, unsigned int Flags);
+typedef CUresult (*pfn_cuMemFreeHost)(void* p);
+
+// Stream management — enables concurrent kernel execution under Hyper-Q.
+// One stream per "lane" of GPU work; kernels on different streams can overlap.
+typedef CUresult (*pfn_cuStreamCreate)(CUstream* phStream, unsigned int Flags);
+typedef CUresult (*pfn_cuStreamDestroy)(CUstream hStream);
+typedef CUresult (*pfn_cuStreamSynchronize)(CUstream hStream);
+typedef CUresult (*pfn_cuStreamQuery)(CUstream hStream);
+
+// Host completion callback fired after preceding stream work finishes.
+// Runs on a CUDA-internal thread — do minimal work, never block, never
+// reenter the CUDA API.
+typedef void (*CUhostFn)(void* userData);
+typedef CUresult (*pfn_cuLaunchHostFunc)(CUstream hStream, CUhostFn fn, void* userData);
+
 // Kernel launch
 typedef CUresult (*pfn_cuLaunchKernel)(CUfunction f,
                                         unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ,
@@ -129,6 +152,15 @@ extern pfn_cuMemAlloc           cu_cuMemAlloc;
 extern pfn_cuMemFree            cu_cuMemFree;
 extern pfn_cuMemcpyHtoD         cu_cuMemcpyHtoD;
 extern pfn_cuMemcpyDtoH         cu_cuMemcpyDtoH;
+extern pfn_cuMemcpyHtoDAsync    cu_cuMemcpyHtoDAsync;
+extern pfn_cuMemcpyDtoHAsync    cu_cuMemcpyDtoHAsync;
+extern pfn_cuMemHostAlloc       cu_cuMemHostAlloc;
+extern pfn_cuMemFreeHost        cu_cuMemFreeHost;
+extern pfn_cuStreamCreate       cu_cuStreamCreate;
+extern pfn_cuStreamDestroy      cu_cuStreamDestroy;
+extern pfn_cuStreamSynchronize  cu_cuStreamSynchronize;
+extern pfn_cuStreamQuery        cu_cuStreamQuery;
+extern pfn_cuLaunchHostFunc     cu_cuLaunchHostFunc;
 extern pfn_cuLaunchKernel       cu_cuLaunchKernel;
 extern pfn_cuCtxSynchronize     cu_cuCtxSynchronize;
 
