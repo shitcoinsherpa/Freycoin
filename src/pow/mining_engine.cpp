@@ -49,9 +49,22 @@
 #endif
 
 #include <gpu/opencl_loader.h>
+#include <gpu/cgbn_fermat.h>
 #include <gpu/opencl_fermat.h>
 #include <gpu/cuda_loader.h>
 #include <gpu/cuda_fermat.h>
+
+/*============================================================================
+ * GPU driver diagnostics → debug.log
+ *
+ * stderr is invisible in a Windows GUI process, so the CUDA driver layer
+ * logs through a pluggable callback. Installed before every
+ * cuda_fermat_init call; idempotent.
+ *============================================================================*/
+
+static void GpuDriverLogAdapter(const char* msg) {
+    LogPrintf("GPU: %s\n", msg);
+}
 
 /*============================================================================
  * GPURequest lifecycle (v2511.9)
@@ -930,6 +943,7 @@ void MiningPipeline::sieve_worker(uint32_t thread_id) {
 
 void MiningPipeline::gpu_worker() {
     // Initialize the appropriate GPU backend
+    cuda_fermat_set_logger(GpuDriverLogAdapter);
     if (tier == MiningTier::CPU_CUDA) {
         if (cuda_fermat_init(0) != 0) {
             LogPrintf("Mining: CUDA init failed, falling back to OpenCL\n");
@@ -979,15 +993,24 @@ void MiningPipeline::gpu_worker() {
         // Shared lock: allows concurrent mining but yields to exclusive
         // validation lock (fast_nextprime GPU path) to avoid contention.
         std::vector<uint8_t> results(batch.count);
+        int rc = 0;
         {
             std::shared_lock<std::shared_mutex> gpu_lock(g_gpu_access);
             if (tier == MiningTier::CPU_CUDA) {
-                cuda_fermat_batch(results.data(), batch.candidates.data(),
-                                  batch.count, batch.bits);
+                rc = cuda_fermat_batch(results.data(), batch.candidates.data(),
+                                       batch.count, batch.bits);
             } else {
-                opencl_fermat_batch(results.data(), batch.candidates.data(),
-                                    batch.count, batch.bits);
+                rc = opencl_fermat_batch(results.data(), batch.candidates.data(),
+                                         batch.count, batch.bits);
             }
+        }
+
+        // Failed batch = garbage results; drop, log, stop.
+        if (rc != 0) {
+            LogPrintf("Mining: pipeline GPU batch FAILED rc=%d (count=%u bits=%d) — stopping\n",
+                      rc, batch.count, batch.bits);
+            mining_active = false;
+            break;
         }
 
         // Process results
@@ -1196,6 +1219,7 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
     int dev = worker->device_id;
 
     // Initialize this GPU device (once for the lifetime of the engine)
+    cuda_fermat_set_logger(GpuDriverLogAdapter);
     if (tier == MiningTier::CPU_CUDA) {
         bool cuda_ok = false;
         if (cuda_fermat_init(dev) == 0) {
@@ -1283,26 +1307,40 @@ void MiningEngine::gpu_worker_func(GPUWorker* worker) {
         auto t_sync_start = std::chrono::steady_clock::now();
         {
             std::shared_lock<std::shared_mutex> gpu_lock(g_gpu_access);
+            // results[] is zero-initialized, so an unchecked failure here
+            // turns into silent all-composite verdicts. Capture every
+            // backend return code.
+            int rc = 0;
             if (tier == MiningTier::CPU_CUDA) {
                 // v2511.9: prefer the stream-aware async API. Even when the
                 // producer is sync, going through the per-worker stream
                 // means our cuStreamSynchronize call only waits for THIS
                 // worker's batch, not the entire CUDA context.
                 if (worker->cuda_stream) {
-                    cuda_fermat_batch_async(request->results.data(),
-                                            request->batch.candidates.data(),
-                                            request->batch.count, request->batch.bits,
-                                            worker->cuda_stream);
-                    cuda_fermat_stream_sync(worker->cuda_stream);
+                    rc = cuda_fermat_batch_async(request->results.data(),
+                                                 request->batch.candidates.data(),
+                                                 request->batch.count, request->batch.bits,
+                                                 worker->cuda_stream);
+                    if (rc == 0) {
+                        rc = cuda_fermat_stream_sync(worker->cuda_stream);
+                    }
                 } else {
-                    cuda_fermat_batch(request->results.data(),
-                                      request->batch.candidates.data(),
-                                      request->batch.count, request->batch.bits);
-                }
-            } else {
-                opencl_fermat_batch_device(dev, request->results.data(),
+                    rc = cuda_fermat_batch(request->results.data(),
                                            request->batch.candidates.data(),
                                            request->batch.count, request->batch.bits);
+                }
+            } else {
+                rc = opencl_fermat_batch_device(dev, request->results.data(),
+                                                request->batch.candidates.data(),
+                                                request->batch.count, request->batch.bits);
+            }
+            request->gpu_rc = rc;
+            if (rc != 0) {
+                tel_gpu_errors.fetch_add(1, std::memory_order_relaxed);
+                m_gpu_fault.store(true, std::memory_order_relaxed);
+                LogPrintf("Mining: GPU worker %d batch FAILED rc=%d (count=%u bits=%d) — "
+                          "results discarded, mining stops\n",
+                          dev, rc, request->batch.count, request->batch.bits);
             }
         }
         auto t_sync_end = std::chrono::steady_clock::now();
@@ -1396,7 +1434,8 @@ void MiningEngine::mine_parallel(const std::vector<uint8_t>& header_template,
                                   uint16_t shift,
                                   uint64_t target_difficulty,
                                   uint32_t start_nonce,
-                                  PoWProcessor* processor) {
+                                  PoWProcessor* processor,
+                                  uint64_t max_segments) {
     if (parallel_mining_active) {
         // Stop previous sieve threads (GPU thread persists)
         stop_requested = true;
@@ -1413,6 +1452,8 @@ void MiningEngine::mine_parallel(const std::vector<uint8_t>& header_template,
     par_gaps = 0;
     par_tests = 0;
     par_nonces = 0;
+    m_segments_done = 0;
+    m_max_segments = max_segments;
     mining_threads.clear();
 
     // Ensure shift allows full sieve range for the configured intensity
@@ -1511,6 +1552,16 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
     // Drain handler: process one completed request's results into states[k].
     // Returns false ONLY if processor->process() indicates "stop mining".
     auto process_completed = [&](std::shared_ptr<GPURequest>& req) -> bool {
+        // A failed batch produces garbage — never interpret it. The tier
+        // passed its init probe, so a runtime failure is a real device
+        // fault; stop loudly.
+        if (req->gpu_rc != 0) {
+            LogPrintf("Mining: stopping — GPU batch error rc=%d reached drain "
+                      "(k=%d, %zu candidates dropped)\n",
+                      req->gpu_rc, req->async_k, req->async_offsets.size());
+            stop_requested = true;
+            return false;
+        }
         const int k = req->async_k;
         if (k < 0 || k >= COMBINED_SIEVE_BATCH) return true;  // defensive
         par_tests.fetch_add(req->async_offsets.size(), std::memory_order_relaxed);
@@ -1595,6 +1646,14 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
     };
 
     while (!stop_requested) {
+        // Round budget: workers wind down at the next loop boundary once
+        // the shared counter crosses it. Normal completion — found stays
+        // false, the caller starts a fresh round.
+        if (m_max_segments &&
+            m_segments_done.load(std::memory_order_relaxed) >= m_max_segments) {
+            break;
+        }
+
         // Reset sieve state for this batch of nonces
         combined_sieve.reset_segments();
 
@@ -1653,7 +1712,31 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
         // Determine if GPU is available for Fermat pre-filtering
         const bool use_gpu = gpu_initialized && (tier != MiningTier::CPU_ONLY);
 
+        // gpu_initialized implies the init probe has run. A tier that
+        // failed its probe would produce garbage — refuse loudly. (Widths
+        // <=352 use the base PTX kernels, covered by the Montgomery
+        // self-test.)
+        if (use_gpu && tier == MiningTier::CPU_CUDA && actual_bits > 352 &&
+            !cgbn_fermat_bits_validated(actual_bits)) {
+            if (!m_gpu_fault.exchange(true, std::memory_order_relaxed)) {
+                LogPrintf("Mining: REFUSING to mine at shift=%u — the GPU tier for "
+                          "%u-bit candidates failed its known-answer probe (see "
+                          "'GPU: CGBN probe' lines in this log). Pick a shift on a "
+                          "validated tier or update GPU drivers.\n",
+                          shift, actual_bits);
+            }
+            stop_requested = true;
+            goto cleanup;
+        }
+
         while (combined_sieve.sieve_next_segment() && !stop_requested) {
+            // Always count (callers read segments_done()); exit at the
+            // segment boundary once the budget is spent.
+            const uint64_t seg_done =
+                m_segments_done.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (m_max_segments && seg_done > m_max_segments) {
+                break;
+            }
             // Phase 3: For each interval, extract candidates and test primality
             for (int k = 0; k < COMBINED_SIEVE_BATCH; k++) {
                 if (!states[k].valid_hash) continue;
@@ -1737,6 +1820,16 @@ void MiningEngine::parallel_worker(uint32_t thread_id,
                             request->cv.wait_for(lock, std::chrono::milliseconds(200));
                         }
                         if (stop_requested) break;
+                    }
+
+                    // Failed batch = garbage results; never interpret
+                    // them. Loud stop.
+                    if (request->gpu_rc != 0) {
+                        LogPrintf("Mining: stopping — sync GPU batch error rc=%d "
+                                  "(k=%d, %zu candidates dropped)\n",
+                                  request->gpu_rc, k, candidates.size());
+                        stop_requested = true;
+                        break;
                     }
 
                     par_tests.fetch_add(candidates.size(), std::memory_order_relaxed);

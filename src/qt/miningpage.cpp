@@ -557,6 +557,10 @@ void MiningPage::miningThreadFunc()
 
     // Mining loop — create block templates and mine them
     while (!m_stopRequested.load()) {
+        // Never start a round on a faulted GPU; the fault was reported to
+        // the Mining tab where it latched.
+        if (m_engine && m_engine->gpu_fault()) break;
+
         // Wait until the node is fully caught up before mining.
         // Post-fork block validation calls fast_nextprime on 12K-bit numbers,
         // holding cs_main for ~9s (GPU lib), ~31s (gwnum), or ~78s (GMP).
@@ -730,15 +734,29 @@ void MiningPage::miningThreadFunc()
                     .arg(shift));
             }, Qt::QueuedConnection);
 
-            // Mine — blocks until solution found or stop() called
+            // Bounded round: the template (and nTime) refreshes each
+            // round, and faults surface between rounds.
             m_engine->mine_parallel(
                 header_template,
                 NONCE_OFFSET,
                 shift,
                 block.nDifficulty,
                 0,  // start_nonce
-                &processor
+                &processor,
+                MiningEngine::DEFAULT_ROUND_SEGMENTS
             );
+
+            // Report a latched fault visibly. A proof from this round is
+            // still valid (BPSW-confirmed) — let it submit below; the
+            // top-of-loop check halts further rounds.
+            if (m_engine->gpu_fault()) {
+                QMetaObject::invokeMethod(this, [this]() {
+                    logMessage("GPU FAULT: a Fermat batch failed or the GPU tier for this "
+                               "shift failed its startup self-test. Mining stopped — see "
+                               "debug.log ('GPU:' lines) for the driver diagnostic.");
+                }, Qt::QueuedConnection);
+                if (!processor.found) break;
+            }
 
             if (m_stopRequested.load()) break;
 

@@ -26,6 +26,7 @@
 #include "cuda_loader.h"
 #include "cgbn_fermat.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,29 +62,58 @@ static size_t     g_device_memory = 0;
 static CUmodule   g_cgbn_module = nullptr;
 static int        g_cgbn_initialized = 0;
 
-/* CGBN tier → kernel mapping */
+/* CGBN tier → kernel mapping.
+ * validated: -1 = not probed, 1 = probe passed, 0 = probe failed. */
 struct CgbnTierInfo {
     int bits;
     int tpi;
     const char* kernel_name;
     CUfunction kernel;
+    int validated;
 };
 
 static CgbnTierInfo g_cgbn_tiers[] = {
-    {   320,  8, "cgbn_fermat_kernel_320",   nullptr},
-    {   384, 16, "cgbn_fermat_kernel_384",   nullptr},
-    {   512, 16, "cgbn_fermat_kernel_512",   nullptr},
-    {  1024, 32, "cgbn_fermat_kernel_1024",  nullptr},
-    {  1280, 32, "cgbn_fermat_kernel_1280",  nullptr},
-    {  2048, 32, "cgbn_fermat_kernel_2048",  nullptr},
-    {  4096, 32, "cgbn_fermat_kernel_4096",  nullptr},
-    {  8192, 32, "cgbn_fermat_kernel_8192",  nullptr},
-    {  8448, 32, "cgbn_fermat_kernel_8448",  nullptr},
-    { 12288, 32, "cgbn_fermat_kernel_12288", nullptr},
-    { 16384, 32, "cgbn_fermat_kernel_16384", nullptr},
-    { 16640, 32, "cgbn_fermat_kernel_16640", nullptr},
+    {   320,  8, "cgbn_fermat_kernel_320",   nullptr, -1},
+    {   384, 16, "cgbn_fermat_kernel_384",   nullptr, -1},
+    {   512, 16, "cgbn_fermat_kernel_512",   nullptr, -1},
+    {  1024, 32, "cgbn_fermat_kernel_1024",  nullptr, -1},
+    {  1280, 32, "cgbn_fermat_kernel_1280",  nullptr, -1},
+    {  2048, 32, "cgbn_fermat_kernel_2048",  nullptr, -1},
+    {  4096, 32, "cgbn_fermat_kernel_4096",  nullptr, -1},
+    {  8192, 32, "cgbn_fermat_kernel_8192",  nullptr, -1},
+    {  8448, 32, "cgbn_fermat_kernel_8448",  nullptr, -1},
+    { 12288, 32, "cgbn_fermat_kernel_12288", nullptr, -1},
+    { 16384, 32, "cgbn_fermat_kernel_16384", nullptr, -1},
+    { 16640, 32, "cgbn_fermat_kernel_16640", nullptr, -1},
+    { 16672, 32, "cgbn_fermat_kernel_16672", nullptr, -1},
 };
 static const int g_cgbn_num_tiers = sizeof(g_cgbn_tiers) / sizeof(g_cgbn_tiers[0]);
+
+/* A tier must leave >=32 bits of slack above the input width so the
+ * modulus can never fill its environment (see cgbn_fermat.cu). */
+#define CGBN_TIER_SLACK_BITS 32
+
+/* stderr is invisible in a Windows GUI app; diagnostics go through a
+ * caller-installed logger (the node wires it to LogPrintf), with stderr
+ * as the fallback. */
+static cuda_fermat_log_fn g_log_fn = nullptr;
+
+void cuda_fermat_set_logger(cuda_fermat_log_fn fn) {
+    g_log_fn = fn;
+}
+
+static void cuda_logf(const char* fmt, ...) {
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (g_log_fn) {
+        g_log_fn(buf);
+    } else {
+        fprintf(stderr, "%s\n", buf);
+    }
+}
 
 int cuda_fermat_init(int device_id) {
     CUresult res;
@@ -126,7 +156,7 @@ int cuda_fermat_init(int device_id) {
     cu_cuDeviceGetAttribute(&cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, g_device);
     cu_cuDeviceGetAttribute(&cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, g_device);
     if (cc_major < 7 || (cc_major == 7 && cc_minor < 5)) {
-        fprintf(stderr, "CUDA: GPU compute capability %d.%d too old (need 7.5+ / Turing)\n",
+        cuda_logf("CUDA: GPU compute capability %d.%d too old (need 7.5+ / Turing)",
                 cc_major, cc_minor);
         return -2;
     }
@@ -134,7 +164,7 @@ int cuda_fermat_init(int device_id) {
     /* Create CUDA context */
     res = cu_cuCtxCreate(&g_context, 0, g_device);
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA: Failed to create context (error %d)\n", res);
+        cuda_logf("CUDA: Failed to create context (error %d)", res);
         return -1;
     }
 
@@ -157,9 +187,9 @@ int cuda_fermat_init(int device_id) {
 
     res = cu_cuModuleLoadDataEx(&g_module, ptx_source, 4, jit_options, jit_option_values);
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA: Failed to JIT-compile PTX (error %d)\n", res);
+        cuda_logf("CUDA: Failed to JIT-compile PTX (error %d)", res);
         if (jit_error_log[0]) {
-            fprintf(stderr, "CUDA JIT error:\n%s\n", jit_error_log);
+            cuda_logf("CUDA JIT error:\n%s", jit_error_log);
         }
         cu_cuCtxDestroy(g_context);
         g_context = nullptr;
@@ -169,7 +199,7 @@ int cuda_fermat_init(int device_id) {
     /* Get kernel function handles */
     res = cu_cuModuleGetFunction(&g_kernel_320, g_module, "fermat_kernel_320");
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA: Failed to find kernel 'fermat_kernel_320' (error %d)\n", res);
+        cuda_logf("CUDA: Failed to find kernel 'fermat_kernel_320' (error %d)", res);
         cu_cuModuleUnload(g_module);
         cu_cuCtxDestroy(g_context);
         g_module = nullptr;
@@ -179,7 +209,7 @@ int cuda_fermat_init(int device_id) {
 
     res = cu_cuModuleGetFunction(&g_kernel_352, g_module, "fermat_kernel_352");
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA: Failed to find kernel 'fermat_kernel_352' (error %d)\n", res);
+        cuda_logf("CUDA: Failed to find kernel 'fermat_kernel_352' (error %d)", res);
         cu_cuModuleUnload(g_module);
         cu_cuCtxDestroy(g_context);
         g_module = nullptr;
@@ -198,10 +228,10 @@ int cuda_fermat_init(int device_id) {
     /* Initialize CGBN module for post-fork large-number kernels.
      * Non-fatal if it fails — pre-fork mining still works without it. */
     if (cgbn_fermat_init() == 0) {
-        fprintf(stderr, "CUDA: CGBN module loaded (%d tier kernels, up to %d-bit)\n",
+        cuda_logf("CUDA: CGBN module loaded (%d tier kernels, up to %d-bit)",
                 g_cgbn_num_tiers, g_cgbn_tiers[g_cgbn_num_tiers - 1].bits);
     } else {
-        fprintf(stderr, "CUDA: CGBN module not available (post-fork kernels disabled)\n");
+        cuda_logf("CUDA: CGBN module not available (post-fork kernels disabled)");
     }
 
     /* Self-test is NOT run here — callers (gpu_worker, gpu_worker_func) run
@@ -264,7 +294,7 @@ int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
         if (cgbn_is_available()) {
             return cgbn_fermat_batch_async(h_results, h_primes, count, bits, stream);
         }
-        fprintf(stderr, "CUDA: bits=%d exceeds PTX kernel range (max 352) "
+        cuda_logf("CUDA: bits=%d exceeds PTX kernel range (max 352) "
                 "and CGBN not available\n", bits);
         return -1;
     }
@@ -280,14 +310,14 @@ int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
 
     res = cu_cuMemAlloc(&d_primes, primes_size);
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA: cuMemAlloc primes failed (error %d)\n", res);
+        cuda_logf("CUDA: cuMemAlloc primes failed (error %d)", res);
         return -1;
     }
 
     res = cu_cuMemAlloc(&d_results, results_size);
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: cuMemAlloc results failed (error %d)\n", res);
+        cuda_logf("CUDA: cuMemAlloc results failed (error %d)", res);
         return -1;
     }
 
@@ -302,7 +332,7 @@ int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: HtoD failed (error %d)\n", res);
+        cuda_logf("CUDA: HtoD failed (error %d)", res);
         return -1;
     }
 
@@ -320,7 +350,7 @@ int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: cuLaunchKernel failed (error %d)\n", res);
+        cuda_logf("CUDA: cuLaunchKernel failed (error %d)", res);
         return -1;
     }
 
@@ -335,7 +365,7 @@ int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
         if (res != CUDA_SUCCESS) {
             cu_cuMemFree(d_results);
             cu_cuMemFree(d_primes);
-            fprintf(stderr, "CUDA: cuCtxSynchronize failed (error %d)\n", res);
+            cuda_logf("CUDA: cuCtxSynchronize failed (error %d)", res);
             return -1;
         }
         res = cu_cuMemcpyDtoH(h_results, d_results, results_size);
@@ -343,7 +373,7 @@ int cuda_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA: DtoH failed (error %d)\n", res);
+        cuda_logf("CUDA: DtoH failed (error %d)", res);
         return -1;
     }
 
@@ -472,14 +502,14 @@ int cuda_fermat_selftest(void) {
 
     res = cu_cuMemAlloc(&d_primes, primes_size);
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA selftest: cuMemAlloc primes failed (error %d)\n", res);
+        cuda_logf("CUDA selftest: cuMemAlloc primes failed (error %d)", res);
         return -1;
     }
 
     res = cu_cuMemAlloc(&d_results, results_size);
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA selftest: cuMemAlloc results failed (error %d)\n", res);
+        cuda_logf("CUDA selftest: cuMemAlloc results failed (error %d)", res);
         return -1;
     }
 
@@ -498,7 +528,7 @@ int cuda_fermat_selftest(void) {
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA selftest: launch failed (error %d)\n", res);
+        cuda_logf("CUDA selftest: launch failed (error %d)", res);
         return -1;
     }
 
@@ -506,7 +536,7 @@ int cuda_fermat_selftest(void) {
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CUDA selftest: sync failed (error %d)\n", res);
+        cuda_logf("CUDA selftest: sync failed (error %d)", res);
         return -1;
     }
 
@@ -516,25 +546,25 @@ int cuda_fermat_selftest(void) {
     cu_cuMemFree(d_primes);
 
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CUDA selftest: readback failed (error %d)\n", res);
+        cuda_logf("CUDA selftest: readback failed (error %d)", res);
         return -1;
     }
 
-    fprintf(stderr, "CUDA selftest results (batch kernel):\n");
-    fprintf(stderr, "  secp256k1 prime (expect 1): %d\n", h_results[0]);
-    fprintf(stderr, "  Mersenne M127   (expect 1): %d\n", h_results[1]);
-    fprintf(stderr, "  Composite 15    (expect 0): %d\n", h_results[2]);
+    cuda_logf("CUDA selftest results (batch kernel):");
+    cuda_logf("  secp256k1 prime (expect 1): %d", h_results[0]);
+    cuda_logf("  Mersenne M127   (expect 1): %d", h_results[1]);
+    cuda_logf("  Composite 15    (expect 0): %d", h_results[2]);
 
     int pass = 1;
-    if (h_results[0] != 1) { fprintf(stderr, "  FAIL: secp256k1 prime returned %d\n", h_results[0]); pass = 0; }
-    if (h_results[1] != 1) { fprintf(stderr, "  FAIL: Mersenne M127 returned %d\n", h_results[1]); pass = 0; }
-    if (h_results[2] != 0) { fprintf(stderr, "  FAIL: Composite 15 returned %d\n", h_results[2]); pass = 0; }
+    if (h_results[0] != 1) { cuda_logf("  FAIL: secp256k1 prime returned %d", h_results[0]); pass = 0; }
+    if (h_results[1] != 1) { cuda_logf("  FAIL: Mersenne M127 returned %d", h_results[1]); pass = 0; }
+    if (h_results[2] != 0) { cuda_logf("  FAIL: Composite 15 returned %d", h_results[2]); pass = 0; }
 
     if (pass) {
-        fprintf(stderr, "CUDA selftest: PASSED — batch kernel Montgomery math verified\n");
+        cuda_logf("CUDA selftest: PASSED — batch kernel Montgomery math verified");
         return 0;
     } else {
-        fprintf(stderr, "CUDA selftest: FAILED\n");
+        cuda_logf("CUDA selftest: FAILED");
         return -1;
     }
 }
@@ -561,9 +591,9 @@ int cgbn_fermat_init(void) {
 
     res = cu_cuModuleLoadDataEx(&g_cgbn_module, cgbn_ptx_source, 2, jit_options, jit_option_values);
     if (res != CUDA_SUCCESS) {
-        fprintf(stderr, "CGBN: Failed to JIT-compile PTX (error %d)\n", res);
+        cuda_logf("CGBN: Failed to JIT-compile PTX (error %d)", res);
         if (jit_error_log[0]) {
-            fprintf(stderr, "CGBN JIT error:\n%s\n", jit_error_log);
+            cuda_logf("CGBN JIT error:\n%s", jit_error_log);
         }
         return -1;
     }
@@ -573,7 +603,7 @@ int cgbn_fermat_init(void) {
         res = cu_cuModuleGetFunction(&g_cgbn_tiers[i].kernel, g_cgbn_module,
                                       g_cgbn_tiers[i].kernel_name);
         if (res != CUDA_SUCCESS) {
-            fprintf(stderr, "CGBN: Failed to find kernel '%s' (error %d)\n",
+            cuda_logf("CGBN: Failed to find kernel '%s' (error %d)",
                     g_cgbn_tiers[i].kernel_name, res);
             cu_cuModuleUnload(g_cgbn_module);
             g_cgbn_module = nullptr;
@@ -582,7 +612,118 @@ int cgbn_fermat_init(void) {
     }
 
     g_cgbn_initialized = 1;
+
+    /* Known-answer probe of every tier (~30 single-candidate tests, <3s;
+     * JIT already paid). A failed tier is excluded from mining. Probe
+     * failures do not fail init — validated tiers remain usable. */
+    cgbn_fermat_probe_tiers();
     return 0;
+}
+
+/* =========================================================================
+ * Known-answer tier probe
+ *
+ * Vectors live in cgbn_kat_vectors.h: a BPSW-verified probable prime and
+ * a composite at the maximum input width of every tier. A wrong verdict
+ * for either marks the tier failed.
+ * ========================================================================= */
+
+#include "cgbn_kat_vectors.h"
+
+/* Parse a big-endian hex string ("0x..." or bare) into little-endian
+ * 32-bit limbs. Returns the number of limbs written, or -1 on error. */
+static int kat_hex_to_limbs(const char* hex, uint32_t* limbs, int max_limbs) {
+    if (hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) hex += 2;
+    size_t n = strlen(hex);
+    if (n == 0) return -1;
+    memset(limbs, 0, (size_t)max_limbs * sizeof(uint32_t));
+    int top_limb = 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = hex[n - 1 - i];
+        uint32_t v;
+        if (c >= '0' && c <= '9')      v = (uint32_t)(c - '0');
+        else if (c >= 'a' && c <= 'f') v = (uint32_t)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') v = (uint32_t)(c - 'A' + 10);
+        else return -1;
+        int limb = (int)(i / 8);
+        if (limb >= max_limbs) return -1;
+        limbs[limb] |= v << ((i % 8) * 4);
+        top_limb = limb;
+    }
+    return top_limb + 1;
+}
+
+static CgbnTierInfo* cgbn_tier_for_bits(int bits) {
+    for (int i = 0; i < g_cgbn_num_tiers; i++) {
+        if (g_cgbn_tiers[i].bits >= bits + CGBN_TIER_SLACK_BITS) {
+            return &g_cgbn_tiers[i];
+        }
+    }
+    return nullptr;
+}
+
+int cgbn_fermat_probe_tiers(void) {
+    if (!g_cgbn_initialized) return -1;
+
+    enum { KAT_MAX_LIMBS = 16672 / 32 };
+    static uint32_t limbs[KAT_MAX_LIMBS];  /* single-threaded init path */
+    int failed_tiers = 0;
+
+    for (int i = 0; i < g_cgbn_num_tiers; i++) {
+        int tested = 0, wrong = 0, errors = 0;
+
+        for (int v = 0; v < CGBN_KAT_NUM_VECTORS; v++) {
+            const CgbnKatVector* vec = &CGBN_KAT_VECTORS[v];
+            CgbnTierInfo* tier = cgbn_tier_for_bits(vec->bits);
+            if (tier != &g_cgbn_tiers[i]) continue;  /* vector probes another tier */
+
+            int input_limbs = (vec->bits + 31) / 32;
+            if (kat_hex_to_limbs(vec->hex, limbs, KAT_MAX_LIMBS) < 0 ||
+                input_limbs > KAT_MAX_LIMBS) {
+                cuda_logf("CGBN probe: bad KAT vector (%d bits) — generator bug", vec->bits);
+                errors++;
+                continue;
+            }
+
+            uint8_t result = 0xAA;  /* sentinel: detects never-written results */
+            int rc = cgbn_fermat_batch(&result, limbs, 1, vec->bits);
+            tested++;
+            if (rc != 0 || result == 0xAA) {
+                cuda_logf("CGBN probe: tier %d batch error rc=%d result=0x%02X (%d-bit vector)",
+                          g_cgbn_tiers[i].bits, rc, result, vec->bits);
+                errors++;
+            } else if ((int)result != vec->expected) {
+                cuda_logf("CGBN probe: tier %d WRONG VERDICT — %d-bit %s reported %s",
+                          g_cgbn_tiers[i].bits, vec->bits,
+                          vec->expected ? "probable prime" : "composite",
+                          result ? "prime" : "composite");
+                wrong++;
+            }
+        }
+
+        if (tested == 0) {
+            /* No vector maps here (tier covered transitively by a wider
+             * vector set) — leave as unprobed rather than claiming validity. */
+            continue;
+        }
+        g_cgbn_tiers[i].validated = (wrong == 0 && errors == 0) ? 1 : 0;
+        if (g_cgbn_tiers[i].validated) {
+            cuda_logf("CGBN probe: tier %d OK (%d vectors)", g_cgbn_tiers[i].bits, tested);
+        } else {
+            cuda_logf("CGBN probe: tier %d FAILED (%d wrong, %d errors of %d) — "
+                      "mining at shifts mapping to this tier is DISABLED",
+                      g_cgbn_tiers[i].bits, wrong, errors, tested);
+            failed_tiers++;
+        }
+    }
+    return failed_tiers;
+}
+
+int cgbn_fermat_bits_validated(int bits) {
+    if (!g_cgbn_initialized) return 0;
+    CgbnTierInfo* tier = cgbn_tier_for_bits(bits);
+    if (!tier) return 0;
+    return tier->validated == 1;
 }
 
 int cgbn_is_available(void) {
@@ -610,16 +751,21 @@ int cgbn_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
     if (!g_cgbn_initialized) return -1;
     if (count == 0) return 0;
 
-    /* Select CGBN tier: round UP to nearest supported bit width */
+    /* Round UP to the nearest tier with CGBN_TIER_SLACK_BITS of headroom.
+     * No fitting tier is a hard error, not a largest-tier fallback:
+     * consensus caps inputs at 16640 bits, which the 16672 tier covers. */
     CgbnTierInfo* tier = nullptr;
     for (int i = 0; i < g_cgbn_num_tiers; i++) {
-        if (g_cgbn_tiers[i].bits >= bits) {
+        if (g_cgbn_tiers[i].bits >= bits + CGBN_TIER_SLACK_BITS) {
             tier = &g_cgbn_tiers[i];
             break;
         }
     }
     if (!tier) {
-        tier = &g_cgbn_tiers[g_cgbn_num_tiers - 1];
+        cuda_logf("CGBN: no tier with %d-bit headroom for %d-bit input (max usable %d) — rejecting batch",
+                  CGBN_TIER_SLACK_BITS, bits,
+                  g_cgbn_tiers[g_cgbn_num_tiers - 1].bits - CGBN_TIER_SLACK_BITS);
+        return -2;
     }
 
     int input_limbs = (bits + 31) / 32;
@@ -685,7 +831,7 @@ int cgbn_fermat_batch_async(uint8_t *h_results, const uint32_t *h_primes,
     if (res != CUDA_SUCCESS) {
         cu_cuMemFree(d_results);
         cu_cuMemFree(d_primes);
-        fprintf(stderr, "CGBN: launch failed for %d-bit tier (error %d)\n", tier->bits, res);
+        cuda_logf("CGBN: launch failed for %d-bit tier (error %d)", tier->bits, res);
         return -1;
     }
 

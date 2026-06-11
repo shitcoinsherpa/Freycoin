@@ -47,6 +47,7 @@
 #include <validation.h>
 #include <validationinterface.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -263,15 +264,24 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
     LogPrintf("GenerateBlock: Starting prime gap mining with difficulty=%016llx shift=%u\n",
               static_cast<long long>(block.nDifficulty), shift);
 
-    // Mine with the engine - it will call processor.process() when a valid gap is found
+    // Mine with the engine — processor.process() fires on a valid gap.
+    // Bounded round: one try = one sieve segment, at most
+    // MINING_SEGMENTS_PER_ROUND per call so the HTTP worker is released
+    // promptly.
+    const uint64_t round_budget = std::min<uint64_t>(max_tries, MINING_SEGMENTS_PER_ROUND);
     engine.mine_parallel(
         header_template,
         NONCE_OFFSET,
         shift,
         block.nDifficulty,
         0,  // start_nonce
-        &processor
+        &processor,
+        round_budget
     );
+
+    // Consume the segments this round actually used from the caller's budget.
+    const uint64_t used = std::max<uint64_t>(engine.segments_done(), 1);
+    max_tries = (max_tries > used) ? max_tries - used : 0;
 
     // Check if mining was interrupted
     if (chainman.m_interrupt) {
@@ -281,8 +291,15 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock&& block, uint64_t&
 
     // Check if we found a valid proof
     if (!processor.found) {
-        LogPrintf("GenerateBlock: No valid prime gap found after mining\n");
-        return false;
+        if (max_tries == 0) {
+            // Budget exhausted — caller stops (Core's GenerateBlock contract).
+            LogPrintf("GenerateBlock: No valid prime gap within maxtries budget\n");
+            return false;
+        }
+        // Round exhausted, tries remain: normal round end. The caller
+        // rebuilds the template and re-enters; block_out stays unset, same
+        // as Core's nonce-exhaustion path.
+        return true;
     }
 
     // Update block with the found proof

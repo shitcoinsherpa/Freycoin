@@ -92,16 +92,22 @@ DEFINE_CGBN_FERMAT_KERNEL(512, 16, 512)
 /* =========================================================================
  * Post-fork kernels (TPI=32: one instance per warp, for large numbers)
  *
- * Coverage map (shift → total bits → CGBN tier):
- *   shift  257-768  → bits  513-1024 → tier 1024
- *   shift  769-1024 → bits 1025-1280 → tier 1280
- *   shift 1025-1792 → bits 1281-2048 → tier 2048
- *   shift 1793-3840 → bits 2049-4096 → tier 4096
- *   shift 3841-7936 → bits 4097-8192 → tier 8192
- *   shift 7937-8192 → bits 8193-8448 → tier 8448  [mainnet MIN_SHIFT exact]
- *   shift 8193-12032→ bits 8449-12288→ tier 12288
- *   shift 12033-16128→bits 12289-16384→tier 16384
- *   shift 16129-16384→bits 16385-16640→tier 16640 [mainnet MAX_SHIFT exact]
+ * Tier selection requires >=32 bits of slack so a modulus can never fill
+ * its environment: CGBN's Barrett reduction takes a clz-dependent
+ * normalization path at full width that upstream never validated
+ * (cf. NVlabs/CGBN #15, #23). Tier 16672 covers consensus-max inputs
+ * (shift 16384 = 16640 bits) with slack.
+ *
+ * Coverage map (shift → total bits → CGBN tier, 32-bit slack rule):
+ *   shift  257-736   → bits  513-992   → tier 1024
+ *   shift  737-992   → bits  993-1248  → tier 1280
+ *   shift  993-1760  → bits 1249-2016  → tier 2048
+ *   shift 1761-3808  → bits 2017-4064  → tier 4096
+ *   shift 3809-7904  → bits 4065-8160  → tier 8192
+ *   shift 7905-8160  → bits 8161-8416  → tier 8448
+ *   shift 8161-12000 → bits 8417-12256 → tier 12288 [mainnet MIN_SHIFT 12000]
+ *   shift 12001-16096→ bits 12257-16352→ tier 16384
+ *   shift 16097-16384→ bits 16353-16640→ tier 16672 [mainnet MAX_SHIFT 16384]
  * ========================================================================= */
 
 DEFINE_CGBN_FERMAT_KERNEL(1024,  32, 1024)
@@ -113,6 +119,7 @@ DEFINE_CGBN_FERMAT_KERNEL(8448,  32, 8448)
 DEFINE_CGBN_FERMAT_KERNEL(12288, 32, 12288)
 DEFINE_CGBN_FERMAT_KERNEL(16384, 32, 16384)
 DEFINE_CGBN_FERMAT_KERNEL(16640, 32, 16640)
+DEFINE_CGBN_FERMAT_KERNEL(16672, 32, 16672)
 
 /* =========================================================================
  * Tier selection: round requested bits UP to next supported CGBN kernel.
@@ -125,7 +132,7 @@ struct CgbnTier {
 };
 
 static CgbnTier select_tier(int requested_bits) {
-    /* Ascending order — pick first tier >= requested */
+    /* Ascending order — first tier with >=32 bits of slack (see above). */
     static const CgbnTier tiers[] = {
         {  320,  8},
         {  384, 16},
@@ -139,11 +146,12 @@ static CgbnTier select_tier(int requested_bits) {
         {12288, 32},
         {16384, 32},
         {16640, 32},
+        {16672, 32},
     };
     static const int n_tiers = sizeof(tiers) / sizeof(tiers[0]);
 
     for (int i = 0; i < n_tiers; i++) {
-        if (tiers[i].bits >= requested_bits) {
+        if (tiers[i].bits >= requested_bits + 32) {
             return tiers[i];
         }
     }
@@ -242,6 +250,9 @@ int cgbn_fermat_batch(uint8_t *h_results,
         break;
     case 16640:
         cgbn_fermat_kernel_16640<<<blocks, block_size>>>(d_results, d_primes, count);
+        break;
+    case 16672:
+        cgbn_fermat_kernel_16672<<<blocks, block_size>>>(d_results, d_primes, count);
         break;
     default:
         cudaFree(d_results);
