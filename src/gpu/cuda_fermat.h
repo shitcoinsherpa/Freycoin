@@ -23,6 +23,15 @@ extern "C" {
 #endif
 
 /**
+ * Diagnostics routing. stderr is invisible in a Windows GUI process, so
+ * every diagnostic from this module goes through an installable logger
+ * (the node wires it to LogPrintf). Messages arrive WITHOUT a trailing
+ * newline. NULL restores the stderr fallback.
+ */
+typedef void (*cuda_fermat_log_fn)(const char* msg);
+void cuda_fermat_set_logger(cuda_fermat_log_fn fn);
+
+/**
  * Initialize CUDA device for Fermat primality testing.
  * Loads CUDA Driver API, creates context, JIT-compiles PTX kernels.
  * @param device_id CUDA device index (0 for first GPU)

@@ -1542,6 +1542,15 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
     LogPrintf("Mining: Pipeline mode: %s\n", async_pipeline ? "async (v2511.9)" : "sync (legacy)");
 
     while (!chainman.m_interrupt) {
+        // Never start a round on a faulted GPU — the loop would spin
+        // instantly-returning rounds. A proof found in the faulting round
+        // has already been submitted.
+        if (engine.gpu_fault()) {
+            LogPrintf("Mining: GPU FAULT latched — halting the mining thread. "
+                      "See the 'GPU:' driver diagnostics above.\n");
+            break;
+        }
+
         // Wait until we've validated all known headers before mining.
         // Do NOT gate on IsInitialBlockDownload() — on a young/low-hashrate
         // chain the tip can be >24h old because no one has mined recently.
@@ -1718,9 +1727,12 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
         const auto async_tel_pre = engine.get_async_telemetry();
         const auto template_t0 = std::chrono::steady_clock::now();
 
-        // Mine with the persistent engine (GPU stays initialized across blocks)
+        // Mine with the persistent engine (GPU stays initialized across
+        // blocks). Bounded round: the loop rebuilds the template each round
+        // so nTime stays fresh for the retarget.
         engine.mine_parallel(header_template, NONCE_OFFSET, shift,
-                            block.nDifficulty, 0, &processor);
+                            block.nDifficulty, 0, &processor,
+                            MiningEngine::DEFAULT_ROUND_SEGMENTS);
 
         // Mining returned (found / aborted / shutdown). Tell watchdog to exit
         // and notify the CV so it wakes if it's still waiting.
@@ -1750,15 +1762,25 @@ static void MiningThread(NodeContext& node, const CScript& coinbase_script, int 
             const unsigned long long d_bp_stalls    = async_tel_post.backpressure_stalls - async_tel_pre.backpressure_stalls;
             const unsigned long long d_stream_sync  = async_tel_post.stream_sync_ms - async_tel_pre.stream_sync_ms;
             const unsigned long long in_flight_max  = async_tel_post.in_flight_max;  // cumulative peak, not delta
+            const unsigned long long gpu_errors     = async_tel_post.gpu_errors;     // cumulative; nonzero = fault
 
             LogPrintf("Mining: GPU telemetry — launches=%llu candidates=%llu prp=%llu "
                       "gpu_ms=%llu wall_ms=%lld busy=%lld%%\n",
                       d_launches, d_candidates, d_prp,
                       d_gpu_ms, wall_ll, busy_pct);
             LogPrintf("Mining: Async pipeline — submits=%llu drain_opp=%llu drain_block=%llu "
-                      "bp_stalls=%llu in_flight_max=%llu stream_sync_ms=%llu\n",
+                      "bp_stalls=%llu in_flight_max=%llu stream_sync_ms=%llu gpu_errors=%llu\n",
                       d_submits, d_drain_opp, d_drain_block,
-                      d_bp_stalls, in_flight_max, d_stream_sync);
+                      d_bp_stalls, in_flight_max, d_stream_sync, gpu_errors);
+        }
+
+        // A failed batch latches a fault. A proof from the same round is
+        // still valid (BPSW-confirmed on CPU) — submit it below, then the
+        // top-of-loop check halts.
+        if (engine.gpu_fault() && !processor.found) {
+            LogPrintf("Mining: GPU FAULT latched — a Fermat batch returned an error and "
+                      "mining has halted. See the 'GPU:' driver diagnostics above.\n");
+            break;
         }
 
         if (chainman.m_interrupt) break;

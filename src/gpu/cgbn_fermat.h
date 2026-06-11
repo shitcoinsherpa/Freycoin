@@ -14,10 +14,12 @@
  * driver at runtime.
  *
  * At runtime, the requested bit width is rounded UP to the nearest
- * supported CGBN tier. Input data is zero-padded to match.
+ * supported CGBN tier that leaves at least 32 bits of slack (a
+ * full-width modulus would take an unvalidated Barrett normalization
+ * path — see cgbn_fermat.cu). Input data is zero-padded to the tier.
  *
  * Supported tiers: 320, 384, 512, 1024, 1280, 2048, 4096,
- *                  8192, 8448, 12288, 16384, 16640
+ *                  8192, 8448, 12288, 16384, 16640, 16672
  */
 
 #ifndef FREYCOIN_GPU_CGBN_FERMAT_H
@@ -69,11 +71,26 @@ int cgbn_fermat_batch_async(uint8_t *h_results,
 /** Check if CGBN PTX module is loaded and ready */
 int cgbn_is_available(void);
 
+/**
+ * Known-answer probe of every CGBN tier (runs at the end of
+ * cgbn_fermat_init). A wrong verdict or batch error marks the tier
+ * failed. Returns the number of failed tiers, or -1 if CGBN is not
+ * initialized.
+ */
+int cgbn_fermat_probe_tiers(void);
+
+/**
+ * Returns 1 only if the tier selected for `bits`-wide inputs passed its
+ * known-answer probe. Mining must not start at a shift whose width
+ * returns 0 here.
+ */
+int cgbn_fermat_bits_validated(int bits);
+
 /** Clean up CGBN module resources */
 void cgbn_fermat_cleanup(void);
 
-/** Maximum supported bit width */
-#define CGBN_MAX_BITS 16640
+/** Largest tier; usable input width is CGBN_MAX_BITS - 32 (slack rule). */
+#define CGBN_MAX_BITS 16672
 
 #ifdef __cplusplus
 }

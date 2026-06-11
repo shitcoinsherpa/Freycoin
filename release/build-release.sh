@@ -178,11 +178,13 @@ if [[ ${WANT_WIN64} -eq 1 ]]; then build_target "${WIN64_HOST}" "win64"; fi
 
 # ─── Checksums ───────────────────────────────────────────────────────────────
 
+# Checksum every platform present in the release dir, not just this
+# invocation's targets — the gate builds linux and win64 in separate calls.
 log "[checksum] release/SHA256SUMS.txt"
 cd "${RELEASE_DIR}"
 {
-    if [[ ${WANT_LINUX} -eq 1 ]]; then find linux -type f -exec sha256sum {} \;; fi
-    if [[ ${WANT_WIN64} -eq 1 ]]; then find win64 -type f -exec sha256sum {} \;; fi
+    if [[ -d linux ]]; then find linux -type f -exec sha256sum {} \;; fi
+    if [[ -d win64 ]]; then find win64 -type f -exec sha256sum {} \;; fi
 } | sort -k2 > SHA256SUMS.txt
 
 log "Done. Outputs:"

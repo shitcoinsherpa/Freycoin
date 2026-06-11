@@ -1971,6 +1971,45 @@ struct shareable_sincos_data *shareable_data = NULL;  /* Linked list of shareabl
 gwmutex	shareable_lock;				/* This mutex limits one caller into sharing routines */
 int	shareable_lock_initialized = FALSE;	/* Whether shareable mutex is initialized */
 
+/* Freycoin: race-free one-time init.  The check-then-set pattern
+ * double-initializes the mutex under concurrent first use, and gwsetup is
+ * called from concurrent validation threads.
+ * States: 0 = uninitialized, 1 = initializing, 2 = ready. */
+static volatile int shareable_lock_state = 0;
+static void shareable_lock_ensure_init (void)
+{
+	int prev = __sync_val_compare_and_swap (&shareable_lock_state, 0, 1);
+	if (prev == 0) {
+		gwmutex_init (&shareable_lock);
+		shareable_lock_initialized = TRUE;
+		__sync_synchronize ();
+		shareable_lock_state = 2;
+	} else {
+		while (shareable_lock_state != 2) { /* another thread is mid-init */ }
+	}
+}
+
+/* Freycoin: race-free one-time CPU detection.  Respects caller-set
+ * CPU_FLAGS/CPU_SPEED (re-checked under the guard). */
+static volatile int cpu_detect_state = 0;
+static void cpu_detect_ensure_init (void)
+{
+	if (cpu_detect_state == 2) return;	/* fast path after first use */
+	{
+		int prev = __sync_val_compare_and_swap (&cpu_detect_state, 0, 1);
+		if (prev == 0) {
+			if (CPU_FLAGS == 0 && CPU_SPEED == 0.0) {
+				guessCpuType ();
+				guessCpuSpeed ();
+			}
+			__sync_synchronize ();
+			cpu_detect_state = 2;
+		} else {
+			while (cpu_detect_state != 2) { /* another thread is mid-detect */ }
+		}
+	}
+}
+
 /* Share sin/cos data where possible amongst several gwnum callers */
 
 double *share_sincos_data (
@@ -1986,12 +2025,9 @@ double *share_sincos_data (
 
 	if (table_size == 0) return (table);
 
-/* Initialize the mutex if necessary, then grab the lock */
+/* Initialize the mutex if necessary (race-free), then grab the lock */
 
-	if (!shareable_lock_initialized) {
-		gwmutex_init (&shareable_lock);
-		shareable_lock_initialized = TRUE;
-	}
+	shareable_lock_ensure_init ();
 	gwmutex_lock (&shareable_lock);
 
 /* Look through the list of shareable blocks looking for a match.  If we find a match, use it! */
@@ -2118,12 +2154,11 @@ void gwinit2 (
 	gwdata->gdata.deallocate = &gwgiantdealloc;
 	gwdata->gdata.handle = (void *) gwdata;
 
-/* If CPU type and speed have not been initialized by the caller, do so now. */
+/* If CPU type and speed have not been initialized by the caller, do so now.
+ * Freycoin: race-free — a torn CPU_FLAGS read makes the FFT jmptable
+ * lookup fail and gwsetup return GWERROR_TOO_LARGE. */
 
-	if (CPU_FLAGS == 0 && CPU_SPEED == 0.0) {
-		guessCpuType ();
-		guessCpuSpeed ();
-	}
+	cpu_detect_ensure_init ();
 	gwdata->cpu_flags = CPU_FLAGS;
 
 /* We have not and will not write FMA3 or AVX-512 FFTs for 32-bit OSes */

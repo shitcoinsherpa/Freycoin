@@ -88,6 +88,11 @@ struct GPURequest {
     std::condition_variable cv;
     std::atomic<bool> done{false};
 
+    // GPU batch return code. results[] is zero-initialized, so without
+    // this a failed batch reads as all-composite. Nonzero = results are
+    // garbage; never interpret them.
+    int gpu_rc{0};
+
     // v2511.9 async state capture. Init'd to 0/empty; populated by the
     // producer only when running on the async path. The mpz_t is init'd
     // in the ctor and cleared in the dtor; mpz_set() copies the producer's
@@ -318,12 +323,25 @@ public:
      * @param start_nonce Starting nonce value
      * @param processor Callback for valid results
      */
+    /** @param max_segments Round budget: total sieve segments across all
+     *  workers before returning normally (0 = unbounded). Exhaustion is a
+     *  normal return (processor->found stays false); callers rebuild the
+     *  template between rounds. */
     void mine_parallel(const std::vector<uint8_t>& header_template,
                        size_t nonce_offset,
                        uint16_t shift,
                        uint64_t target_difficulty,
                        uint32_t start_nonce,
-                       PoWProcessor* processor);
+                       PoWProcessor* processor,
+                       uint64_t max_segments = 0);
+
+    /** Segments consumed by the most recent mine_parallel round. */
+    uint64_t segments_done() const { return m_segments_done.load(std::memory_order_relaxed); }
+
+    /** Default round budget for persistent miners (daemon, Qt). Bounds a
+     *  round so the template and nTime refresh regularly — the DAA reads
+     *  the last two block timestamps, so stale nTime skews the retarget. */
+    static constexpr uint64_t DEFAULT_ROUND_SEGMENTS = 64;
 
     /** Set GPU intensity (1-10). Controls sieve range per nonce.
      *  Higher = more work per nonce, better GPU utilization. Default: 5. */
@@ -344,6 +362,7 @@ public:
         uint64_t in_flight_max;
         uint64_t backpressure_stalls;
         uint64_t stream_sync_ms;
+        uint64_t gpu_errors;
     };
     AsyncTelemetry get_async_telemetry() const {
         return {
@@ -353,8 +372,12 @@ public:
             tel_in_flight_max.load(std::memory_order_relaxed),
             tel_backpressure_stalls.load(std::memory_order_relaxed),
             tel_stream_sync_ms.load(std::memory_order_relaxed),
+            tel_gpu_errors.load(std::memory_order_relaxed),
         };
     }
+
+    /** True once any GPU batch has returned an error; mining stops. */
+    bool gpu_fault() const { return m_gpu_fault.load(std::memory_order_relaxed); }
 
     /** Compute minimum shift needed for a given intensity level.
      *  Ensures 2^shift / 2 >= sieve_cap so the sieve can use its full range.
@@ -430,6 +453,13 @@ private:
     std::atomic<uint64_t> tel_in_flight_max{0};      // peak in-flight per drain cycle
     std::atomic<uint64_t> tel_backpressure_stalls{0};
     std::atomic<uint64_t> tel_stream_sync_ms{0};     // cumulative cuStreamSync wait
+    std::atomic<uint64_t> tel_gpu_errors{0};         // failed GPU batches
+    std::atomic<bool>     m_gpu_fault{false};        // latched on first GPU error
+
+    // Round budget (see mine_parallel). Shared across producer workers;
+    // 0 = unbounded.
+    std::atomic<uint64_t> m_segments_done{0};
+    uint64_t              m_max_segments{0};
 
     void ensure_gpu_running();
     void gpu_worker_func(GPUWorker* worker);

@@ -139,11 +139,11 @@ fi
 
 banner "Stage 5: Source-tree sanity"
 
-# Confirm version bump landed (v2511.8)
-if grep -q "set(CLIENT_VERSION_REVISION 9)" "${REPO_ROOT}/CMakeLists.txt"; then
-    ok "CMakeLists.txt CLIENT_VERSION_REVISION = 9"
+# Confirm version bump landed (v2511.10)
+if grep -q "set(CLIENT_VERSION_REVISION 10)" "${REPO_ROOT}/CMakeLists.txt"; then
+    ok "CMakeLists.txt CLIENT_VERSION_REVISION = 10"
 else
-    fail "CMakeLists.txt CLIENT_VERSION_REVISION is not 9 — version bump missing"
+    fail "CMakeLists.txt CLIENT_VERSION_REVISION is not 10 — version bump missing"
 fi
 
 # v2511.8: confirm bootstrap engine is in source
@@ -226,6 +226,76 @@ if [[ -f "${REPO_ROOT}/docs/MINING.md" ]]; then
     ok "docs/MINING.md present (H1)"
 else
     fail "docs/MINING.md missing — H1 fix not delivered"
+fi
+
+# ─── v2511.10 max-shift checks ───────────────────────────────────────────────
+
+# 16672 kernel present in embedded PTX (headroom tier for shift=16384)
+if grep -q "cgbn_fermat_kernel_16672" "${REPO_ROOT}/src/gpu/cgbn_fermat_ptx_source.h"; then
+    ok "16672-bit CGBN kernel embedded in PTX (v2511.10 headroom tier)"
+else
+    fail "cgbn_fermat_kernel_16672 missing from embedded PTX"
+fi
+
+# Headroom rule in runtime tier selection
+if grep -q "CGBN_TIER_SLACK_BITS" "${REPO_ROOT}/src/gpu/cuda_fermat_driver.cpp"; then
+    ok "CGBN tier selection enforces 32-bit headroom (v2511.10)"
+else
+    fail "headroom rule missing from cuda_fermat_driver.cpp"
+fi
+
+# Known-answer probe wired into init
+if grep -q "cgbn_fermat_probe_tiers" "${REPO_ROOT}/src/gpu/cuda_fermat_driver.cpp" && \
+   [[ -f "${REPO_ROOT}/src/gpu/cgbn_kat_vectors.h" ]]; then
+    ok "init-time known-answer tier probe + KAT vectors present (v2511.10)"
+else
+    fail "tier probe or KAT vectors missing"
+fi
+
+# GPU diagnostics routed through logger (Windows-Qt visible)
+if grep -q "cuda_fermat_set_logger" "${REPO_ROOT}/src/pow/mining_engine.cpp"; then
+    ok "GPU driver diagnostics routed to debug.log (v2511.10)"
+else
+    fail "cuda_fermat_set_logger not wired in mining_engine.cpp"
+fi
+
+# GPU batch return codes captured (no silent all-composite)
+if grep -q "gpu_rc" "${REPO_ROOT}/src/pow/mining_engine.h"; then
+    ok "GPU batch return codes captured in GPURequest (v2511.10)"
+else
+    fail "GPURequest.gpu_rc missing — silent GPU failures possible"
+fi
+
+# Bounded mining rounds
+if grep -q "max_segments" "${REPO_ROOT}/src/pow/mining_engine.h" && \
+   grep -q "MINING_SEGMENTS_PER_ROUND" "${REPO_ROOT}/src/rpc/mining.h" && \
+   grep -q "DEFAULT_MAX_TRIES{64}" "${REPO_ROOT}/src/rpc/mining.h"; then
+    ok "bounded mining rounds wired (v2511.10 — generatetoaddress cannot wedge RPC)"
+else
+    fail "bounded round budget missing from mine_parallel/rpc"
+fi
+
+# gwnum race-free once-init
+if grep -q "shareable_lock_ensure_init" "${REPO_ROOT}/src/gwnum/gwnum.c"; then
+    ok "gwnum sincos mutex once-init is race-free (v2511.10)"
+else
+    fail "gwnum.c missing race-free once-init"
+fi
+
+# gwsetup failure is loud
+if grep -q "gwnum setup failed" "${REPO_ROOT}/src/pow/fast_nextprime.cpp"; then
+    ok "gwsetup failure is loud in fast_nextprime.cpp (v2511.10)"
+else
+    fail "fast_nextprime.cpp gwsetup failure still silent"
+fi
+
+# SHA256SUMS covers BOTH platforms (build-release.sh used to truncate to the
+# last-built target, dropping the linux entries when the gate built win64)
+if grep -q "^[0-9a-f]\{64\}  linux/" "${REPO_ROOT}/release/SHA256SUMS.txt" 2>/dev/null && \
+   grep -q "^[0-9a-f]\{64\}  win64/" "${REPO_ROOT}/release/SHA256SUMS.txt" 2>/dev/null; then
+    ok "release/SHA256SUMS.txt covers linux and win64 (v2511.10)"
+else
+    fail "release/SHA256SUMS.txt missing a platform — checksum truncation regressed"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────

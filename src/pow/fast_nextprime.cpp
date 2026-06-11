@@ -21,6 +21,8 @@
 #include <malloc.h> // _aligned_malloc / _aligned_free
 #endif
 
+#include <cassert>
+
 #include <logging.h>
 #include <pow/gpu_coordinator.h>
 #include <pow/gpu_accel/gpu_nextprime.h>
@@ -458,6 +460,16 @@ static bool GwnumMillerRabin2(
 
     bool is_sprp = false;
     int err = gwsetup_general_mod_64(&gw, mod_array, cand_nlimbs);
+    // gwsetup failure modes are integration-class (version/struct
+    // mismatch, zero threads) or OOM — never input-dependent at our
+    // sizes. Failing silently would classify every candidate composite,
+    // so be loud.
+    if (err) {
+        LogPrintf("ERROR: gwnum setup failed (err=%d, %zu-bit candidate, threads=%d) — "
+                  "primality verdict unavailable. This is an integration bug; report it.\n",
+                  err, mpz_sizeinbase(candidate, 2), n_threads);
+        assert(!"gwsetup_general_mod_64 failed — see debug.log");
+    }
     if (!err) {
         gwnum x = gwalloc(&gw);
         if (x) {
